@@ -68,7 +68,7 @@ export default function Chat() {
       .from('messages')
       .select(`
         *,
-        reply_to:messages!reply_to_id(id, content, sender_id, media_type),
+        reply_to:messages!messages_reply_to_id_fkey(id, content, sender_id, media_type),
         message_reactions(id, user_id, emoji)
       `)
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherUser.id}),and(sender_id.eq.${otherUser.id},receiver_id.eq.${user.id})`)
@@ -122,7 +122,7 @@ export default function Chat() {
             const newMsg = payload.new as Message
             supabase
               .from('messages')
-              .select('*, reply_to:messages!reply_to_id(id, content, sender_id, media_type), message_reactions(id, user_id, emoji)')
+              .select('*, reply_to:messages!messages_reply_to_id_fkey(id, content, sender_id, media_type), message_reactions(id, user_id, emoji)')
               .eq('id', newMsg.id)
               .single()
               .then(({ data }) => {
