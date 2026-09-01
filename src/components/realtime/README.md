@@ -1,0 +1,1 @@
+Realtime inbox component lives in RealtimeInbox.tsx. It is mounted globally in App so message/activity previews can appear outside the current chat.
