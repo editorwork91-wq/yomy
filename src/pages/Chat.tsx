@@ -48,11 +48,15 @@ export default function Chat() {
 
   const fetchOtherUser = useCallback(async () => {
     if (!targetUsername) return
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('username', targetUsername)
       .maybeSingle()
+    if (error) {
+      toast.error(`تعذر تحميل المستخدم: ${error.message}`)
+      return
+    }
     setOtherUser(data)
   }, [targetUsername])
 
@@ -60,7 +64,7 @@ export default function Chat() {
     if (!user || !otherUser) return
     setLoading(true)
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('messages')
       .select(`
         *,
@@ -71,6 +75,13 @@ export default function Chat() {
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(200)
+
+    if (error) {
+      setMessages([])
+      setLoading(false)
+      toast.error(`تعذر تحميل الرسائل: ${error.message}`)
+      return
+    }
 
     setMessages(data || [])
     setLoading(false)
@@ -187,7 +198,7 @@ export default function Chat() {
     setSending(true)
 
     try {
-      const { data, error } = await supabase.from('messages').insert({
+      const { data: insertedMessage, error } = await supabase.from('messages').insert({
         sender_id: user.id,
         receiver_id: otherUser.id,
         content: msgContent.trim(),
@@ -196,17 +207,31 @@ export default function Chat() {
         is_encrypted: true,
         view_once: viewOnceMode && !!mediaUrl,
         reply_to_id: replyTo?.id || null,
-      }).select(`
-        *,
-        reply_to:messages!reply_to_id(id, content, sender_id, media_type),
-        message_reactions(id, user_id, emoji)
-      `).single()
+      }).select('id, created_at').single()
 
       if (error) throw error
-      if (data) {
+      if (insertedMessage) {
         setMessages(prev => {
-          if (prev.some(m => m.id === data.id)) return prev
-          return [...prev, data]
+          if (prev.some(message => message.id === insertedMessage.id)) return prev
+          return [...prev, {
+            id: insertedMessage.id,
+            sender_id: user.id,
+            receiver_id: otherUser.id,
+            content: msgContent.trim(),
+            media_url: mediaUrl || '',
+            media_type: mediaType || '',
+            is_seen: false,
+            is_encrypted: true,
+            view_once: viewOnceMode && !!mediaUrl,
+            view_once_opened: false,
+            deleted_at: null,
+            deleted_for_everyone: false,
+            reply_to_id: replyTo?.id || null,
+            edited_at: null,
+            is_request: false,
+            request_accepted: false,
+            created_at: insertedMessage.created_at,
+          }]
         })
         setNewMessage('')
         setViewOnceMode(false)
