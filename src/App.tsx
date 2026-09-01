@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
+import RealtimeInbox from '@/components/realtime/RealtimeInbox'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
 import Feed from '@/pages/Feed'
@@ -67,6 +68,7 @@ export function App() {
     <AuthProvider>
       <BrowserRouter>
         <AppRoutes />
+        <RealtimeInbox />
       </BrowserRouter>
       <Toaster position="top-center" richColors />
     </AuthProvider>
