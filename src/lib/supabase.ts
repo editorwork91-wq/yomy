@@ -4,9 +4,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  realtime: {
-    params: { eventsPerSecond: 10 },
-  },
+  realtime: { params: { eventsPerSecond: 10 } },
 })
 
 export type Profile = {
@@ -64,113 +62,25 @@ export type Post = {
   media_path?: string
 }
 
-export type PostTag = {
-  id: string
-  post_id: string
-  tag: string
-  created_at: string
-}
-
-export type SavedPost = {
-  id: string
-  user_id: string
-  post_id: string
-  created_at: string
-}
-
+export type PostTag = { id: string; post_id: string; tag: string; created_at: string }
+export type SavedPost = { id: string; user_id: string; post_id: string; created_at: string }
 export type StoryVisibility = 'public' | 'friends' | 'private'
-
-export type Story = {
-  id: string
-  user_id: string
-  media_url: string
-  media_type: 'image' | 'video'
-  caption: string
-  expires_at: string
-  created_at: string
-  visibility: StoryVisibility
-  profiles?: Profile
-  _viewed_by_me?: boolean
-}
-
-export type Comment = {
-  id: string
-  post_id: string
-  user_id: string
-  content: string
-  is_pinned: boolean
-  created_at: string
-  profiles?: Profile
-  comment_likes?: { user_id: string }[]
-  _likes_count?: number
-  _liked_by_me?: boolean
-}
-
-export type Like = {
-  id: string
-  post_id: string
-  user_id: string
-  created_at: string
-}
-
-export type Follow = {
-  id: string
-  follower_id: string
-  following_id: string
-  status: 'accepted' | 'pending'
-  created_at: string
-  accepted_at: string | null
-  declined_at: string | null
-}
-
-export type MessageReaction = {
-  id: string
-  message_id: string
-  user_id: string
-  emoji: string
-  created_at: string
-}
-
-export type Message = {
-  id: string
-  sender_id: string
-  receiver_id: string
-  content: string
-  media_url: string
-  media_type: '' | 'image' | 'video' | 'audio'
-  is_seen: boolean
-  is_encrypted: boolean
-  view_once: boolean
-  view_once_opened: boolean
-  deleted_at: string | null
-  deleted_for_everyone: boolean
-  reply_to_id: string | null
-  edited_at: string | null
-  is_request: boolean
-  request_accepted: boolean
-  created_at: string
-  sender?: Profile
-  receiver?: Profile
-  reply_to?: Message
-  message_reactions?: MessageReaction[]
-}
-
-export type Note = {
-  id: string
-  user_id: string
-  content: string
-  expires_at: string
-  created_at: string
-  profiles?: Profile
-}
+export type Story = { id: string; user_id: string; media_url: string; media_type: 'image' | 'video'; caption: string; expires_at: string; created_at: string; visibility: StoryVisibility; profiles?: Profile; _viewed_by_me?: boolean }
+export type Comment = { id: string; post_id: string; user_id: string; content: string; is_pinned: boolean; created_at: string; profiles?: Profile; comment_likes?: { user_id: string }[]; _likes_count?: number; _liked_by_me?: boolean }
+export type Like = { id: string; post_id: string; user_id: string; created_at: string }
+export type Follow = { id: string; follower_id: string; following_id: string; status: 'accepted' | 'pending'; created_at: string; accepted_at: string | null; declined_at: string | null }
+export type MessageReaction = { id: string; message_id: string; user_id: string; emoji: string; created_at: string }
+export type Message = { id: string; sender_id: string; receiver_id: string; content: string; media_url: string; media_type: '' | 'image' | 'video' | 'audio'; is_seen: boolean; is_encrypted: boolean; view_once: boolean; view_once_opened: boolean; deleted_at: string | null; deleted_for_everyone: boolean; reply_to_id: string | null; edited_at: string | null; is_request: boolean; request_accepted: boolean; created_at: string; sender?: Profile; receiver?: Profile; reply_to?: Message; message_reactions?: MessageReaction[] }
+export type Note = { id: string; user_id: string; content: string; expires_at: string; created_at: string; profiles?: Profile }
 
 export type Notification = {
   id: string
   user_id: string
   actor_id: string
-  type: 'like' | 'comment' | 'follow' | 'follow_request' | 'mention' | 'story_reply'
+  type: 'like' | 'comment' | 'follow' | 'follow_request' | 'mention' | 'story_reply' | 'message'
   post_id: string | null
   comment_id: string | null
+  message_id: string | null
   is_read: boolean
   created_at: string
   actor?: Profile
