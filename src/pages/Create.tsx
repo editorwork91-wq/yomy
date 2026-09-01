@@ -9,19 +9,12 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Spinner } from '@/components/ui/spinner'
 import { Badge } from '@/components/ui/badge'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { toast } from 'sonner'
-import {
-  ImagePlus, X, ChevronDown,
-  Globe, Lock, Users,
-} from 'lucide-react'
+import { ImagePlus, X, ChevronDown, Globe, Lock, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type Step = 'select' | 'uploading' | 'compose'
+type Step = 'select' | 'uploading' | 'compose' | 'moderating'
 
 const VISIBILITY_OPTIONS: { value: PostVisibility; label: string; icon: typeof Globe }[] = [
   { value: 'public', label: 'Public', icon: Globe },
@@ -39,7 +32,7 @@ function normalizeTag(raw: string): string {
 }
 
 function generateIdempotencyKey(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+  return `${Date.now()}-${crypto.randomUUID()}`
 }
 
 export default function Create() {
@@ -47,7 +40,7 @@ export default function Create() {
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
   const idempotencyRef = useRef<string>(generateIdempotencyKey())
-  const publishedRef = useRef(false)
+  const postingRef = useRef(false)
 
   const [step, setStep] = useState<Step>('select')
   const [mediaUrl, setMediaUrl] = useState('')
@@ -57,7 +50,6 @@ export default function Create() {
   const [uploadProgress, setUploadProgress] = useState(0)
   const [posting, setPosting] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-
   const [title, setTitle] = useState('')
   const [caption, setCaption] = useState('')
   const [description, setDescription] = useState('')
@@ -68,6 +60,10 @@ export default function Create() {
 
   const uploadMedia = async (file: File) => {
     if (!user) return
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      toast.error('Only photos and videos are supported')
+      return
+    }
 
     const preview = URL.createObjectURL(file)
     setLocalPreview(preview)
@@ -79,34 +75,28 @@ export default function Create() {
     try {
       const folder = isVideo ? 'videos' : 'images'
       const ext = file.name.split('.').pop() || (isVideo ? 'mp4' : 'jpg')
-      const path = `${folder}/${user.id}-${Date.now()}.${ext}`
-
+      const path = `${folder}/${user.id}/${crypto.randomUUID()}.${ext}`
       const uploadUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/posts/${path}`
       const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) throw new Error('Session expired. Please sign in again.')
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open('POST', uploadUrl)
-        xhr.setRequestHeader('Authorization', `Bearer ${session?.access_token}`)
-        xhr.setRequestHeader('x-upsert', 'true')
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            const pct = Math.round((event.loaded / event.total) * 100)
-            setUploadProgress(pct)
-          }
+        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`)
+        xhr.setRequestHeader('apikey', import.meta.env.VITE_SUPABASE_ANON_KEY)
+        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.upload.onprogress = event => {
+          if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100))
         }
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve()
-          else reject(new Error(`Upload failed (${xhr.status})`))
-        }
+        xhr.onload = () => xhr.status >= 200 && xhr.status < 300
+          ? resolve()
+          : reject(new Error(`Upload failed (${xhr.status})`))
         xhr.onerror = () => reject(new Error('Network error during upload'))
         xhr.send(file)
       })
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('posts')
-        .getPublicUrl(path)
-
+      const { data: { publicUrl } } = supabase.storage.from('posts').getPublicUrl(path)
       setMediaUrl(publicUrl)
       setMediaPath(path)
       URL.revokeObjectURL(preview)
@@ -122,17 +112,12 @@ export default function Create() {
   }
 
   const addTagsFromInput = useCallback(() => {
-    const parts = tagInput.split(',')
-    const newTags: string[] = []
-    for (const part of parts) {
-      const normalized = normalizeTag(part)
-      if (normalized && !tags.includes(normalized) && newTags.length + tags.length < MAX_TAGS) {
-        newTags.push(normalized)
-      }
+    const next = [...tags]
+    for (const part of tagInput.split(',')) {
+      const normalized = normalizeTag(part).slice(0, MAX_TAG_LENGTH)
+      if (normalized && !next.includes(normalized) && next.length < MAX_TAGS) next.push(normalized)
     }
-    if (newTags.length > 0) {
-      setTags([...tags, ...newTags])
-    }
+    setTags(next)
     setTagInput('')
   }, [tagInput, tags])
 
@@ -143,69 +128,90 @@ export default function Create() {
     }
   }
 
-  const removeTag = (tag: string) => {
-    setTags(tags.filter(t => t !== tag))
-  }
-
   const handlePost = async () => {
-    if (!user || !mediaUrl) return
-    if (publishedRef.current) return
-
+    if (!user || !mediaUrl || postingRef.current) return
     addTagsFromInput()
-    if (tags.length > MAX_TAGS) {
-      toast.error(`Maximum ${MAX_TAGS} tags allowed`)
-      return
-    }
+    const finalTags = Array.from(new Set([...tags, ...tagInput.split(',').map(normalizeTag).filter(Boolean)]))
+      .map(t => t.slice(0, MAX_TAG_LENGTH)).slice(0, MAX_TAGS)
+    if (finalTags.length > MAX_TAGS) return
 
-    publishedRef.current = true
+    postingRef.current = true
     setPosting(true)
+    setStep('moderating')
 
     try {
-      const now = new Date().toISOString()
-      const idempotencyKey = idempotencyRef.current
-
-      const { data: post, error } = await supabase
+      const { data: existing } = await supabase
         .from('posts')
-        .insert({
-          user_id: user.id,
-          media_url: mediaUrl,
-          media_path: mediaPath,
-          media_type: mediaType,
-          caption: caption.trim(),
+        .select('id, status, moderation_status')
+        .eq('idempotency_key', idempotencyRef.current)
+        .maybeSingle()
+
+      let postId = existing?.id
+      if (!postId) {
+        const { data: post, error } = await supabase
+          .from('posts')
+          .insert({
+            user_id: user.id,
+            media_url: mediaUrl,
+            media_path: mediaPath,
+            media_type: mediaType,
+            caption: caption.trim(),
+            title: title.trim(),
+            description: description.trim(),
+            visibility,
+            is_child_friendly: isChildFriendly,
+            moderation_status: 'pending',
+            status: 'pending_moderation',
+            idempotency_key: idempotencyRef.current,
+          })
+          .select('id')
+          .single()
+        if (error) throw error
+        postId = post.id
+      }
+
+      const { data: moderation, error: moderationError } = await supabase.functions.invoke('moderate-content', {
+        body: {
+          postId,
+          mediaUrl,
+          mediaType,
           title: title.trim(),
+          caption: caption.trim(),
           description: description.trim(),
-          visibility,
-          is_child_friendly: isChildFriendly,
-          moderation_status: 'safe',
-          status: 'published',
-          published_at: now,
-          idempotency_key: idempotencyKey,
-        })
-        .select('id')
-        .single()
+        },
+      })
+      if (moderationError) throw moderationError
 
-      if (error) {
-        if (error.code === '23505') {
-          toast.info('Post already shared')
-          navigate('/')
-          return
-        }
-        throw error
+      if (moderation?.status === 'rejected') {
+        toast.error('This post could not be published because it did not pass the safety review.')
+        setStep('compose')
+        return
       }
 
-      if (post && tags.length > 0) {
-        const tagRows = tags.map(tag => ({ post_id: post.id, tag }))
-        await supabase.from('post_tags').insert(tagRows).then(({ error: tagErr }) => {
-          if (tagErr) console.error('Failed to save tags:', tagErr)
-        })
+      if (moderation?.status !== 'safe') {
+        toast.info('Your post is waiting for a safety review and will not be visible until approved.')
+        navigate('/')
+        return
       }
+
+      if (finalTags.length) {
+        const { error: tagError } = await supabase.from('post_tags').upsert(
+          finalTags.map(tag => ({ post_id: postId, tag })),
+          { onConflict: 'post_id,tag', ignoreDuplicates: true }
+        )
+        if (tagError) console.error('Failed to save tags:', tagError)
+      }
+
+      const { error: publishError } = await supabase.rpc('publish_post', { p_post_id: postId })
+      if (publishError) throw publishError
 
       toast.success('Post shared!')
       navigate('/')
     } catch (err: unknown) {
-      publishedRef.current = false
       toast.error(err instanceof Error ? err.message : 'Failed to post')
+      setStep('compose')
     } finally {
+      postingRef.current = false
       setPosting(false)
     }
   }
@@ -218,7 +224,7 @@ export default function Create() {
     setUploadProgress(0)
     setStep('select')
     idempotencyRef.current = generateIdempotencyKey()
-    publishedRef.current = false
+    postingRef.current = false
   }
 
   const previewUrl = localPreview || mediaUrl
@@ -228,202 +234,64 @@ export default function Create() {
       <TopBar
         title="New Post"
         showBack
-        right={
-          step === 'compose' ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-primary font-semibold"
-              disabled={posting}
-              onClick={handlePost}
-            >
-              {posting ? <Spinner className="size-4" /> : 'Share'}
-            </Button>
-          ) : undefined
-        }
+        right={step === 'compose' ? (
+          <Button variant="ghost" size="sm" className="text-primary font-semibold" disabled={posting} onClick={handlePost}>
+            {posting ? <Spinner className="size-4" /> : 'Share'}
+          </Button>
+        ) : undefined}
       />
       <div className="max-w-lg mx-auto px-4 py-4">
         {step === 'select' && (
-          <div
-            className="aspect-square border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-accent/30 transition-colors"
-            onClick={() => fileRef.current?.click()}
-          >
+          <div className="aspect-square border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-accent/30 transition-colors" onClick={() => fileRef.current?.click()}>
             <ImagePlus className="size-12 text-muted-foreground" />
-            <div className="text-center">
-              <p className="text-sm font-medium">Tap to upload a photo or video</p>
-              <p className="text-xs text-muted-foreground mt-1">Up to 1080p quality</p>
-            </div>
+            <div className="text-center"><p className="text-sm font-medium">Tap to upload a photo or video</p><p className="text-xs text-muted-foreground mt-1">Fast upload with server-side safety review</p></div>
           </div>
         )}
 
         {step === 'uploading' && (
           <div className="flex flex-col items-center gap-4">
             <div className="relative aspect-square w-full max-w-xs rounded-xl overflow-hidden bg-muted">
-              {mediaType === 'video' ? (
-                <video src={previewUrl} className="w-full h-full object-cover" />
-              ) : (
-                <img src={previewUrl} alt="" className="w-full h-full object-cover" />
-              )}
+              {mediaType === 'video' ? <video src={previewUrl} className="w-full h-full object-cover" /> : <img src={previewUrl} alt="" className="w-full h-full object-cover" />}
               <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-3">
                 <p className="text-white text-sm font-medium">Uploading... {uploadProgress}%</p>
-                <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-white rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
+                <div className="w-48 h-1.5 bg-white/20 rounded-full overflow-hidden"><div className="h-full bg-white rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} /></div>
               </div>
             </div>
           </div>
         )}
 
-        {step === 'compose' && (
-          <>
+        {step === 'moderating' && (
+          <div className="flex min-h-64 flex-col items-center justify-center gap-4 text-center">
+            <Spinner className="size-8" />
+            <div><p className="font-medium">Checking your post...</p><p className="text-sm text-muted-foreground mt-1">It stays private until the safety review is complete.</p></div>
+          </div>
+        )}
+
+        {(step === 'compose' || (step === 'moderating' && !!mediaUrl)) && (
+          <div className={cn(step === 'moderating' && 'hidden')}>
             <div className="relative aspect-square rounded-xl overflow-hidden bg-muted">
-              {mediaType === 'video' ? (
-                <video src={previewUrl} className="w-full h-full object-cover" controls playsInline />
-              ) : (
-                <img src={previewUrl} alt="" className="w-full h-full object-cover" />
-              )}
-              <button
-                className="absolute top-2 right-2 bg-black/60 rounded-full size-8 flex items-center justify-center"
-                onClick={resetMedia}
-              >
-                <X className="size-4 text-white" />
-              </button>
+              {mediaType === 'video' ? <video src={previewUrl} className="w-full h-full object-cover" controls playsInline /> : <img src={previewUrl} alt="" className="w-full h-full object-cover" />}
+              <button className="absolute top-2 right-2 bg-black/60 rounded-full size-8 flex items-center justify-center" onClick={resetMedia}><X className="size-4 text-white" /></button>
             </div>
 
-            <div className="mt-4">
-              <Input
-                placeholder="Title"
-                value={title}
-                onChange={e => setTitle(e.target.value.slice(0, MAX_TITLE))}
-                maxLength={MAX_TITLE}
-              />
-              <p className="text-xs text-muted-foreground text-right mt-1">
-                {title.length}/{MAX_TITLE}
-              </p>
-            </div>
-
-            <div className="mt-2">
-              <Textarea
-                placeholder="Write a caption..."
-                value={caption}
-                onChange={e => setCaption(e.target.value)}
-                maxLength={2200}
-                className="resize-none min-h-20"
-              />
-            </div>
-
-            <div className="mt-2">
-              <Textarea
-                placeholder="Add a description (optional)..."
-                value={description}
-                onChange={e => setDescription(e.target.value.slice(0, MAX_DESCRIPTION))}
-                maxLength={MAX_DESCRIPTION}
-                className="resize-none min-h-16"
-              />
-            </div>
+            <div className="mt-4"><Input placeholder="Title" value={title} onChange={e => setTitle(e.target.value.slice(0, MAX_TITLE))} maxLength={MAX_TITLE} /><p className="text-xs text-muted-foreground text-right mt-1">{title.length}/{MAX_TITLE}</p></div>
+            <div className="mt-2"><Textarea placeholder="Write a caption..." value={caption} onChange={e => setCaption(e.target.value)} maxLength={2200} className="resize-none min-h-20" /></div>
+            <div className="mt-2"><Textarea placeholder="Add a description (optional)..." value={description} onChange={e => setDescription(e.target.value.slice(0, MAX_DESCRIPTION))} maxLength={MAX_DESCRIPTION} className="resize-none min-h-16" /></div>
 
             <Collapsible open={moreOpen} onOpenChange={setMoreOpen} className="mt-4">
-              <CollapsibleTrigger asChild>
-                <button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                  <ChevronDown className={cn("size-4 transition-transform", moreOpen && "rotate-180")} />
-                  More Options
-                </button>
-              </CollapsibleTrigger>
+              <CollapsibleTrigger asChild><button className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"><ChevronDown className={cn('size-4 transition-transform', moreOpen && 'rotate-180')} />More Options</button></CollapsibleTrigger>
               <CollapsibleContent className="mt-4 space-y-4">
-                <div>
-                  <p className="text-sm font-medium mb-2">Is this content suitable for children?</p>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={isChildFriendly ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setIsChildFriendly(true)}
-                    >
-                      Yes
-                    </Button>
-                    <Button
-                      variant={!isChildFriendly ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setIsChildFriendly(false)}
-                    >
-                      No
-                    </Button>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium mb-2">Who can see this post?</p>
-                  <div className="flex gap-2">
-                    {VISIBILITY_OPTIONS.map(opt => {
-                      const Icon = opt.icon
-                      return (
-                        <Button
-                          key={opt.value}
-                          variant={visibility === opt.value ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => setVisibility(opt.value)}
-                        >
-                          <Icon className="size-4 mr-1.5" />
-                          {opt.label}
-                        </Button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium mb-2">Tags</p>
-                  <Input
-                    placeholder="Type a tag and press comma or enter..."
-                    value={tagInput}
-                    onChange={e => setTagInput(e.target.value)}
-                    onKeyDown={handleTagKeyDown}
-                    onBlur={addTagsFromInput}
-                    maxLength={MAX_TAG_LENGTH}
-                  />
-                  {tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {tags.map(tag => (
-                        <Badge key={tag} variant="secondary" className="gap-1">
-                          #{tag}
-                          <button onClick={() => removeTag(tag)} className="ml-0.5">
-                            <X className="size-3" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {tags.length}/{MAX_TAGS} tags. Separate with commas.
-                  </p>
-                </div>
+                <div><p className="text-sm font-medium mb-2">Is this content suitable for children?</p><div className="flex gap-2"><Button variant={isChildFriendly ? 'default' : 'outline'} size="sm" onClick={() => setIsChildFriendly(true)}>Yes</Button><Button variant={!isChildFriendly ? 'default' : 'outline'} size="sm" onClick={() => setIsChildFriendly(false)}>No</Button></div></div>
+                <div><p className="text-sm font-medium mb-2">Who can see this post?</p><div className="flex gap-2">{VISIBILITY_OPTIONS.map(opt => { const Icon = opt.icon; return <Button key={opt.value} variant={visibility === opt.value ? 'default' : 'outline'} size="sm" onClick={() => setVisibility(opt.value)}><Icon className="size-4 mr-1.5" />{opt.label}</Button> })}</div></div>
+                <div><p className="text-sm font-medium mb-2">Tags</p><Input placeholder="Type a tag and press comma or enter..." value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={handleTagKeyDown} onBlur={addTagsFromInput} maxLength={MAX_TAG_LENGTH} />{tags.length > 0 && <div className="flex flex-wrap gap-1.5 mt-2">{tags.map(tag => <Badge key={tag} variant="secondary" className="gap-1">#{tag}<button onClick={() => setTags(tags.filter(t => t !== tag))} className="ml-0.5"><X className="size-3" /></button></Badge>)}</div>}<p className="text-xs text-muted-foreground mt-1">{tags.length}/{MAX_TAGS} tags. Separate with commas.</p></div>
               </CollapsibleContent>
             </Collapsible>
 
-            <Button
-              className="w-full mt-6"
-              size="lg"
-              disabled={posting}
-              onClick={handlePost}
-            >
-              {posting ? <Spinner className="size-4 mr-2" /> : null}
-              Share Post
-            </Button>
-          </>
+            <Button className="w-full mt-6" size="lg" disabled={posting} onClick={handlePost}>{posting ? <Spinner className="size-4 mr-2" /> : null}Share Post</Button>
+          </div>
         )}
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,video/*"
-          className="hidden"
-          onChange={e => {
-            const f = e.target.files?.[0]
-            if (f) uploadMedia(f)
-          }}
-        />
+        <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMedia(f); e.currentTarget.value = '' }} />
       </div>
     </div>
   )
