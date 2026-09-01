@@ -46,30 +46,42 @@ export default function PostCard({ post, onDeleted }: PostCardProps) {
 
   const toggleLike = async () => {
     if (!user) return
+    const previousLiked = liked
+    const previousCount = likesCount
     const newLiked = !liked
     setLiked(newLiked)
-    setLikesCount(c => newLiked ? c + 1 : c - 1)
+    setLikesCount(c => newLiked ? c + 1 : Math.max(0, c - 1))
 
-    if (newLiked) {
-      await supabase.from('likes').upsert({ post_id: post.id, user_id: user.id }, { onConflict: 'post_id,user_id' })
-      if (post.user_id !== user.id) {
-        await supabase.from('notifications').insert({
-          user_id: post.user_id, actor_id: user.id, type: 'like', post_id: post.id
-        })
+    try {
+      if (newLiked) {
+        const { error } = await supabase
+          .from('likes')
+          .upsert({ post_id: post.id, user_id: user.id }, { onConflict: 'post_id,user_id' })
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', user.id)
+        if (error) throw error
       }
-    } else {
-      await supabase.from('likes').delete().eq('post_id', post.id).eq('user_id', user.id)
+    } catch (error) {
+      setLiked(previousLiked)
+      setLikesCount(previousCount)
+      toast.error(error instanceof Error ? error.message : 'Could not update like')
     }
   }
 
   const loadComments = async () => {
     if (commentsLoaded) return
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('comments')
       .select('*, profiles!user_id(id, username, full_name, avatar_url, is_verified), comment_likes(user_id)')
       .eq('post_id', post.id)
       .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: true })
+
+    if (error) {
+      toast.error(error.message)
+      return
+    }
 
     setComments((data || []).map(c => ({
       ...c,
@@ -87,21 +99,19 @@ export default function PostCard({ post, onDeleted }: PostCardProps) {
   const submitComment = async () => {
     if (!newComment.trim() || !user || submitting) return
     setSubmitting(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('comments')
       .insert({ post_id: post.id, user_id: user.id, content: newComment.trim() })
       .select('*, profiles!user_id(id, username, full_name, avatar_url, is_verified)')
       .single()
 
-    if (data) {
+    if (error) {
+      toast.error(error.message)
+    } else if (data) {
       setComments(c => [...c, { ...data, _likes_count: 0, _liked_by_me: false }])
-      if (post.user_id !== user.id) {
-        await supabase.from('notifications').insert({
-          user_id: post.user_id, actor_id: user.id, type: 'comment', post_id: post.id
-        })
-      }
+      toast.success('Comment posted')
     }
-    setNewComment('')
+    if (!error) setNewComment('')
     setSubmitting(false)
   }
 
@@ -109,19 +119,33 @@ export default function PostCard({ post, onDeleted }: PostCardProps) {
     if (!user) return
     const newLiked = !comment._liked_by_me
     setComments(cs => cs.map(c => c.id === comment.id
-      ? { ...c, _liked_by_me: newLiked, _likes_count: newLiked ? (c._likes_count || 0) + 1 : (c._likes_count || 0) - 1 }
+      ? { ...c, _liked_by_me: newLiked, _likes_count: newLiked ? (c._likes_count || 0) + 1 : Math.max(0, (c._likes_count || 0) - 1) }
       : c
     ))
-    if (newLiked) {
-      await supabase.from('comment_likes').upsert({ comment_id: comment.id, user_id: user.id }, { onConflict: 'comment_id,user_id' })
-    } else {
-      await supabase.from('comment_likes').delete().eq('comment_id', comment.id).eq('user_id', user.id)
+    try {
+      if (newLiked) {
+        const { error } = await supabase.from('comment_likes').upsert({ comment_id: comment.id, user_id: user.id }, { onConflict: 'comment_id,user_id' })
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('comment_likes').delete().eq('comment_id', comment.id).eq('user_id', user.id)
+        if (error) throw error
+      }
+    } catch (error) {
+      setComments(cs => cs.map(c => c.id === comment.id
+        ? { ...c, _liked_by_me: !newLiked, _likes_count: !newLiked ? (c._likes_count || 0) + 1 : Math.max(0, (c._likes_count || 0) - 1) }
+        : c
+      ))
+      toast.error(error instanceof Error ? error.message : 'Could not update comment like')
     }
   }
 
   const pinComment = async (comment: Comment) => {
     const newPinned = !comment.is_pinned
-    await supabase.from('comments').update({ is_pinned: newPinned }).eq('id', comment.id)
+    const { error } = await supabase.from('comments').update({ is_pinned: newPinned }).eq('id', comment.id)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
     setComments(cs => {
       const updated = cs.map(c => c.id === comment.id ? { ...c, is_pinned: newPinned } : { ...c, is_pinned: false })
       return updated.sort((a, b) => (b.is_pinned ? 1 : 0) - (a.is_pinned ? 1 : 0))
@@ -129,34 +153,55 @@ export default function PostCard({ post, onDeleted }: PostCardProps) {
   }
 
   const deleteComment = async (commentId: string) => {
-    await supabase.from('comments').delete().eq('id', commentId)
+    const { error } = await supabase.from('comments').delete().eq('id', commentId)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
     setComments(cs => cs.filter(c => c.id !== commentId))
   }
 
   const deletePost = async () => {
-    await supabase.from('posts').delete().eq('id', post.id)
+    const { error } = await supabase.from('posts').delete().eq('id', post.id)
+    if (error) {
+      toast.error(error.message)
+      return
+    }
     toast.success('Post deleted')
     onDeleted?.(post.id)
   }
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`)
-    toast.success('Link copied!')
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/post/${post.id}`)
+      toast.success('Link copied!')
+    } catch {
+      toast.error('Could not copy link')
+    }
   }
 
   const toggleSave = async () => {
     if (!user) return
     const newSaved = !saved
-    setSaved(newSaved)
     if (newSaved) {
-      await supabase.from('saved_posts').upsert(
+      const { error } = await supabase.from('saved_posts').upsert(
         { post_id: post.id, user_id: user.id },
         { onConflict: 'user_id,post_id' }
       )
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      setSaved(true)
       toast.success('Post saved')
     } else {
-      await supabase.from('saved_posts').delete()
+      const { error } = await supabase.from('saved_posts').delete()
         .eq('post_id', post.id).eq('user_id', user.id)
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+      setSaved(false)
       toast.success('Post removed')
     }
   }
@@ -164,7 +209,6 @@ export default function PostCard({ post, onDeleted }: PostCardProps) {
   return (
     <>
       <article className="border-b border-border">
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <Link to={`/profile/${post.profiles?.username}`} className="flex items-center gap-2">
             <Avatar className="size-8">
@@ -175,200 +219,95 @@ export default function PostCard({ post, onDeleted }: PostCardProps) {
               <div className="flex items-center gap-1">
                 <span className="text-sm font-semibold leading-none">{post.profiles?.username}</span>
                 {post.profiles?.is_verified && (
-                  <svg className="size-3.5 text-blue-500 fill-current" viewBox="0 0 24 24">
-                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
-                  </svg>
+                  <svg className="size-3.5 text-blue-500 fill-current" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
                 )}
               </div>
-              <span className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
-              </span>
+              <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
             </div>
           </Link>
 
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <MoreHorizontal className="size-5" />
-              </Button>
-            </DropdownMenuTrigger>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-5" /></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={copyLink}>
-                <Link2 className="size-4 mr-2" /> Copy link
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate(`/messages/new?to=${post.profiles?.username}`)}>
-                <Share2 className="size-4 mr-2" /> Share via message
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={copyLink}><Link2 className="size-4 mr-2" /> Copy link</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate(`/messages/new?to=${post.profiles?.username}`)}><Share2 className="size-4 mr-2" /> Share via message</DropdownMenuItem>
               <DropdownMenuSeparator />
               {isOwner ? (
-                <DropdownMenuItem onClick={deletePost} className="text-destructive focus:text-destructive">
-                  <Trash2 className="size-4 mr-2" /> Delete post
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={deletePost} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" /> Delete post</DropdownMenuItem>
               ) : (
                 <>
-                  <DropdownMenuItem>
-                    <Volume2 className="size-4 mr-2" /> Mute
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive">
-                    <Flag className="size-4 mr-2" /> Report
-                  </DropdownMenuItem>
+                  <DropdownMenuItem><Volume2 className="size-4 mr-2" /> Mute</DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive"><Flag className="size-4 mr-2" /> Report</DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        {/* Media */}
         <div className="relative bg-muted aspect-square">
           {post.media_type === 'video' ? (
-            <video
-              src={post.media_url}
-              className="w-full h-full object-cover"
-              controls
-              playsInline
-            />
+            <video src={post.media_url} className="w-full h-full object-cover" controls playsInline />
           ) : (
-            <img
-              src={post.media_url}
-              alt={post.caption}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
+            <img src={post.media_url} alt={post.caption} className="w-full h-full object-cover" loading="lazy" />
           )}
         </div>
 
-        {/* Actions */}
         <div className="px-4 pt-3 pb-1">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-4">
-              <button
-                onClick={toggleLike}
-                className={cn(
-                  "transition-transform active:scale-90",
-                  liked ? "text-red-500" : "text-foreground"
-                )}
-              >
-                <Heart className={cn("size-6 stroke-[1.5]", liked && "fill-current")} />
+              <button aria-label={liked ? 'Unlike' : 'Like'} onClick={toggleLike} className={cn('transition-transform active:scale-90', liked ? 'text-red-500' : 'text-foreground')}>
+                <Heart className={cn('size-6 stroke-[1.5]', liked && 'fill-current')} />
               </button>
-              <button onClick={openComments} className="text-foreground">
-                <MessageCircle className="size-6 stroke-[1.5]" />
-              </button>
-              <button onClick={() => navigate(`/messages/new?to=${post.profiles?.username}`)}>
-                <Send className="size-6 stroke-[1.5]" />
-              </button>
+              <button aria-label="Comments" onClick={openComments} className="text-foreground"><MessageCircle className="size-6 stroke-[1.5]" /></button>
+              <button aria-label="Share" onClick={() => navigate(`/messages/new?to=${post.profiles?.username}`)}><Send className="size-6 stroke-[1.5]" /></button>
             </div>
-            <Button variant="ghost" size="icon" className="size-8 -mr-2" onClick={toggleSave}>
-              <Bookmark className={cn("size-6 stroke-[1.5]", saved && "fill-current text-primary")} />
+            <Button aria-label={saved ? 'Unsave' : 'Save'} variant="ghost" size="icon" className="size-8 -mr-2" onClick={toggleSave}>
+              <Bookmark className={cn('size-6 stroke-[1.5]', saved && 'fill-current text-primary')} />
             </Button>
           </div>
 
-          {likesCount > 0 && (
-            <p className="text-sm font-semibold">{likesCount.toLocaleString()} {likesCount === 1 ? 'like' : 'likes'}</p>
-          )}
+          {likesCount > 0 && <p className="text-sm font-semibold">{likesCount.toLocaleString()} {likesCount === 1 ? 'like' : 'likes'}</p>}
 
-          {(post.title || post.caption) && (
+          {(post.title || post.caption || post.description || post._tags?.length) && (
             <div className="mt-1">
-              {post.title && (
-                <p className="text-sm font-semibold">{post.title}</p>
-              )}
-              {post.caption && (
-                <p className="text-sm">
-                  <Link to={`/profile/${post.profiles?.username}`} className="font-semibold mr-1">
-                    {post.profiles?.username}
-                  </Link>
-                  {post.caption}
-                </p>
-              )}
-              {post.description && (
-                <p className="text-sm text-muted-foreground mt-1">{post.description}</p>
-              )}
-              {post._tags && post._tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {post._tags.map(tag => (
-                    <span key={tag} className="text-xs text-primary">#{tag}</span>
-                  ))}
-                </div>
-              )}
+              {post.title && <p className="text-sm font-semibold">{post.title}</p>}
+              {post.caption && <p className="text-sm"><Link to={`/profile/${post.profiles?.username}`} className="font-semibold mr-1">{post.profiles?.username}</Link>{post.caption}</p>}
+              {post.description && <p className="text-sm text-muted-foreground mt-1">{post.description}</p>}
+              {post._tags && post._tags.length > 0 && <div className="flex flex-wrap gap-1 mt-2">{post._tags.map(tag => <span key={tag} className="text-xs text-primary">#{tag}</span>)}</div>}
             </div>
           )}
 
-          {post._comments_count ? (
-            <button
-              className="text-sm text-muted-foreground mt-1"
-              onClick={openComments}
-            >
-              View all {post._comments_count} comments
-            </button>
-          ) : null}
+          {post._comments_count ? <button className="text-sm text-muted-foreground mt-1" onClick={openComments}>View all {post._comments_count} comments</button> : null}
         </div>
       </article>
 
-      {/* Comments Sheet */}
       <Sheet open={commentsOpen} onOpenChange={setCommentsOpen}>
         <SheetContent side="bottom" className="h-[80vh] flex flex-col p-0">
-          <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle>Comments</SheetTitle>
-          </SheetHeader>
-
+          <SheetHeader className="px-4 py-3 border-b"><SheetTitle>Comments</SheetTitle></SheetHeader>
           <div className="flex-1 overflow-y-auto py-2">
             {comments.length === 0 ? (
-              <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
-                No comments yet. Be the first!
-              </div>
+              <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">No comments yet. Be the first!</div>
             ) : (
               comments.map(comment => (
-                <div key={comment.id} className={cn("flex gap-3 px-4 py-2", comment.is_pinned && "bg-muted/40")}>
-                  <Link to={`/profile/${comment.profiles?.username}`}>
-                    <Avatar className="size-8 shrink-0">
-                      <AvatarImage src={comment.profiles?.avatar_url} />
-                      <AvatarFallback>{comment.profiles?.username?.[0]?.toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                  </Link>
+                <div key={comment.id} className={cn('flex gap-3 px-4 py-2', comment.is_pinned && 'bg-muted/40')}>
+                  <Link to={`/profile/${comment.profiles?.username}`}><Avatar className="size-8 shrink-0"><AvatarImage src={comment.profiles?.avatar_url} /><AvatarFallback>{comment.profiles?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar></Link>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
-                        {comment.is_pinned && (
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5">
-                            <Pin className="size-3" /> Pinned
-                          </div>
-                        )}
-                        <p className="text-sm">
-                          <Link to={`/profile/${comment.profiles?.username}`} className="font-semibold mr-1">
-                            {comment.profiles?.username}
-                          </Link>
-                          {comment.content}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
-                        </p>
+                        {comment.is_pinned && <div className="flex items-center gap-1 text-xs text-muted-foreground mb-0.5"><Pin className="size-3" /> Pinned</div>}
+                        <p className="text-sm"><Link to={`/profile/${comment.profiles?.username}`} className="font-semibold mr-1">{comment.profiles?.username}</Link>{comment.content}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => toggleCommentLike(comment)}
-                          className={cn("text-sm", comment._liked_by_me ? "text-red-500" : "text-muted-foreground")}
-                        >
-                          <Heart className={cn("size-4", comment._liked_by_me && "fill-current")} />
+                        <button aria-label={comment._liked_by_me ? 'Unlike comment' : 'Like comment'} onClick={() => toggleCommentLike(comment)} className={cn('text-sm', comment._liked_by_me ? 'text-red-500' : 'text-muted-foreground')}>
+                          <Heart className={cn('size-4', comment._liked_by_me && 'fill-current')} />
                         </button>
                         {(isOwner || user?.id === comment.user_id) && (
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="size-6 h-6 w-6">
-                                <MoreHorizontal className="size-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-6 h-6 w-6"><MoreHorizontal className="size-3.5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {isOwner && (
-                                <DropdownMenuItem onClick={() => pinComment(comment)}>
-                                  <Pin className="size-4 mr-2" />
-                                  {comment.is_pinned ? 'Unpin' : 'Pin'}
-                                </DropdownMenuItem>
-                              )}
-                              <DropdownMenuItem
-                                onClick={() => deleteComment(comment.id)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="size-4 mr-2" /> Delete
-                              </DropdownMenuItem>
+                              {isOwner && <DropdownMenuItem onClick={() => pinComment(comment)}><Pin className="size-4 mr-2" />{comment.is_pinned ? 'Unpin' : 'Pin'}</DropdownMenuItem>}
+                              <DropdownMenuItem onClick={() => deleteComment(comment.id)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" /> Delete</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         )}
@@ -379,29 +318,10 @@ export default function PostCard({ post, onDeleted }: PostCardProps) {
               ))
             )}
           </div>
-
-          {/* Comment input */}
           <div className="border-t p-4 pb-safe flex gap-3 items-center">
-            <Avatar className="size-8 shrink-0">
-              <AvatarImage src={profile?.avatar_url} />
-              <AvatarFallback>{profile?.username?.[0]?.toUpperCase()}</AvatarFallback>
-            </Avatar>
-            <Input
-              placeholder="Add a comment..."
-              value={newComment}
-              onChange={e => setNewComment(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && submitComment()}
-              className="flex-1"
-            />
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-primary font-semibold"
-              disabled={!newComment.trim() || submitting}
-              onClick={submitComment}
-            >
-              Post
-            </Button>
+            <Avatar className="size-8 shrink-0"><AvatarImage src={profile?.avatar_url} /><AvatarFallback>{profile?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar>
+            <Input placeholder="Add a comment..." value={newComment} onChange={e => setNewComment(e.target.value)} onKeyDown={e => e.key === 'Enter' && submitComment()} className="flex-1" />
+            <Button variant="ghost" size="sm" className="text-primary font-semibold" disabled={!newComment.trim() || submitting} onClick={submitComment}>Post</Button>
           </div>
         </SheetContent>
       </Sheet>
