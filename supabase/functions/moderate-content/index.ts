@@ -7,7 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
 };
 
-const OPENAI_TIMEOUT_MS = 2500;
+const GEMINI_TIMEOUT_MS = 9000;
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
 type MediaType = "image" | "video";
 type Decision = "safe" | "review" | "rejected" | "timeout";
 
@@ -49,15 +50,10 @@ const emptyCategories = (): CategoryScores => ({
   exploitation: 0,
 });
 
-function toScores(categories: Record<string, unknown>): CategoryScores {
-  return {
-    violence: Number(categories["violence"] ?? 0),
-    sexual: Number(categories["sexual"] ?? 0),
-    graphic: Number(categories["violence/graphic"] ?? categories["graphic"] ?? 0),
-    hate: Number(categories["hate"] ?? 0),
-    self_harm: Number(categories["self-harm"] ?? categories["self_harm"] ?? 0),
-    exploitation: Number(categories["sexual/minors"] ?? categories["exploitation"] ?? 0),
-  };
+function clampScore(value: unknown): number {
+  const number = Number(value ?? 0);
+  if (!Number.isFinite(number)) return 0;
+  return Math.min(1, Math.max(0, number));
 }
 
 function decide(scores: CategoryScores): Decision {
@@ -67,40 +63,111 @@ function decide(scores: CategoryScores): Decision {
   return "safe";
 }
 
+function extractJson(text: string): Record<string, unknown> {
+  const trimmed = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+  try {
+    return JSON.parse(trimmed) as Record<string, unknown>;
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("Gemini returned invalid JSON");
+    return JSON.parse(match[0]) as Record<string, unknown>;
+  }
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+}
+
 async function moderateImage(mediaUrl: string, text: string, signal: AbortSignal): Promise<ModerationResult> {
   const started = Date.now();
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
+  const apiKey = Deno.env.get("GEMINI_API_KEY");
+  const model = Deno.env.get("GEMINI_MODEL") || DEFAULT_GEMINI_MODEL;
   if (!apiKey) {
     return {
       status: "review", safe: false, score: 1, categories: emptyCategories(),
       moderated_at: new Date().toISOString(), duration_ms: Date.now() - started,
-      provider: "configuration-missing", reason: "OPENAI_API_KEY is not configured",
+      provider: "configuration-missing", reason: "GEMINI_API_KEY is not configured",
     };
   }
 
-  const response = await fetch("https://api.openai.com/v1/moderations", {
-    method: "POST", signal,
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+  const mediaResponse = await fetch(mediaUrl, { signal });
+  if (!mediaResponse.ok) throw new Error(`Media fetch returned ${mediaResponse.status}`);
+  const mediaBytes = new Uint8Array(await mediaResponse.arrayBuffer());
+  if (!mediaBytes.length) throw new Error("Media is empty");
+  if (mediaBytes.length > 12 * 1024 * 1024) throw new Error("Image is too large for moderation");
+
+  const mediaMime = mediaResponse.headers.get("content-type")?.split(";")[0].trim() || "image/jpeg";
+  if (!mediaMime.startsWith("image/")) throw new Error(`Unsupported moderation media type: ${mediaMime}`);
+
+  const prompt = [
+    "You are a strict social-platform content safety moderator.",
+    "Analyze the supplied image and accompanying text.",
+    "Return ONLY a JSON object with this exact shape:",
+    '{"safe":true,"violence":0,"sexual":0,"graphic":0,"hate":0,"self_harm":0,"exploitation":0,"reason":"brief reason"}',
+    "Every score must be a number from 0 to 1.",
+    "Use 0 for clearly absent content, 1 for clear severe violations.",
+    "sexual includes explicit nudity/sexual acts; exploitation includes sexual content involving minors.",
+    "graphic covers gore or extreme injury.",
+    "Do not treat ordinary clothing, romance, medical context, sports, food, or non-graphic accidents as violations.",
+    `Text context:\n${text.slice(0, 8000) || "(none)"}`,
+  ].join("\n");
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "omni-moderation-latest",
-      input: [
-        ...(text.trim() ? [{ type: "text", text: text.slice(0, 8000) }] : []),
-        { type: "image_url", image_url: { url: mediaUrl } },
-      ],
+      contents: [{
+        role: "user",
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mediaMime, data: toBase64(mediaBytes) } },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+        maxOutputTokens: 256,
+      },
     }),
   });
 
-  if (!response.ok) throw new Error(`Moderation provider returned ${response.status}`);
-  const data = await response.json();
-  const providerResult = data?.results?.[0];
-  if (!providerResult) throw new Error("Moderation provider returned no result");
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Gemini returned ${response.status}${body ? `: ${body.slice(0, 300)}` : ""}`);
+  }
 
-  const scores = toScores(providerResult.category_scores ?? {});
-  const status = decide(scores);
+  const data = await response.json();
+  const textOutput = data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || "").join("").trim();
+  if (!textOutput) throw new Error("Gemini returned no moderation result");
+
+  const parsed = extractJson(textOutput);
+  const categories: CategoryScores = {
+    violence: clampScore(parsed.violence),
+    sexual: clampScore(parsed.sexual),
+    graphic: clampScore(parsed.graphic),
+    hate: clampScore(parsed.hate),
+    self_harm: clampScore(parsed.self_harm),
+    exploitation: clampScore(parsed.exploitation),
+  };
+  const calculatedStatus = decide(categories);
+  const status: Decision = parsed.safe === false && calculatedStatus === "safe" ? "review" : calculatedStatus;
+
   return {
-    status, safe: status === "safe", score: Math.max(...Object.values(scores)), categories: scores,
-    moderated_at: new Date().toISOString(), duration_ms: Date.now() - started,
-    provider: "openai-omni-moderation",
+    status,
+    safe: status === "safe",
+    score: Math.max(...Object.values(categories)),
+    categories,
+    moderated_at: new Date().toISOString(),
+    duration_ms: Date.now() - started,
+    provider: `google-${model}`,
+    reason: typeof parsed.reason === "string" ? parsed.reason.slice(0, 500) : undefined,
   };
 }
 
@@ -119,14 +186,16 @@ async function moderate(request: ModerationRequest): Promise<ModerationResult> {
 
   const text = [request.title, request.caption, request.description].filter(Boolean).join("\n");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
     return await moderateImage(request.mediaUrl, text, controller.signal);
   } catch (error) {
+    const timedOut = error instanceof DOMException && error.name === "AbortError";
     return {
       status: "timeout", safe: false, score: 1, categories: emptyCategories(),
       moderated_at: new Date().toISOString(), duration_ms: Date.now() - started,
-      provider: "openai-omni-moderation", reason: error instanceof Error ? error.message : "Moderation failed",
+      provider: `google-${Deno.env.get("GEMINI_MODEL") || DEFAULT_GEMINI_MODEL}`,
+      reason: timedOut ? "Gemini moderation timed out" : (error instanceof Error ? error.message : "Moderation failed"),
     };
   } finally {
     clearTimeout(timer);
