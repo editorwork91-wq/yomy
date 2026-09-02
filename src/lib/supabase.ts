@@ -28,7 +28,7 @@ export type Profile = {
 }
 
 export type PostVisibility = 'public' | 'friends' | 'private'
-export type PostStatus = 'draft' | 'uploading' | 'processing' | 'moderation' | 'ready' | 'published' | 'rejected' | 'archived' | 'deleted'
+export type PostStatus = 'draft' | 'uploading' | 'processing' | 'moderation' | 'pending_moderation' | 'ready' | 'published' | 'rejected' | 'archived' | 'deleted'
 export type ModerationStatus = 'pending' | 'safe' | 'review' | 'rejected'
 
 export type ModerationResult = {
