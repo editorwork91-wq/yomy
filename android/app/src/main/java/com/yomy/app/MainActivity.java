@@ -1,12 +1,17 @@
 package com.yomy.app;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.media.AudioDeviceInfo;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
+import android.webkit.WebView;
+import android.webkit.JavascriptInterface;
 
+import com.capacitorjs.plugins.pushnotifications.PushNotificationsPlugin;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 
@@ -14,12 +19,16 @@ public class MainActivity extends BridgeActivity {
     private static final int YOMY_PERMISSIONS = 7001;
     private static final int YOMY_WEB_PERMISSION_REQUEST = 7002;
     private PermissionRequest pendingWebPermissionRequest;
+    private AudioManager audioManager;
+    private int previousAudioMode = AudioManager.MODE_NORMAL;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         requestYomyPermissions();
         installMediaPermissionBridge();
+        installAudioRouteBridge();
     }
 
     private void requestYomyPermissions() {
@@ -79,7 +88,7 @@ public class MainActivity extends BridgeActivity {
             try {
                 pendingWebPermissionRequest.deny();
             } catch (Exception ignored) {
-                // Ignore an already completed WebView permission request.
+                // Request may already be completed.
             }
         }
         pendingWebPermissionRequest = request;
@@ -108,7 +117,7 @@ public class MainActivity extends BridgeActivity {
         try {
             request.grant(request.getResources());
         } catch (Exception ignored) {
-            // The WebView may have cancelled the request while the Activity changed state.
+            // WebView may have cancelled the request.
         }
     }
 
@@ -120,7 +129,64 @@ public class MainActivity extends BridgeActivity {
         try {
             request.deny();
         } catch (Exception ignored) {
-            // The WebView may have cancelled the request already.
+            // WebView may have cancelled the request.
+        }
+    }
+
+    private void installAudioRouteBridge() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        getBridge().getWebView().addJavascriptInterface(new AudioRouteBridge(), "YomyAudio");
+    }
+
+    private final class AudioRouteBridge {
+        @JavascriptInterface
+        public void setSpeaker(boolean enabled) {
+            runOnUiThread(() -> setSpeakerRoute(enabled));
+        }
+    }
+
+    private void setSpeakerRoute(boolean enabled) {
+        if (audioManager == null) return;
+        try {
+            if (audioManager.getMode() != AudioManager.MODE_IN_COMMUNICATION) {
+                previousAudioMode = audioManager.getMode();
+            }
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                AudioDeviceInfo desired = null;
+                for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                    if (enabled && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                        desired = device;
+                        break;
+                    }
+                    if (!enabled && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) {
+                        desired = device;
+                        break;
+                    }
+                }
+                if (desired != null) {
+                    audioManager.setCommunicationDevice(desired);
+                }
+            } else {
+                audioManager.setSpeakerphoneOn(enabled);
+            }
+        } catch (Exception ignored) {
+            // Keep the call alive even when a device refuses a route switch.
+        }
+    }
+
+    private void restoreAudioRoute() {
+        if (audioManager == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager.clearCommunicationDevice();
+            }
+            audioManager.setSpeakerphoneOn(false);
+            audioManager.setMode(previousAudioMode == AudioManager.MODE_IN_COMMUNICATION
+                    ? AudioManager.MODE_NORMAL : previousAudioMode);
+        } catch (Exception ignored) {
+            // Ignore teardown failures.
         }
     }
 
@@ -134,19 +200,17 @@ public class MainActivity extends BridgeActivity {
                     break;
                 }
             }
-            if (granted) {
-                grantPendingWebPermission();
-            } else {
-                denyPendingWebPermission();
-            }
+            if (granted) grantPendingWebPermission();
+            else denyPendingWebPermission();
             return;
         }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         denyPendingWebPermission();
+        restoreAudioRoute();
         super.onDestroy();
     }
 }
