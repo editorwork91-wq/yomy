@@ -1,5 +1,5 @@
 -- Yomy: rebuild the message notification trigger after message schema changes.
--- This keeps message delivery resilient while ensuring the trigger sees the current row shape.
+-- The trigger must be recreated after the message row shape changes so NEW.deleted_for_everyone is resolved correctly.
 
 CREATE OR REPLACE FUNCTION public.notify_new_message()
 RETURNS trigger
@@ -13,9 +13,6 @@ BEGIN
     INSERT INTO public.notifications(user_id, actor_id, type, message_id)
     VALUES (NEW.receiver_id, NEW.sender_id, 'message', NEW.id);
   END IF;
-  RETURN NEW;
-EXCEPTION WHEN others THEN
-  RAISE WARNING 'YOMY message notification failed: %', SQLERRM;
   RETURN NEW;
 END;
 $$;
