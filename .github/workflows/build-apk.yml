@@ -39,17 +39,21 @@ jobs:
           npx cap add android
           npx cap sync android
 
-      - name: Apply native permissions
+      - name: Apply native permissions and runtime permission request
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('android/app/src/main/AndroidManifest.xml')
-          s = p.read_text()
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          s = manifest.read_text()
           marker = '    <uses-permission android:name="android.permission.INTERNET" />'
-          additions = '\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
+          additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'''
           if 'android.permission.CAMERA' not in s:
               s = s.replace(marker, marker + additions)
-          p.write_text(s)
+          manifest.write_text(s)
+
+          activity = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
+          activity.write_text('''package com.yomy.app;\n\nimport android.Manifest;\nimport android.content.pm.PackageManager;\nimport android.os.Build;\nimport android.os.Bundle;\n\nimport com.getcapacitor.BridgeActivity;\n\npublic class MainActivity extends BridgeActivity {\n    private static final int YOMY_PERMISSIONS = 7001;\n\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        requestYomyPermissions();\n    }\n\n    private void requestYomyPermissions() {\n        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;\n\n        java.util.ArrayList<String> permissions = new java.util.ArrayList<>();\n        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {\n            permissions.add(Manifest.permission.CAMERA);\n        }\n        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {\n            permissions.add(Manifest.permission.RECORD_AUDIO);\n        }\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU\n                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {\n            permissions.add(Manifest.permission.POST_NOTIFICATIONS);\n        }\n\n        if (!permissions.isEmpty()) {\n            requestPermissions(permissions.toArray(new String[0]), YOMY_PERMISSIONS);\n        }\n    }\n}\n''')
           PY
 
       - name: Build Debug APK
