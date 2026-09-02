@@ -43,11 +43,20 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Restore optional Firebase Android configuration
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
+          else
+            echo "Firebase Android configuration is not configured; native push registration will remain inactive."
+          fi
+
       - name: Apply native media permissions and restore native bridge
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
           marker = '    <uses-permission android:name="android.permission.INTERNET" />'
@@ -59,9 +68,7 @@ jobs:
           if 'android.permission.VIBRATE' not in s:
               s = s.replace('</manifest>', '    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n</manifest>')
           manifest.write_text(s)
-
-          target = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
-          target.write_text(Path('/tmp/YomyMainActivity.java').read_text())
+          Path('android/app/src/main/java/com/yomy/app/MainActivity.java').write_text(Path('/tmp/YomyMainActivity.java').read_text())
           PY
 
       - name: Build Debug APK
