@@ -42,6 +42,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const activeRef = useRef<CallSession | null>(null)
   const processedSignals = useRef(new Set<number>())
+  const pendingCandidates = useRef<RTCIceCandidateInit[]>([])
   const timeoutRef = useRef<number | null>(null)
 
   const cleanup = useCallback(() => {
@@ -59,6 +60,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setIncoming(null)
     setPeer(null)
     processedSignals.current.clear()
+    pendingCandidates.current = []
   }, [])
 
   const profileFor = useCallback(async (id: string) => {
@@ -107,7 +109,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     activeRef.current = call; setActive(call); setPeer(target)
     try {
       await setupPeer(call, true)
-      await sendPushEvent({ type: 'call', targetUserId: target.id, title: kind === 'video' ? 'Incoming video call' : 'Incoming call', body: `@${target.username} is calling you`, data: { url: `/messages/${target.username}?call=${call.id}`, call_id: call.id } })
+      await sendPushEvent({ type: 'call', targetUserId: target.id, title: kind === 'video' ? 'Incoming video call' : 'Incoming call', body: `Someone is calling you on Yomy`, data: { url: `/messages/${target.username}?call=${call.id}`, call_id: call.id } })
       timeoutRef.current = window.setTimeout(async () => {
         if (activeRef.current?.id === call.id) {
           await supabase.from('call_sessions').update({ status: 'missed', ended_at: new Date().toISOString() }).eq('id', call.id)
@@ -186,9 +188,14 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         if (!call || signal.call_id !== call.id || processedSignals.current.has(signal.id) || !pc) return
         processedSignals.current.add(signal.id)
         try {
-          if (signal.signal_type === 'answer') await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
-          else if (signal.signal_type === 'ice-candidate' && pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
-          else if (signal.signal_type === 'hangup') cleanup()
+          if (signal.signal_type === 'answer') {
+            await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
+            for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
+            pendingCandidates.current = []
+          } else if (signal.signal_type === 'ice-candidate') {
+            if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
+            else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
+          } else if (signal.signal_type === 'hangup') cleanup()
         } catch (err) { console.error('signal handling failed:', err) }
       })
       .subscribe()
@@ -202,7 +209,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   return <CallContext.Provider value={value}>
     {children}
     {incoming && !active && peer && <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4"><div className="w-full max-w-sm rounded-3xl bg-card p-6 text-center shadow-2xl"><Avatar className="size-24 mx-auto mb-4"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-3xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar><h2 className="text-xl font-semibold">{peer.username}</h2><p className="text-muted-foreground mb-6">Incoming {incoming.kind === 'video' ? 'video' : 'voice'} call</p><div className="flex justify-center gap-5"><Button variant="destructive" size="lg" className="rounded-full size-14" onClick={() => void declineIncoming()}><PhoneOff /></Button><Button size="lg" className="rounded-full size-14" onClick={() => void acceptIncoming()}>{incoming.kind === 'video' ? <Video /> : <Phone />}</Button></div></div></div>}
-    {active && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col"><div className="flex items-center justify-between p-4 text-white"><div><p className="font-semibold">{peer.username}</p><p className="text-xs opacity-70">{connected ? 'Connected' : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <div className="size-36 rounded-full overflow-hidden"><MediaView stream={localStream} muted /></div>}</div><div className="flex justify-center gap-4 p-6"><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
+    {active && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col"><div className="flex items-center justify-between p-4 text-white"><div><p className="font-semibold">{peer.username}</p><p className="text-xs opacity-70">{connected ? 'Connected' : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <><div className="size-36 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="absolute w-px h-px overflow-hidden"><MediaView stream={remoteStream} /></div></>}</div><div className="flex justify-center gap-4 p-6"><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
   </CallContext.Provider>
 }
 
