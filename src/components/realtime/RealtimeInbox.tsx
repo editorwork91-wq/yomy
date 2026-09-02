@@ -29,6 +29,14 @@ export default function RealtimeInbox() {
 
   useEffect(() => {
     if (!user) return
+
+    // When Yomy comes online, reconcile any messages that arrived while the
+    // app was not connected. This makes delivery state recoverable after a
+    // reconnect instead of depending on one Realtime event.
+    void supabase.rpc('mark_all_messages_delivered').then(({ error }) => {
+      if (error) console.error('queued message delivery reconciliation failed:', error.message)
+    })
+
     const currentChat = location.pathname.match(/^\/messages\/([^/]+)/)?.[1]
     const channel = supabase
       .channel(`realtime-inbox-${user.id}`)
@@ -36,8 +44,8 @@ export default function RealtimeInbox() {
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
         async ({ new: rawMessage }) => {
           const message = rawMessage as { id: string; sender_id: string }
-          // A realtime INSERT means the recipient's connected Yomy client received
-          // the message. Persist that delivery receipt so the sender can show ✓✓.
+          // A realtime INSERT means the recipient's connected Yomy client
+          // received the message. Persist that delivery receipt.
           const { error: deliveryError } = await supabase.rpc('mark_message_delivered', { p_message_id: message.id })
           if (deliveryError) console.error('message delivery receipt failed:', deliveryError.message)
 
