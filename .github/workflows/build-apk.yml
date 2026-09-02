@@ -47,9 +47,13 @@ jobs:
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
           marker = '    <uses-permission android:name="android.permission.INTERNET" />'
-          additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'''
+          additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />'''
           if 'android.permission.CAMERA' not in s:
               s = s.replace(marker, marker + additions)
+          elif 'android.permission.MODIFY_AUDIO_SETTINGS' not in s:
+              s = s.replace('    <uses-permission android:name="android.permission.RECORD_AUDIO" />', '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />')
+          if 'android.permission.VIBRATE' not in s:
+              s = s.replace('</manifest>', '    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n</manifest>')
           manifest.write_text(s)
 
           activity = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
