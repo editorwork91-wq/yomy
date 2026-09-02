@@ -11,79 +11,62 @@ import { Spinner } from '@/components/ui/spinner'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty'
 import { Heart, UserPlus, MessageCircle, Bell, Check, X } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { toast } from 'sonner'
 
 export default function Notifications() {
   const { user } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [accepted, setAccepted] = useState<Set<string>>(new Set())
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('notifications')
-      .select(`
-        *,
-        actor:profiles!actor_id(id, username, full_name, avatar_url, is_verified),
-        post:posts(id, media_url, media_type)
-      `)
+      .select(`*, actor:profiles!actor_id(id, username, full_name, avatar_url, is_verified), post:posts(id, media_url, media_type)`)
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(50)
 
+    if (error) console.error('Notifications load failed:', error.message)
     setNotifications(data || [])
-
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', user.id)
-      .eq('is_read', false)
-
+    await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false)
     setLoading(false)
   }, [user])
 
-  useEffect(() => {
-    fetchNotifications()
-  }, [fetchNotifications])
+  useEffect(() => { fetchNotifications() }, [fetchNotifications])
 
   const acceptFollow = async (actorId: string, notificationId: string) => {
     if (!user) return
     setActionLoading(notificationId)
-    try {
-      await supabase
-        .from('follows')
-        .update({ status: 'accepted', accepted_at: new Date().toISOString() })
-        .eq('follower_id', actorId)
-        .eq('following_id', user.id)
-
-      setNotifications(prev => prev.filter(n => n.id !== notificationId))
-      toast.success('Follow request accepted')
-    } catch {
-      toast.error('Failed to accept request')
-    } finally {
+    const { error } = await supabase.rpc('accept_follow_request', { p_follower_id: actorId })
+    if (error) {
+      console.error('Accept follow failed:', error.message)
       setActionLoading(null)
+      return
     }
+    setAccepted(prev => new Set(prev).add(notificationId))
+    setNotifications(prev => prev.filter(n => n.id !== notificationId))
+    setActionLoading(null)
   }
 
   const declineFollow = async (actorId: string, notificationId: string) => {
     if (!user) return
     setActionLoading(notificationId)
-    try {
-      await supabase
-        .from('follows')
-        .delete()
-        .eq('follower_id', actorId)
-        .eq('following_id', user.id)
-
-      setNotifications(prev => prev.filter(n => n.id !== notificationId))
-      toast.success('Follow request declined')
-    } catch {
-      toast.error('Failed to decline request')
-    } finally {
+    const { error } = await supabase
+      .from('follows')
+      .delete()
+      .eq('follower_id', actorId)
+      .eq('following_id', user.id)
+      .eq('status', 'pending')
+    if (error) {
+      console.error('Decline follow failed:', error.message)
       setActionLoading(null)
+      return
     }
+    setNotifications(prev => prev.filter(n => n.id !== notificationId))
+    setActionLoading(null)
   }
 
   const getIcon = (type: string) => {
@@ -104,6 +87,7 @@ export default function Notifications() {
       case 'follow_request': return 'requested to follow you'
       case 'mention': return 'mentioned you'
       case 'story_reply': return 'replied to your story'
+      case 'message': return 'sent you a message'
       default: return 'interacted with you'
     }
   }
@@ -113,15 +97,11 @@ export default function Notifications() {
       <TopBar title="Notifications" />
       <div className="max-w-lg mx-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-40">
-            <Spinner className="size-6" />
-          </div>
+          <div className="flex items-center justify-center h-40"><Spinner className="size-6" /></div>
         ) : notifications.length === 0 ? (
           <Empty className="mt-12">
             <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <Bell className="size-6" />
-              </EmptyMedia>
+              <EmptyMedia variant="icon"><Bell className="size-6" /></EmptyMedia>
               <EmptyTitle>No notifications yet</EmptyTitle>
               <EmptyDescription>Activity from people you follow will show up here.</EmptyDescription>
             </EmptyHeader>
@@ -129,57 +109,24 @@ export default function Notifications() {
         ) : (
           <div className="divide-y divide-border">
             {notifications.map(n => (
-              <div
-                key={n.id}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50"
-              >
+              <div key={n.id} className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50">
                 <Link to={`/profile/${n.actor?.username}`} className="relative shrink-0">
-                  <Avatar className="size-12">
-                    <AvatarImage src={n.actor?.avatar_url} />
-                    <AvatarFallback>{n.actor?.username?.[0]?.toUpperCase()}</AvatarFallback>
-                  </Avatar>
-                  <div className="absolute -bottom-0.5 -right-0.5 bg-card rounded-full size-5 flex items-center justify-center ring-2 ring-card">
-                    {getIcon(n.type)}
-                  </div>
+                  <Avatar className="size-12"><AvatarImage src={n.actor?.avatar_url} /><AvatarFallback>{n.actor?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar>
+                  <div className="absolute -bottom-0.5 -right-0.5 bg-card rounded-full size-5 flex items-center justify-center ring-2 ring-card">{getIcon(n.type)}</div>
                 </Link>
                 <div className="flex-1 min-w-0">
                   <Link to={`/profile/${n.actor?.username}`}>
-                    <p className="text-sm">
-                      <span className="font-semibold">{n.actor?.username}</span>{' '}
-                      <span className="text-muted-foreground">{getMessage(n)}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                    </p>
+                    <p className="text-sm"><span className="font-semibold">{n.actor?.username}</span>{' '}<span className="text-muted-foreground">{getMessage(n)}</span></p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}</p>
                   </Link>
                 </div>
-                {n.type === 'follow_request' && (
+                {n.type === 'follow_request' && !accepted.has(n.id) && (
                   <div className="flex items-center gap-1 shrink-0">
-                    <Button
-                      size="icon-sm"
-                      onClick={() => acceptFollow(n.actor_id, n.id)}
-                      disabled={actionLoading === n.id}
-                    >
-                      <Check className="size-4" />
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="outline"
-                      onClick={() => declineFollow(n.actor_id, n.id)}
-                      disabled={actionLoading === n.id}
-                    >
-                      <X className="size-4" />
-                    </Button>
+                    <Button size="icon-sm" onClick={() => acceptFollow(n.actor_id, n.id)} disabled={actionLoading === n.id}><Check className="size-4" /></Button>
+                    <Button size="icon-sm" variant="outline" onClick={() => declineFollow(n.actor_id, n.id)} disabled={actionLoading === n.id}><X className="size-4" /></Button>
                   </div>
                 )}
-                {n.post?.media_url && n.type !== 'follow_request' && (
-                  <img
-                    src={n.post.media_url}
-                    alt=""
-                    className="size-10 object-cover rounded"
-                    loading="lazy"
-                  />
-                )}
+                {n.post?.media_url && n.type !== 'follow_request' && <img src={n.post.media_url} alt="" className="size-10 object-cover rounded" loading="lazy" />}
               </div>
             ))}
           </div>
