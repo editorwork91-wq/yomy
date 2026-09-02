@@ -12,6 +12,7 @@ import android.webkit.PermissionRequest;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
+import com.google.firebase.FirebaseApp;
 
 public class MainActivity extends BridgeActivity {
     private static final int YOMY_PERMISSIONS = 7001;
@@ -22,10 +23,19 @@ public class MainActivity extends BridgeActivity {
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        initializeFirebaseSafely();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         requestYomyPermissions();
         installMediaPermissionBridge();
         installAudioRouteBridge();
+    }
+
+    private void initializeFirebaseSafely() {
+        try {
+            if (FirebaseApp.getApps(this).isEmpty()) FirebaseApp.initializeApp(this);
+        } catch (Exception ignored) {
+            // Firebase/FCM is optional at process startup. Never allow push setup to crash Yomy.
+        }
     }
 
     private void requestYomyPermissions() {
