@@ -60,7 +60,7 @@ export function App() {
         <PushManager />
       </CallProvider>
     </BrowserRouter>
-    <Toaster position="top-center" richColors />
+    <Toaster position="bottom-center" duration={1800} visibleToasts={1} closeButton={false} richColors />
   </AuthProvider>
 }
 
