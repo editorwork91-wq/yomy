@@ -35,7 +35,12 @@ export default function RealtimeInbox() {
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
         async ({ new: rawMessage }) => {
-          const message = rawMessage as { sender_id: string }
+          const message = rawMessage as { id: string; sender_id: string }
+          // A realtime INSERT means the recipient's connected Yomy client received
+          // the message. Persist that delivery receipt so the sender can show ✓✓.
+          const { error: deliveryError } = await supabase.rpc('mark_message_delivered', { p_message_id: message.id })
+          if (deliveryError) console.error('message delivery receipt failed:', deliveryError.message)
+
           const { data: sender } = await supabase.from('profiles').select('username').eq('id', message.sender_id).maybeSingle()
           if (sender?.username !== currentChat) ping()
         }
