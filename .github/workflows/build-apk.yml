@@ -33,11 +33,24 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Clean and Generate Android Platform
+      - name: Generate Android Platform
         run: |
           rm -rf android
           npx cap add android
           npx cap sync android
+
+      - name: Apply native permissions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/AndroidManifest.xml')
+          s = p.read_text()
+          marker = '    <uses-permission android:name="android.permission.INTERNET" />'
+          additions = '\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />'
+          if 'android.permission.CAMERA' not in s:
+              s = s.replace(marker, marker + additions)
+          p.write_text(s)
+          PY
 
       - name: Build Debug APK
         working-directory: ./android
