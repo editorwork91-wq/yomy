@@ -20,8 +20,7 @@ public class MainActivity extends BridgeActivity {
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
 
-    @Override
-    public void onCreate(Bundle savedInstanceState) {
+    @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         requestYomyPermissions();
@@ -41,9 +40,7 @@ public class MainActivity extends BridgeActivity {
     private void installMediaPermissionBridge() {
         if (getBridge() == null || getBridge().getWebView() == null) return;
         getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
-            @Override public void onPermissionRequest(final PermissionRequest request) {
-                runOnUiThread(() -> handleWebPermissionRequest(request));
-            }
+            @Override public void onPermissionRequest(final PermissionRequest request) { runOnUiThread(() -> handleWebPermissionRequest(request)); }
         });
     }
 
@@ -51,37 +48,28 @@ public class MainActivity extends BridgeActivity {
         if (request == null || isFinishing()) return;
         java.util.ArrayList<String> nativePermissions = new java.util.ArrayList<>();
         for (String resource : request.getResources()) {
-            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                nativePermissions.add(Manifest.permission.RECORD_AUDIO);
-                nativePermissions.add(Manifest.permission.MODIFY_AUDIO_SETTINGS);
-            } else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
-                nativePermissions.add(Manifest.permission.CAMERA);
-            }
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) nativePermissions.add(Manifest.permission.RECORD_AUDIO);
+            else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) nativePermissions.add(Manifest.permission.CAMERA);
         }
         java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>(nativePermissions);
-        nativePermissions.clear();
-        nativePermissions.addAll(unique);
+        nativePermissions.clear(); nativePermissions.addAll(unique);
         if (nativePermissions.isEmpty()) { request.grant(request.getResources()); return; }
         if (pendingWebPermissionRequest != null) { try { pendingWebPermissionRequest.deny(); } catch (Exception ignored) {} }
         pendingWebPermissionRequest = request;
         boolean allGranted = true;
-        for (String permission : nativePermissions) {
-            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) { allGranted = false; break; }
-        }
+        for (String permission : nativePermissions) if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) { allGranted = false; break; }
         if (allGranted) { grantPendingWebPermission(); return; }
         requestPermissions(nativePermissions.toArray(new String[0]), YOMY_WEB_PERMISSION_REQUEST);
     }
 
     private void grantPendingWebPermission() {
-        PermissionRequest request = pendingWebPermissionRequest;
-        pendingWebPermissionRequest = null;
+        PermissionRequest request = pendingWebPermissionRequest; pendingWebPermissionRequest = null;
         if (request == null) return;
         try { request.grant(request.getResources()); } catch (Exception ignored) {}
     }
 
     private void denyPendingWebPermission() {
-        PermissionRequest request = pendingWebPermissionRequest;
-        pendingWebPermissionRequest = null;
+        PermissionRequest request = pendingWebPermissionRequest; pendingWebPermissionRequest = null;
         if (request == null) return;
         try { request.deny(); } catch (Exception ignored) {}
     }
@@ -92,10 +80,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     private final class AudioRouteBridge {
-        @JavascriptInterface
-        public void setSpeaker(boolean enabled) {
-            runOnUiThread(() -> setSpeakerRoute(enabled));
-        }
+        @JavascriptInterface public void setSpeaker(boolean enabled) { runOnUiThread(() -> setSpeakerRoute(enabled)); }
     }
 
     private void setSpeakerRoute(boolean enabled) {
@@ -110,9 +95,7 @@ public class MainActivity extends BridgeActivity {
                     if (!enabled && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) { desired = device; break; }
                 }
                 if (desired != null) audioManager.setCommunicationDevice(desired);
-            } else {
-                audioManager.setSpeakerphoneOn(enabled);
-            }
+            } else audioManager.setSpeakerphoneOn(enabled);
         } catch (Exception ignored) {}
     }
 
