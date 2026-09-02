@@ -43,7 +43,10 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const activeRef = useRef<CallSession | null>(null)
   const processedSignals = useRef(new Set<number>())
   const pendingCandidates = useRef<RTCIceCandidateInit[]>([])
+  const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const timeoutRef = useRef<number | null>(null)
+
+  useEffect(() => { if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream }, [remoteStream])
 
   const cleanup = useCallback(() => {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
@@ -84,7 +87,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     const remote = new MediaStream()
     setRemoteStream(remote)
     pc.ontrack = event => event.streams[0]?.getTracks().forEach(track => { if (!remote.getTracks().some(t => t.id === track.id)) remote.addTrack(track) })
-    pc.onicecandidate = event => { if (event.candidate) void sendSignal(call, 'ice-candidate', event.candidate.toJSON()) }
+    pc.onicecandidate = event => { if (event.candidate) void sendSignal(call, 'ice-candidate', event.candidate.toJSON() as unknown as Record<string, unknown>) }
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'connected') setConnected(true)
       if (pc.connectionState === 'failed') {
@@ -100,16 +103,22 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     return pc
   }, [cleanup, sendSignal])
 
-  const startCall = useCallback(async (target: Peer, kind: CallKind) => {
+  const startCall = useCallback(async (target: Peer, kind: CallKind): Promise<void> => {
     if (!user || activeRef.current || incoming) return
-    if (!navigator.mediaDevices?.getUserMedia) return toast.error('Microphone/camera is not available in this browser')
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Microphone/camera is not available in this browser')
+      return
+    }
     const { data, error } = await supabase.from('call_sessions').insert({ caller_id: user.id, callee_id: target.id, kind, status: 'ringing' }).select('*').single()
-    if (error || !data) return toast.error(error?.message || 'Could not start call')
+    if (error || !data) {
+      toast.error(error?.message || 'Could not start call')
+      return
+    }
     const call = data as CallSession
     activeRef.current = call; setActive(call); setPeer(target)
     try {
       await setupPeer(call, true)
-      await sendPushEvent({ type: 'call', targetUserId: target.id, title: kind === 'video' ? 'Incoming video call' : 'Incoming call', body: `Someone is calling you on Yomy`, data: { url: `/messages/${target.username}?call=${call.id}`, call_id: call.id } })
+      await sendPushEvent({ type: 'call', targetUserId: target.id, title: kind === 'video' ? 'Incoming video call' : 'Incoming call', body: 'Someone is calling you on Yomy', data: { url: `/messages/${target.username}?call=${call.id}`, call_id: call.id } })
       timeoutRef.current = window.setTimeout(async () => {
         if (activeRef.current?.id === call.id) {
           await supabase.from('call_sessions').update({ status: 'missed', ended_at: new Date().toISOString() }).eq('id', call.id)
@@ -126,7 +135,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     if (!incoming || !user) return
     const call = incoming
     const callerProfile = await profileFor(call.caller_id)
-    if (!callerProfile) return toast.error('Caller profile not found')
+    if (!callerProfile) { toast.error('Caller profile not found'); return }
     try {
       const now = new Date().toISOString()
       const { error } = await supabase.from('call_sessions').update({ status: 'active', answered_at: now, started_at: now }).eq('id', call.id).eq('callee_id', user.id)
@@ -138,12 +147,15 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       for (const signal of (signals || []) as Signal[]) {
         if (signal.signal_type === 'offer') {
           processedSignals.current.add(signal.id)
-          await pc?.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
-          const answer = await pc?.createAnswer()
-          if (answer && pc) { await pc.setLocalDescription(answer); await sendSignal(call, 'answer', answer as unknown as Record<string, unknown>) }
+          await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
+          const answer = await pc.createAnswer()
+          await pc.setLocalDescription(answer)
+          await sendSignal(call, 'answer', answer as unknown as Record<string, unknown>)
         } else if (signal.signal_type === 'ice-candidate') candidates.push(signal)
       }
-      for (const signal of candidates) { processedSignals.current.add(signal.id); await pc?.addIceCandidate(signal.payload as RTCIceCandidateInit) }
+      for (const signal of candidates) { processedSignals.current.add(signal.id); await pc.addIceCandidate(signal.payload as RTCIceCandidateInit) }
+      for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
+      pendingCandidates.current = []
     } catch (err) {
       await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id)
       cleanup(); toast.error(err instanceof Error ? err.message : 'Could not answer call')
@@ -158,7 +170,10 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   const endCall = useCallback(async () => {
     const call = activeRef.current
-    if (call) { await supabase.from('call_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', call.id); await sendSignal(call, 'hangup', {}) }
+    if (call) {
+      await supabase.from('call_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', call.id)
+      await sendSignal(call, 'hangup', {})
+    }
     cleanup()
   }, [cleanup, sendSignal])
 
@@ -167,14 +182,19 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     let mounted = true
     const loadRinging = async () => {
       const { data } = await supabase.from('call_sessions').select('*').eq('callee_id', user.id).eq('status', 'ringing').order('created_at', { ascending: false }).limit(1)
-      if (mounted && data?.[0] && !activeRef.current) { const call = data[0] as CallSession; const p = await profileFor(call.caller_id); if (p) { setIncoming(call); setPeer(p) } }
+      if (mounted && data?.[0] && !activeRef.current) {
+        const call = data[0] as CallSession
+        const p = await profileFor(call.caller_id)
+        if (p) { setIncoming(call); setPeer(p) }
+      }
     }
     void loadRinging()
     const channel = supabase.channel(`calls-${user.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_sessions', filter: `callee_id=eq.${user.id}` }, async payload => {
         const call = payload.new as CallSession
         if (call.status !== 'ringing' || activeRef.current) return
-        const p = await profileFor(call.caller_id); if (p) { setIncoming(call); setPeer(p) }
+        const p = await profileFor(call.caller_id)
+        if (p) { setIncoming(call); setPeer(p) }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'call_sessions' }, payload => {
         const call = payload.new as CallSession
@@ -208,8 +228,9 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   return <CallContext.Provider value={value}>
     {children}
+    <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
     {incoming && !active && peer && <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4"><div className="w-full max-w-sm rounded-3xl bg-card p-6 text-center shadow-2xl"><Avatar className="size-24 mx-auto mb-4"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-3xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar><h2 className="text-xl font-semibold">{peer.username}</h2><p className="text-muted-foreground mb-6">Incoming {incoming.kind === 'video' ? 'video' : 'voice'} call</p><div className="flex justify-center gap-5"><Button variant="destructive" size="lg" className="rounded-full size-14" onClick={() => void declineIncoming()}><PhoneOff /></Button><Button size="lg" className="rounded-full size-14" onClick={() => void acceptIncoming()}>{incoming.kind === 'video' ? <Video /> : <Phone />}</Button></div></div></div>}
-    {active && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col"><div className="flex items-center justify-between p-4 text-white"><div><p className="font-semibold">{peer.username}</p><p className="text-xs opacity-70">{connected ? 'Connected' : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <><div className="size-36 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="absolute w-px h-px overflow-hidden"><MediaView stream={remoteStream} /></div></>}</div><div className="flex justify-center gap-4 p-6"><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
+    {active && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col"><div className="flex items-center justify-between p-4 text-white"><div><p className="font-semibold">{peer.username}</p><p className="text-xs opacity-70">{connected ? 'Connected' : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <div className="size-36 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>}</div><div className="flex justify-center gap-4 p-6"><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
   </CallContext.Provider>
 }
 
