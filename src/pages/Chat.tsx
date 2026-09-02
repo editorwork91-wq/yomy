@@ -3,12 +3,14 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import type { Message, Profile as ProfileType } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCall } from '@/components/calls/CallProvider'
+import { sendPushEvent } from '@/lib/push'
 import TopBar from '@/components/layout/TopBar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import { Send, ImagePlus, Eye, EyeOff, Lock, Mic, Phone, Video, MoreVertical, Trash2, Volume2, Ban, Reply, Copy, Pencil, X } from 'lucide-react'
+import { Send, ImagePlus, Eye, EyeOff, Lock, Mic, Phone, Video, MoreVertical, Trash2, Volume2, Ban, Reply, Copy, Pencil, X, MicOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
@@ -27,6 +29,7 @@ export default function Chat() {
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { startCall } = useCall()
   const [otherUser, setOtherUser] = useState<ProfileType | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
@@ -40,6 +43,10 @@ export default function Chat() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const [showReactionPicker, setShowReactionPicker] = useState<string | null>(null)
   const [showLongPressMenu, setShowLongPressMenu] = useState<string | null>(null)
+  const [recording, setRecording] = useState(false)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const recordingStreamRef = useRef<MediaStream | null>(null)
+  const recordingChunksRef = useRef<Blob[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const lastTapRef = useRef<Record<string, number>>({})
@@ -108,6 +115,10 @@ export default function Chat() {
 
   useEffect(() => { fetchOtherUser() }, [fetchOtherUser])
   useEffect(() => { if (otherUser) fetchMessages() }, [otherUser, fetchMessages])
+  useEffect(() => () => {
+    recorderRef.current?.stop()
+    recordingStreamRef.current?.getTracks().forEach(track => track.stop())
+  }, [])
 
   useEffect(() => {
     if (!user || !otherUser) return
@@ -184,6 +195,34 @@ export default function Chat() {
     }
   }
 
+  const startRecording = async () => {
+    if (recording || uploadingMedia) return
+    if (!navigator.mediaDevices?.getUserMedia || !('MediaRecorder' in window)) return toast.error('Audio recording is not supported in this browser')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      recordingStreamRef.current = stream
+      recordingChunksRef.current = []
+      const recorder = new MediaRecorder(stream)
+      recorderRef.current = recorder
+      recorder.ondataavailable = event => { if (event.data.size > 0) recordingChunksRef.current.push(event.data) }
+      recorder.onstop = () => {
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || 'audio/webm' })
+        const file = new File([blob], `voice-${Date.now()}.webm`, { type: blob.type })
+        stream.getTracks().forEach(track => track.stop())
+        recordingStreamRef.current = null
+        recorderRef.current = null
+        setRecording(false)
+        if (blob.size > 0) void uploadMedia(file)
+      }
+      recorder.start(250)
+      setRecording(true)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not access microphone')
+    }
+  }
+
+  const stopRecording = () => { recorderRef.current?.stop() }
+
   const sendMessage = async (content?: string, mediaUrl?: string, mediaType?: '' | 'image' | 'video' | 'audio') => {
     if (!user || !otherUser) return
     const msgContent = content ?? newMessage
@@ -222,6 +261,7 @@ export default function Chat() {
           created_at: insertedMessage.created_at,
           reply_to: replyTo || undefined,
         }])
+        void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: `Message from ${user.user_metadata?.username || 'Yomy'}`, body: mediaType === 'audio' ? '🎙️ Voice message' : mediaType === 'video' ? '🎬 Video message' : mediaType === 'image' ? '📷 Photo' : (msgContent.trim() || 'New message'), data: { message_id: insertedMessage.id, url: `/messages/${otherUser.username}` } })
         setNewMessage('')
         setViewOnceMode(false)
         setReplyTo(null)
@@ -366,7 +406,7 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-screen">
-      <TopBar title="" showBack right={<div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="size-9"><Phone className="size-5" /></Button><Button variant="ghost" size="icon" className="size-9"><Video className="size-5" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={toggleMute}><Volume2 className="size-4 mr-2" />{isMuted ? 'Unmute' : 'Mute'} notifications</DropdownMenuItem><DropdownMenuItem onClick={clearChat}><Trash2 className="size-4 mr-2" /> Clear chat</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={blockUser} className="text-destructive focus:text-destructive"><Ban className="size-4 mr-2" /> Block user</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>} />
+      <TopBar title="" showBack right={<div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="size-9" onClick={() => void startCall(otherUser, 'voice')}><Phone className="size-5" /></Button><Button variant="ghost" size="icon" className="size-9" onClick={() => void startCall(otherUser, 'video')}><Video className="size-5" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={toggleMute}><Volume2 className="size-4 mr-2" />{isMuted ? 'Unmute' : 'Mute'} notifications</DropdownMenuItem><DropdownMenuItem onClick={clearChat}><Trash2 className="size-4 mr-2" /> Clear chat</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={blockUser} className="text-destructive focus:text-destructive"><Ban className="size-4 mr-2" /> Block user</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>} />
 
       <Link to={`/profile/${otherUser.username}`} className="flex items-center gap-3 px-4 py-2 border-b hover:bg-accent/30">
         <Avatar className="size-10"><AvatarImage src={otherUser.avatar_url} /><AvatarFallback>{otherUser.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
@@ -412,10 +452,11 @@ export default function Chat() {
 
       <div className="border-t p-3 pb-safe flex items-center gap-2">
         <input ref={fileRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void uploadMedia(f); e.currentTarget.value = '' }} />
-        <Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadingMedia}>{uploadingMedia ? <Spinner className="size-5" /> : <ImagePlus className="size-5" />}</Button>
+        <Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadingMedia || recording}>{uploadingMedia ? <Spinner className="size-5" /> : <ImagePlus className="size-5" />}</Button>
+        <Button variant={recording ? 'destructive' : 'ghost'} size="icon" className="size-9 shrink-0" onClick={() => recording ? stopRecording() : void startRecording()} disabled={uploadingMedia}>{recording ? <MicOff className="size-5 animate-pulse" /> : <Mic className="size-5" />}</Button>
         <Button variant="ghost" size="icon" className={cn('size-9 shrink-0', viewOnceMode && 'text-primary')} onClick={() => { setViewOnceMode(!viewOnceMode); toast.info(viewOnceMode ? 'View-once off' : 'View-once on - media disappears after viewing') }}>{viewOnceMode ? <Eye className="size-5" /> : <EyeOff className="size-5" />}</Button>
-        <Input placeholder="Message..." value={newMessage} onChange={e => setNewMessage(e.target.value)} onKeyDown={e => e.key === 'Enter' && !sending && void sendMessage()} className="flex-1" />
-        <Button size="icon" className="size-9 shrink-0" disabled={!newMessage.trim() || sending} onClick={() => void sendMessage()}>{sending ? <Spinner className="size-4" /> : <Send className="size-4" />}</Button>
+        <Input placeholder={recording ? 'Recording voice…' : 'Message...'} value={newMessage} onChange={e => setNewMessage(e.target.value)} disabled={recording} onKeyDown={e => e.key === 'Enter' && !sending && void sendMessage()} className="flex-1" />
+        <Button size="icon" className="size-9 shrink-0" disabled={!newMessage.trim() || sending || recording} onClick={() => void sendMessage()}>{sending ? <Spinner className="size-4" /> : <Send className="size-4" />}</Button>
       </div>
 
       {showViewOnce && <div className="fixed inset-0 z-50 bg-black flex items-center justify-center" onClick={() => setShowViewOnce(null)}><img src={showViewOnce} alt="" className="max-w-full max-h-full object-contain" /><Button variant="ghost" className="absolute top-4 right-4 text-white" size="icon" onClick={() => setShowViewOnce(null)}><span className="text-2xl">✕</span></Button></div>}
