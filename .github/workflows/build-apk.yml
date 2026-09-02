@@ -25,6 +25,8 @@ jobs:
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
       - name: Build web app
+        env:
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY || secrets.VAPID_PUBLIC_KEY }}
         run: npm run build
 
       - name: Save repository MainActivity implementation
