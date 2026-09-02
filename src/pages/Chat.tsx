@@ -60,17 +60,21 @@ export default function Chat() {
     setOtherUser(data)
   }, [targetUsername])
 
+  const hydrateReplyPreviews = useCallback((rows: Message[]) => {
+    const byId = new Map(rows.map(row => [row.id, row]))
+    return rows.map(row => ({
+      ...row,
+      reply_to: row.reply_to_id ? byId.get(row.reply_to_id) : undefined,
+    }))
+  }, [])
+
   const fetchMessages = useCallback(async (showLoader = true) => {
     if (!user || !otherUser) return
     if (showLoader) setLoading(true)
 
     const { data, error } = await supabase
       .from('messages')
-      .select(`
-        *,
-        reply_to:messages!messages_reply_to_id_fkey(id, content, sender_id, media_type),
-        message_reactions(id, user_id, emoji)
-      `)
+      .select(`*, message_reactions(id, user_id, emoji)`)
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherUser.id}),and(sender_id.eq.${otherUser.id},receiver_id.eq.${user.id})`)
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
@@ -83,10 +87,11 @@ export default function Chat() {
       return
     }
 
-    setMessages(data || [])
+    const hydrated = hydrateReplyPreviews((data || []) as Message[])
+    setMessages(hydrated)
     if (showLoader) setLoading(false)
 
-    const unseen = data?.filter(m => m.receiver_id === user.id && !m.is_seen && !m.deleted_for_everyone) || []
+    const unseen = hydrated.filter(m => m.receiver_id === user.id && !m.is_seen && !m.deleted_for_everyone)
     if (unseen.length > 0) {
       const { error: seenError } = await supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })
       if (seenError) console.error('mark_messages_seen failed:', seenError.message)
@@ -99,7 +104,7 @@ export default function Chat() {
       .eq('muted_user_id', otherUser.id)
       .maybeSingle()
     setIsMuted(!!muted)
-  }, [user, otherUser])
+  }, [user, otherUser, hydrateReplyPreviews])
 
   useEffect(() => { fetchOtherUser() }, [fetchOtherUser])
   useEffect(() => { if (otherUser) fetchMessages() }, [otherUser, fetchMessages])
@@ -115,11 +120,16 @@ export default function Chat() {
           const newMsg = payload.new as Message
           const { data, error } = await supabase
             .from('messages')
-            .select('*, reply_to:messages!messages_reply_to_id_fkey(id, content, sender_id, media_type), message_reactions(id, user_id, emoji)')
+            .select('*, message_reactions(id, user_id, emoji)')
             .eq('id', newMsg.id)
             .single()
           if (!error && data) {
-            setMessages(prev => prev.some(m => m.id === data.id) ? prev : [...prev, data])
+            setMessages(prev => {
+              if (prev.some(m => m.id === data.id)) return prev
+              const candidate = data as Message
+              const reply = candidate.reply_to_id ? prev.find(m => m.id === candidate.reply_to_id) : undefined
+              return [...prev, { ...candidate, reply_to: reply }]
+            })
           }
           const { error: seenError } = await supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })
           if (seenError) console.error('mark_messages_seen realtime failed:', seenError.message)
@@ -210,6 +220,7 @@ export default function Chat() {
           is_request: false,
           request_accepted: false,
           created_at: insertedMessage.created_at,
+          reply_to: replyTo || undefined,
         }])
         setNewMessage('')
         setViewOnceMode(false)
@@ -378,7 +389,7 @@ export default function Chat() {
                 <div className={cn('flex', isMe ? 'justify-end' : 'justify-start')}>
                   <div className={cn('max-w-[75%] rounded-2xl px-3 py-2 relative', isMe ? 'bg-primary text-primary-foreground' : 'bg-muted', msg.view_once && 'border-2 border-dashed', msg.deleted_for_everyone && 'opacity-60')} onClick={() => handleMessageTap(msg)} onContextMenu={(e) => { e.preventDefault(); setShowLongPressMenu(msg.id) }}>
                     {msg.deleted_for_everyone ? <p className="text-sm italic opacity-60">Message deleted</p> : msg.view_once && msg.media_url && !msg.view_once_opened ? <button onClick={() => openViewOnce(msg)} className="flex items-center gap-2"><Eye className="size-4" /><span className="text-sm">View-once photo</span></button> : msg.view_once && msg.view_once_opened ? <div className="flex items-center gap-2 text-muted-foreground"><EyeOff className="size-4" /><span className="text-sm italic">Media expired</span></div> : <>
-                      {msg.reply_to && <div className={cn('mb-1 px-2 py-1 rounded text-xs opacity-70', isMe ? 'bg-primary-foreground/10' : 'bg-black/10')}><Reply className="size-3 inline mr-1" />{msg.reply_to.content || (msg.reply_to.media_type === 'image' ? '📷 Photo' : msg.reply_to.media_type === 'video' ? '🎬 Video' : '📎 Media')}</div>}
+                      {msg.reply_to ? <div className={cn('mb-1 px-2 py-1 rounded text-xs opacity-70', isMe ? 'bg-primary-foreground/10' : 'bg-black/10')}><Reply className="size-3 inline mr-1" />{msg.reply_to.content || (msg.reply_to.media_type === 'image' ? '📷 Photo' : msg.reply_to.media_type === 'video' ? '🎬 Video' : '📎 Media')}</div> : msg.reply_to_id ? <div className={cn('mb-1 px-2 py-1 rounded text-xs opacity-70', isMe ? 'bg-primary-foreground/10' : 'bg-black/10')}><Reply className="size-3 inline mr-1" />Reply</div> : null}
                       {msg.media_url && msg.media_type === 'image' && <img src={msg.media_url} alt="" className="rounded-lg max-w-48 max-h-48 object-cover mb-1" />}
                       {msg.media_url && msg.media_type === 'video' && <video src={msg.media_url} controls playsInline className="rounded-lg max-w-48 max-h-48 mb-1" />}
                       {msg.media_url && msg.media_type === 'audio' && <div className="flex items-center gap-2 py-1"><Mic className="size-4" /><audio src={msg.media_url} controls className="h-8 max-w-40" /></div>}
