@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { registerPushSubscription } from '@/lib/push'
+import { registerNativePush } from '@/lib/nativePush'
+import { Capacitor } from '@capacitor/core'
 
 export default function PushManager() {
   const { user } = useAuth()
@@ -8,13 +10,25 @@ export default function PushManager() {
   useEffect(() => {
     if (!user) return
 
-    // Keep native FCM initialization completely outside the application
-    // startup path until the Android runtime is proven stable on-device.
-    // Web Push remains available here and is already isolated by its own
-    // error handling.
-    void registerPushSubscription().catch(error => {
-      console.warn('Yomy web push registration skipped:', error instanceof Error ? error.message : error)
-    })
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      if (cancelled) return
+
+      if (Capacitor.isNativePlatform()) {
+        void registerNativePush().catch(error => {
+          console.warn('Yomy native push registration skipped:', error instanceof Error ? error.message : error)
+        })
+      } else {
+        void registerPushSubscription().catch(error => {
+          console.warn('Yomy web push registration skipped:', error instanceof Error ? error.message : error)
+        })
+      }
+    }, 1200)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
   }, [user])
 
   return null
