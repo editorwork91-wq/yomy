@@ -17,55 +17,54 @@ export default function Notifications() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [accepted, setAccepted] = useState<Set<string>>(new Set())
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return
     setLoading(true)
     const { data, error } = await supabase
       .from('notifications')
-      .select(`*, actor:profiles!actor_id(id, username, full_name, avatar_url, is_verified), post:posts(id, media_url, media_type)`)
+      .select('*, actor:profiles!actor_id(id, username, full_name, avatar_url, is_verified), post:posts(id, media_url, media_type)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(50)
-
     if (error) console.error('Notifications load failed:', error.message)
     setNotifications(data || [])
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false)
     setLoading(false)
   }, [user])
 
-  useEffect(() => { fetchNotifications() }, [fetchNotifications])
+  useEffect(() => { void fetchNotifications() }, [fetchNotifications])
 
   const acceptFollow = async (actorId: string, notificationId: string) => {
-    if (!user) return
+    if (!user || actionLoading) return
     setActionLoading(notificationId)
+    setActionMessage(null)
     const { error } = await supabase.rpc('accept_follow_request', { p_follower_id: actorId })
     if (error) {
       console.error('Accept follow failed:', error.message)
+      setActionMessage(`Could not accept request: ${error.message}`)
       setActionLoading(null)
       return
     }
-    setAccepted(prev => new Set(prev).add(notificationId))
     setNotifications(prev => prev.filter(n => n.id !== notificationId))
+    setActionMessage('Follow request accepted')
     setActionLoading(null)
   }
 
   const declineFollow = async (actorId: string, notificationId: string) => {
-    if (!user) return
+    if (!user || actionLoading) return
     setActionLoading(notificationId)
-    const { error } = await supabase
-      .from('follows')
-      .delete()
-      .eq('follower_id', actorId)
-      .eq('following_id', user.id)
-      .eq('status', 'pending')
+    setActionMessage(null)
+    const { error } = await supabase.rpc('reject_follow_request', { p_follower_id: actorId })
     if (error) {
       console.error('Decline follow failed:', error.message)
+      setActionMessage(`Could not decline request: ${error.message}`)
       setActionLoading(null)
       return
     }
     setNotifications(prev => prev.filter(n => n.id !== notificationId))
+    setActionMessage('Follow request declined')
     setActionLoading(null)
   }
 
@@ -96,41 +95,8 @@ export default function Notifications() {
     <div className="pb-20">
       <TopBar title="Notifications" />
       <div className="max-w-lg mx-auto">
-        {loading ? (
-          <div className="flex items-center justify-center h-40"><Spinner className="size-6" /></div>
-        ) : notifications.length === 0 ? (
-          <Empty className="mt-12">
-            <EmptyHeader>
-              <EmptyMedia variant="icon"><Bell className="size-6" /></EmptyMedia>
-              <EmptyTitle>No notifications yet</EmptyTitle>
-              <EmptyDescription>Activity from people you follow will show up here.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
-        ) : (
-          <div className="divide-y divide-border">
-            {notifications.map(n => (
-              <div key={n.id} className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50">
-                <Link to={`/profile/${n.actor?.username}`} className="relative shrink-0">
-                  <Avatar className="size-12"><AvatarImage src={n.actor?.avatar_url} /><AvatarFallback>{n.actor?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar>
-                  <div className="absolute -bottom-0.5 -right-0.5 bg-card rounded-full size-5 flex items-center justify-center ring-2 ring-card">{getIcon(n.type)}</div>
-                </Link>
-                <div className="flex-1 min-w-0">
-                  <Link to={`/profile/${n.actor?.username}`}>
-                    <p className="text-sm"><span className="font-semibold">{n.actor?.username}</span>{' '}<span className="text-muted-foreground">{getMessage(n)}</span></p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}</p>
-                  </Link>
-                </div>
-                {n.type === 'follow_request' && !accepted.has(n.id) && (
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Button size="icon-sm" onClick={() => acceptFollow(n.actor_id, n.id)} disabled={actionLoading === n.id}><Check className="size-4" /></Button>
-                    <Button size="icon-sm" variant="outline" onClick={() => declineFollow(n.actor_id, n.id)} disabled={actionLoading === n.id}><X className="size-4" /></Button>
-                  </div>
-                )}
-                {n.post?.media_url && n.type !== 'follow_request' && <img src={n.post.media_url} alt="" className="size-10 object-cover rounded" loading="lazy" />}
-              </div>
-            ))}
-          </div>
-        )}
+        {actionMessage && <p className="px-4 py-2 text-center text-xs text-muted-foreground" role="status">{actionMessage}</p>}
+        {loading ? <div className="flex items-center justify-center h-40"><Spinner className="size-6" /></div> : notifications.length === 0 ? <Empty className="mt-12"><EmptyHeader><EmptyMedia variant="icon"><Bell className="size-6" /></EmptyMedia><EmptyTitle>No notifications yet</EmptyTitle><EmptyDescription>Activity from people you follow will show up here.</EmptyDescription></EmptyHeader></Empty> : <div className="divide-y divide-border">{notifications.map(n => <div key={n.id} className="flex items-center gap-3 px-4 py-3 hover:bg-accent/50"><Link to={`/profile/${n.actor?.username}`} className="relative shrink-0"><Avatar className="size-12"><AvatarImage src={n.actor?.avatar_url} /><AvatarFallback>{n.actor?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><div className="absolute -bottom-0.5 -right-0.5 bg-card rounded-full size-5 flex items-center justify-center ring-2 ring-card">{getIcon(n.type)}</div></Link><div className="flex-1 min-w-0"><Link to={`/profile/${n.actor?.username}`}><p className="text-sm"><span className="font-semibold">{n.actor?.username}</span>{' '}<span className="text-muted-foreground">{getMessage(n)}</span></p><p className="text-xs text-muted-foreground mt-0.5">{formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}</p></Link></div>{n.type === 'follow_request' && <div className="flex items-center gap-1 shrink-0"><Button size="icon-sm" onClick={() => void acceptFollow(n.actor_id, n.id)} disabled={actionLoading === n.id}><Check className="size-4" /></Button><Button size="icon-sm" variant="outline" onClick={() => void declineFollow(n.actor_id, n.id)} disabled={actionLoading === n.id}><X className="size-4" /></Button></div>}{n.post?.media_url && n.type !== 'follow_request' && <img src={n.post.media_url} alt="" className="size-10 object-cover rounded" loading="lazy" />}</div>)}</div>}
       </div>
       <BottomNav />
     </div>
