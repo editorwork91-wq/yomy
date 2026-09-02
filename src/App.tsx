@@ -60,7 +60,20 @@ export function App() {
         <PushManager />
       </CallProvider>
     </BrowserRouter>
-    <Toaster position="bottom-center" duration={1800} visibleToasts={1} closeButton={false} richColors />
+    <Toaster
+      position="bottom-center"
+      duration={1400}
+      visibleToasts={1}
+      closeButton={false}
+      expand={false}
+      toastOptions={{
+        classNames: {
+          toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg',
+          title: 'text-xs font-medium',
+          description: 'text-[11px]',
+        },
+      }}
+    />
   </AuthProvider>
 }
 
