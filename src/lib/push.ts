@@ -30,18 +30,44 @@ export async function registerPushSubscription(): Promise<boolean> {
     p256dh: json.keys.p256dh,
     auth: json.keys.auth,
     user_agent: navigator.userAgent.slice(0, 512),
+    updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id,endpoint' })
   if (error) console.error('push subscription save failed:', error.message)
   return !error
 }
 
+export type PushType = 'message' | 'call' | 'notification' | 'post' | 'story'
+
 export async function sendPushEvent(input: {
-  type: 'message' | 'call' | 'notification'
-  targetUserId: string
+  type: PushType
+  targetUserId?: string
   title: string
   body: string
   data: Record<string, string>
 }): Promise<void> {
   const { error } = await supabase.functions.invoke('send-push', { body: input })
   if (error) console.warn('push delivery request failed:', error.message)
+}
+
+export async function sendLatestActivityPush(input: {
+  targetUserId: string
+  actorId: string
+  type?: 'like' | 'comment' | 'follow' | 'follow_request' | 'comment_like' | 'story_reply'
+  postId?: string
+  commentId?: string
+}): Promise<void> {
+  const query = supabase.from('notifications').select('id,type').eq('user_id', input.targetUserId).eq('actor_id', input.actorId).order('created_at', { ascending: false }).limit(10)
+  if (input.postId) query.eq('post_id', input.postId)
+  if (input.commentId) query.eq('comment_id', input.commentId)
+  if (input.type) query.eq('type', input.type)
+  const { data } = await query
+  const notification = data?.[0]
+  if (!notification) return
+  await sendPushEvent({
+    type: 'notification',
+    targetUserId: input.targetUserId,
+    title: 'Yomy',
+    body: input.type === 'like' ? 'liked your post' : input.type === 'comment' ? 'commented on your post' : input.type === 'follow_request' ? 'sent you a follow request' : input.type === 'follow' ? 'started following you' : input.type === 'comment_like' ? 'liked your comment' : 'new activity',
+    data: { notification_id: notification.id },
+  })
 }
