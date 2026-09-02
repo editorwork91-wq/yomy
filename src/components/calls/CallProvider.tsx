@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff } from 'lucide-react'
+import { Phone, Video, Mic, MicOff, VideoOff, PhoneOff, Volume2, VolumeX } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { sendPushEvent } from '@/lib/push'
@@ -14,6 +14,7 @@ type CallSession = { id: string; caller_id: string; callee_id: string; kind: Cal
 type Peer = { id: string; username: string; full_name: string; avatar_url: string }
 type CallContextValue = { startCall: (peer: Peer, kind: CallKind) => Promise<void> }
 
+type AudioRouteBridge = { setSpeaker: (enabled: boolean) => void }
 const CallContext = createContext<CallContextValue | null>(null)
 const TURN_URLS = (import.meta.env.VITE_TURN_URLS as string | undefined)?.split(',').map(v => v.trim()).filter(Boolean) || []
 const ICE_SERVERS: RTCIceServer[] = [
@@ -29,6 +30,11 @@ function MediaView({ stream, muted }: { stream: MediaStream | null; muted?: bool
   return <video ref={ref} autoPlay playsInline muted={muted} className="w-full h-full object-cover rounded-2xl" />
 }
 
+function setNativeSpeaker(enabled: boolean) {
+  const bridge = (window as Window & { YomyAudio?: AudioRouteBridge }).YomyAudio
+  if (bridge?.setSpeaker) bridge.setSpeaker(enabled)
+}
+
 export default function CallProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   const [incoming, setIncoming] = useState<CallSession | null>(null)
@@ -39,6 +45,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [connected, setConnected] = useState(false)
   const [muted, setMuted] = useState(false)
   const [cameraOff, setCameraOff] = useState(false)
+  const [speakerOn, setSpeakerOn] = useState(false)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const activeRef = useRef<CallSession | null>(null)
   const processedSignals = useRef(new Set<number>())
@@ -51,6 +58,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const cleanup = useCallback(() => {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
     timeoutRef.current = null
+    setNativeSpeaker(false)
     pcRef.current?.close()
     pcRef.current = null
     setLocalStream(current => { current?.getTracks().forEach(track => track.stop()); return null })
@@ -58,6 +66,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setConnected(false)
     setMuted(false)
     setCameraOff(false)
+    setSpeakerOn(false)
     activeRef.current = null
     setActive(null)
     setIncoming(null)
@@ -78,9 +87,16 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     if (error) console.error('call signal failed:', error.message)
   }, [user])
 
+  const applySpeakerRoute = useCallback((enabled: boolean) => {
+    setNativeSpeaker(enabled)
+    setSpeakerOn(enabled)
+  }, [])
+
   const setupPeer = useCallback(async (call: CallSession, caller: boolean) => {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: call.kind === 'video' })
     setLocalStream(stream)
+    setNativeSpeaker(call.kind === 'video')
+    setSpeakerOn(call.kind === 'video')
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
     pcRef.current = pc
     stream.getTracks().forEach(track => pc.addTrack(track, stream))
@@ -129,7 +145,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id)
       cleanup(); toast.error(err instanceof Error ? err.message : 'Could not access microphone/camera')
     }
-  }, [cleanup, incoming, setupPeer, user])
+  }, [cleanup, incoming, sendPushEvent, setupPeer, user])
 
   const acceptIncoming = useCallback(async () => {
     if (!incoming || !user) return
@@ -230,7 +246,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     {children}
     <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
     {incoming && !active && peer && <div className="fixed inset-0 z-[100] bg-black/70 flex items-center justify-center p-4"><div className="w-full max-w-sm rounded-3xl bg-card p-6 text-center shadow-2xl"><Avatar className="size-24 mx-auto mb-4"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-3xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar><h2 className="text-xl font-semibold">{peer.username}</h2><p className="text-muted-foreground mb-6">Incoming {incoming.kind === 'video' ? 'video' : 'voice'} call</p><div className="flex justify-center gap-5"><Button variant="destructive" size="lg" className="rounded-full size-14" onClick={() => void declineIncoming()}><PhoneOff /></Button><Button size="lg" className="rounded-full size-14" onClick={() => void acceptIncoming()}>{incoming.kind === 'video' ? <Video /> : <Phone />}</Button></div></div></div>}
-    {active && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col"><div className="flex items-center justify-between p-4 text-white"><div><p className="font-semibold">{peer.username}</p><p className="text-xs opacity-70">{connected ? 'Connected' : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <div className="size-36 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>}</div><div className="flex justify-center gap-4 p-6"><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
+    {active && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col"><div className="flex items-center justify-between p-4 text-white"><div><p className="font-semibold">{peer.username}</p><p className="text-xs opacity-70">{connected ? 'Connected' : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <div className="size-36 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>}</div><div className="flex justify-center gap-4 p-6"><Button variant={speakerOn ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? 'Use earpiece' : 'Use speaker'}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
   </CallContext.Provider>
 }
 
