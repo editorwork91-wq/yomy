@@ -11,7 +11,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia } from '@/components/ui/empty'
 import { Heart, UserPlus, MessageCircle, Bell, Check, X, Image, PlaySquare } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
-import { sendPushEvent } from '@/lib/push'
+import { sendLatestActivityPush } from '@/lib/push'
 
 export default function Notifications() {
   const { user } = useAuth()
@@ -19,22 +19,15 @@ export default function Notifications() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState<string | null>(null)
-
   const fetchNotifications = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*, actor:profiles!actor_id(id, username, full_name, avatar_url, is_verified), post:posts!post_id(id, media_url, media_type), story:stories!story_id(id, media_url, media_type)')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(50)
+    const { data, error } = await supabase.from('notifications').select('*, actor:profiles!actor_id(id, username, full_name, avatar_url, is_verified), post:posts!post_id(id, media_url, media_type), story:stories!story_id(id, media_url, media_type)').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
     if (error) console.error('Notifications load failed:', error.message)
     setNotifications(data || [])
     await supabase.from('notifications').update({ is_read: true }).eq('user_id', user.id).eq('is_read', false)
     setLoading(false)
   }, [user])
-
   useEffect(() => { void fetchNotifications() }, [fetchNotifications])
 
   const acceptFollow = async (actorId: string, notificationId: string) => {
@@ -43,7 +36,7 @@ export default function Notifications() {
     const { error } = await supabase.rpc('accept_follow_request', { p_follower_id: actorId })
     if (error) { console.error('Accept follow failed:', error.message); setActionMessage(`Could not accept request: ${error.message}`); setActionLoading(null); return }
     setNotifications(prev => prev.filter(n => n.id !== notificationId))
-    void sendPushEvent({ type: 'notification', targetUserId: actorId, title: 'Follow request accepted', body: `${user.user_metadata?.username || 'Yomy'} accepted your follow request`, data: { notification_id: notificationId } })
+    void sendLatestActivityPush({ targetUserId: actorId, actorId: user.id, type: 'follow' })
     setActionMessage('Follow request accepted'); setActionLoading(null)
   }
 
@@ -65,20 +58,9 @@ export default function Notifications() {
       default: return <Bell className="size-3" />
     }
   }
-
   const getMessage = (n: Notification) => {
     switch (n.type) {
-      case 'like': return 'liked your post'
-      case 'comment': return 'commented on your post'
-      case 'comment_like': return 'liked your comment'
-      case 'follow': return 'started following you'
-      case 'follow_request': return 'requested to follow you'
-      case 'mention': return 'mentioned you'
-      case 'story_reply': return 'replied to your story'
-      case 'story': return 'added a new story'
-      case 'post': return 'published a new post'
-      case 'message': return 'sent you a message'
-      default: return 'interacted with you'
+      case 'like': return 'liked your post'; case 'comment': return 'commented on your post'; case 'comment_like': return 'liked your comment'; case 'follow': return 'started following you'; case 'follow_request': return 'requested to follow you'; case 'mention': return 'mentioned you'; case 'story_reply': return 'replied to your story'; case 'story': return 'added a new story'; case 'post': return 'published a new post'; case 'message': return 'sent you a message'; default: return 'interacted with you'
     }
   }
 
