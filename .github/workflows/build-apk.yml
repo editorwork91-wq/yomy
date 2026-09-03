@@ -95,27 +95,14 @@ jobs:
           Path('android/app/src/main/java/com/yomy/app/MainActivity.java').write_text(Path('/tmp/YomyMainActivity.java').read_text())
           PY
 
-      - name: Apply Yomy launcher icon without removing existing resources
+      - name: Apply official Yomy launcher icon
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          source = Path('public/yomy-logo.svg').read_text()
-          defs = re.search(r'<defs>[\s\S]*?</defs>', source)
-          group = re.search(r'<g\s+stroke="[^"]*"[\s\S]*?</g>', source)
-          if not defs or not group:
-              raise SystemExit('Yomy logo SVG structure was not recognized')
-          svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1024" height="1024">\n  <rect width="256" height="256" rx="56" fill="#0B0D10"/>\n  {defs.group(0)}\n  <g transform="translate(28 22) scale(0.78125)">{group.group(0)}</g>\n</svg>\n'''
-          Path('/tmp/yomy-launcher.svg').write_text(svg)
-          PY
-          convert -background none /tmp/yomy-launcher.svg -resize 192x192 /tmp/yomy-launcher-192.png
           for spec in "mipmap-mdpi:48" "mipmap-hdpi:72" "mipmap-xhdpi:96" "mipmap-xxhdpi:144" "mipmap-xxxhdpi:192"; do
             dir="${spec%%:*}"
             size="${spec##*:}"
-            if [ -d "android/app/src/main/res/$dir" ]; then
-              convert /tmp/yomy-launcher-192.png -resize "${size}x${size}" "android/app/src/main/res/$dir/ic_launcher.png"
-              convert /tmp/yomy-launcher-192.png -resize "${size}x${size}" "android/app/src/main/res/$dir/ic_launcher_round.png"
-            fi
+            mkdir -p "android/app/src/main/res/$dir"
+            convert YOMY-LOGO.jpeg -resize "${size}x${size}" "android/app/src/main/res/$dir/ic_launcher.png"
+            cp "android/app/src/main/res/$dir/ic_launcher.png" "android/app/src/main/res/$dir/ic_launcher_round.png"
           done
 
       - name: Build Debug APK
