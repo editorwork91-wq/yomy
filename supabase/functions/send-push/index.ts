@@ -20,7 +20,7 @@ function toStringRecord(input: Record<string, unknown>): Record<string, string> 
 }
 
 async function resolveTargets(type: string, targetId: string | null, data: Record<string, unknown>, actorId: string) {
-  if (targetId) return [targetId]
+  if (targetId && !['post', 'story'].includes(type)) return [targetId]
 
   if (type === 'post' && data.post_id) {
     const { data: post } = await admin.from('posts').select('id,user_id,status,visibility').eq('id', String(data.post_id)).maybeSingle()
@@ -40,14 +40,20 @@ async function resolveTargets(type: string, targetId: string | null, data: Recor
 }
 
 async function sendNative(tokens: string[], title: string, body: string, data: Record<string, string>, type: string) {
-  if (!firebaseServiceAccount || tokens.length === 0) return 0
+  if (!tokens.length) return { configured: Boolean(firebaseServiceAccount), attempted: false, sent: 0, failed: 0 }
+  if (!firebaseServiceAccount) return { configured: false, attempted: false, sent: 0, failed: tokens.length }
+
   try {
-    const service = JSON.parse(firebaseServiceAccount) as { project_id: string; client_email: string; private_key: string }
+    const service = JSON.parse(firebaseServiceAccount) as { project_id?: string; client_email?: string; private_key?: string }
+    if (!service.project_id || !service.client_email || !service.private_key) {
+      return { configured: false, attempted: false, sent: 0, failed: tokens.length }
+    }
     const { getApps, initializeApp, cert } = await import('npm:firebase-admin@13.4.0/app')
     const { getMessaging } = await import('npm:firebase-admin@13.4.0/messaging')
     const app = getApps().find(current => current.name === 'yomy-push') || initializeApp({ credential: cert(service) }, 'yomy-push')
     const messaging = getMessaging(app)
     let sent = 0
+    let failed = 0
     for (let i = 0; i < tokens.length; i += 500) {
       const batch = tokens.slice(i, i + 500)
       const result = await messaging.sendEachForMulticast({
@@ -58,6 +64,7 @@ async function sendNative(tokens: string[], title: string, body: string, data: R
         apns: { payload: { aps: { sound: 'default', 'content-available': 1 } } },
       })
       sent += result.successCount
+      failed += result.failureCount
       for (let j = 0; j < result.responses.length; j++) {
         const response = result.responses[j]
         if (!response.success && response.error) {
@@ -68,10 +75,10 @@ async function sendNative(tokens: string[], title: string, body: string, data: R
         }
       }
     }
-    return sent
+    return { configured: true, attempted: true, sent, failed }
   } catch (error) {
-    console.warn('native push delivery unavailable:', error)
-    return 0
+    console.warn('native push delivery failed:', error)
+    return { configured: true, attempted: true, sent: 0, failed: tokens.length }
   }
 }
 
@@ -126,6 +133,11 @@ Deno.serve(async req => {
   }
 
   const { data: nativeTokens } = await admin.from('native_push_tokens').select('token').in('user_id', targets)
-  const nativeSent = await sendNative((nativeTokens || []).map(row => row.token), String(body.title), String(body.body), payloadData, type)
-  return json(200, { webSent, nativeSent, recipients: targets.length })
+  const native = await sendNative((nativeTokens || []).map(row => row.token), String(body.title), String(body.body), payloadData, type)
+
+  if (native.failed > 0 && native.sent === 0 && nativeTokens?.length) {
+    return json(502, { error: 'Native push delivery failed', nativeConfigured: native.configured, nativeAttempted: native.attempted, nativeSent: native.sent, nativeFailed: native.failed, webSent, recipients: targets.length })
+  }
+
+  return json(200, { webSent, nativeSent: native.sent, nativeFailed: native.failed, nativeConfigured: native.configured, nativeAttempted: native.attempted, recipients: targets.length })
 })
