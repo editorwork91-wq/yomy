@@ -1,143 +1,20 @@
 import webpush from 'npm:web-push@3.6.7'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const vapidSubject = Deno.env.get('VAPID_SUBJECT')
-const vapidPublicKey = Deno.env.get('VAPID_PUBLIC_KEY')
-const vapidPrivateKey = Deno.env.get('VAPID_PRIVATE_KEY')
-const firebaseServiceAccount = Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON')
-
-const admin = createClient(supabaseUrl, serviceRoleKey)
-
-function json(status: number, body: Record<string, unknown>) {
-  return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-}
-
-function toStringRecord(input: Record<string, unknown>): Record<string, string> {
-  return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value)]))
-}
-
-async function resolveTargets(type: string, targetId: string | null, data: Record<string, unknown>, actorId: string) {
-  if (targetId && !['post', 'story'].includes(type)) return [targetId]
-
-  if (type === 'post' && data.post_id) {
-    const { data: post } = await admin.from('posts').select('id,user_id,status,visibility').eq('id', String(data.post_id)).maybeSingle()
-    if (!post || post.user_id !== actorId || post.status !== 'published') return []
-    const { data: followers } = await admin.from('follows').select('follower_id').eq('following_id', actorId).eq('status', 'accepted')
-    return (followers || []).map(row => row.follower_id).filter((id: string) => id !== actorId)
-  }
-
-  if (type === 'story' && data.story_id) {
-    const { data: story } = await admin.from('stories').select('id,user_id,expires_at,visibility').eq('id', String(data.story_id)).maybeSingle()
-    if (!story || story.user_id !== actorId || new Date(story.expires_at).getTime() <= Date.now()) return []
-    const { data: followers } = await admin.from('follows').select('follower_id').eq('following_id', actorId).eq('status', 'accepted')
-    return (followers || []).map(row => row.follower_id).filter((id: string) => id !== actorId)
-  }
-
-  return []
-}
-
-async function sendNative(tokens: string[], title: string, body: string, data: Record<string, string>, type: string) {
-  if (!tokens.length) return { configured: Boolean(firebaseServiceAccount), attempted: false, sent: 0, failed: 0 }
-  if (!firebaseServiceAccount) return { configured: false, attempted: false, sent: 0, failed: tokens.length }
-
-  try {
-    const service = JSON.parse(firebaseServiceAccount) as { project_id?: string; client_email?: string; private_key?: string }
-    if (!service.project_id || !service.client_email || !service.private_key) {
-      return { configured: false, attempted: false, sent: 0, failed: tokens.length }
-    }
-    const { getApps, initializeApp, cert } = await import('npm:firebase-admin@13.4.0/app')
-    const { getMessaging } = await import('npm:firebase-admin@13.4.0/messaging')
-    const app = getApps().find(current => current.name === 'yomy-push') || initializeApp({ credential: cert(service) }, 'yomy-push')
-    const messaging = getMessaging(app)
-    let sent = 0
-    let failed = 0
-    for (let i = 0; i < tokens.length; i += 500) {
-      const batch = tokens.slice(i, i + 500)
-      const result = await messaging.sendEachForMulticast({
-        tokens: batch,
-        notification: { title, body },
-        data,
-        android: { priority: 'high', notification: { channelId: type === 'call' ? 'yomy_calls' : 'yomy_default', sound: 'default' } },
-        apns: { payload: { aps: { sound: 'default', 'content-available': 1 } } },
-      })
-      sent += result.successCount
-      failed += result.failureCount
-      for (let j = 0; j < result.responses.length; j++) {
-        const response = result.responses[j]
-        if (!response.success && response.error) {
-          const code = response.error.code
-          if (code === 'messaging/registration-token-not-registered' || code === 'messaging/invalid-registration-token') {
-            await admin.from('native_push_tokens').delete().eq('token', batch[j])
-          }
-        }
-      }
-    }
-    return { configured: true, attempted: true, sent, failed }
-  } catch (error) {
-    console.warn('native push delivery failed:', error)
-    return { configured: true, attempted: true, sent: 0, failed: tokens.length }
-  }
-}
-
-Deno.serve(async req => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return json(405, { error: 'Method not allowed' })
-
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) return json(401, { error: 'Missing authorization' })
-  const token = authHeader.slice('Bearer '.length)
-  const { data: { user }, error: authError } = await admin.auth.getUser(token)
-  if (authError || !user) return json(401, { error: 'Invalid session' })
-
-  const body = await req.json().catch(() => null)
-  if (!body?.type || !body?.title || !body?.body) return json(400, { error: 'Invalid payload' })
-
-  const type = String(body.type)
-  const targetId = body.targetUserId ? String(body.targetUserId) : null
-  const data = body.data && typeof body.data === 'object' ? body.data as Record<string, unknown> : {}
-  const targets = await resolveTargets(type, targetId, data, user.id)
-  if (targets.length === 0) return json(403, { error: 'No authorized notification targets' })
-
-  if (type === 'notification') {
-    if (!data.notification_id || !targetId) return json(400, { error: 'notification_id and targetUserId are required' })
-    const { data: notification } = await admin.from('notifications').select('id,actor_id,user_id').eq('id', String(data.notification_id)).maybeSingle()
-    if (!notification || notification.actor_id !== user.id || notification.user_id !== targetId) return json(403, { error: 'Not authorized to send this push' })
-  } else if (type === 'message') {
-    const { data: message } = await admin.from('messages').select('id,sender_id,receiver_id,deleted_for_everyone').eq('id', String(data.message_id || '')).maybeSingle()
-    if (!message || message.sender_id !== user.id || message.receiver_id !== targetId || message.deleted_for_everyone) return json(403, { error: 'Not authorized to send this push' })
-  } else if (type === 'call') {
-    const { data: call } = await admin.from('call_sessions').select('id,caller_id,callee_id,status').eq('id', String(data.call_id || '')).maybeSingle()
-    if (!call || call.caller_id !== user.id || call.callee_id !== targetId || call.status !== 'ringing') return json(403, { error: 'Not authorized to send this push' })
-  } else if (!['post', 'story'].includes(type)) {
-    return json(400, { error: 'Unsupported push type' })
-  }
-
-  const payloadData = toStringRecord(data)
-  let webSent = 0
-  if (vapidSubject && vapidPublicKey && vapidPrivateKey) {
-    webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
-    const { data: subscriptions } = await admin.from('push_subscriptions').select('id,user_id,endpoint,p256dh,auth').in('user_id', targets)
-    const payload = JSON.stringify({ type, title: String(body.title), body: String(body.body), tag: `${type}-${payloadData.call_id || payloadData.message_id || payloadData.post_id || payloadData.story_id || Date.now()}`, data: payloadData })
-    for (const subscription of subscriptions || []) {
-      try {
-        await webpush.sendNotification({ endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } }, payload, { TTL: type === 'call' ? 45 : 300 })
-        webSent++
-      } catch (error) {
-        const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode: number }).statusCode) : 0
-        if (statusCode === 404 || statusCode === 410) await admin.from('push_subscriptions').delete().eq('id', subscription.id)
-      }
-    }
-  }
-
-  const { data: nativeTokens } = await admin.from('native_push_tokens').select('token').in('user_id', targets)
-  const native = await sendNative((nativeTokens || []).map(row => row.token), String(body.title), String(body.body), payloadData, type)
-
-  if (native.failed > 0 && native.sent === 0 && nativeTokens?.length) {
-    return json(502, { error: 'Native push delivery failed', nativeConfigured: native.configured, nativeAttempted: native.attempted, nativeSent: native.sent, nativeFailed: native.failed, webSent, recipients: targets.length })
-  }
-
-  return json(200, { webSent, nativeSent: native.sent, nativeFailed: native.failed, nativeConfigured: native.configured, nativeAttempted: native.attempted, recipients: targets.length })
-})
+const corsHeaders={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST, OPTIONS","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type"}
+const supabaseUrl=Deno.env.get('SUPABASE_URL')!
+const serviceRoleKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const vapidSubject=Deno.env.get('VAPID_SUBJECT')
+const vapidPublicKey=Deno.env.get('VAPID_PUBLIC_KEY')
+const vapidPrivateKey=Deno.env.get('VAPID_PRIVATE_KEY')
+const firebaseServiceAccount=Deno.env.get('FIREBASE_SERVICE_ACCOUNT_JSON')
+const admin=createClient(supabaseUrl,serviceRoleKey)
+function json(status:number,body:Record<string,unknown>){return new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json','Cache-Control':'no-store'}})}
+function toStringRecord(input:Record<string,unknown>):Record<string,string>{return Object.fromEntries(Object.entries(input).map(([k,v])=>[k,String(v)]))}
+function b64url(input:Uint8Array|string){const bytes=typeof input==='string'?new TextEncoder().encode(input):input;let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);return btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'')}
+function pemToDer(pem:string){const normalized=pem.replace(/\\n/g,'\n').trim();const clean=normalized.replace(/-----BEGIN PRIVATE KEY-----/g,'').replace(/-----END PRIVATE KEY-----/g,'').replace(/\s+/g,'');const binary=atob(clean);const bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);return bytes.buffer}
+async function googleAccessToken(service:{client_email:string;private_key:string}){const now=Math.floor(Date.now()/1000);const unsigned=`${b64url(JSON.stringify({alg:'RS256',typ:'JWT'}))}.${b64url(JSON.stringify({iss:service.client_email,scope:'https://www.googleapis.com/auth/firebase.messaging',aud:'https://oauth2.googleapis.com/token',iat:now,exp:now+3600}))}`;const key=await crypto.subtle.importKey('pkcs8',pemToDer(service.private_key),{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);const signature=new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,new TextEncoder().encode(unsigned)));const response=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion:`${unsigned}.${b64url(signature)}`})});const result=await response.json().catch(()=>({})) as Record<string,unknown>;if(!response.ok||typeof result.access_token!=='string'){const detail=typeof result.error==='string'?result.error:typeof result.error_description==='string'?result.error_description:'';throw new Error(`GOOGLE_OAUTH_${response.status}${detail?`:${detail}`:''}`)}return result.access_token as string}
+function sanitizeFcmError(status:number,body:Record<string,unknown>){const error=typeof body.error==='object'&&body.error!==null?body.error as Record<string,unknown>:{};const statusName=typeof error.status==='string'?error.status:'';const message=typeof error.message==='string'?error.message:'';if(statusName)return `FCM_${status}_${statusName}`;if(message)return `FCM_${status}:${message.slice(0,180)}`;return `FCM_${status}`}
+async function sendNative(tokens:string[],title:string,body:string,data:Record<string,string>,type:string){if(!tokens.length)return{configured:Boolean(firebaseServiceAccount),attempted:false,sent:0,failed:0,reason:'NO_NATIVE_TOKENS'};if(!firebaseServiceAccount)return{configured:false,attempted:false,sent:0,failed:tokens.length,reason:'FIREBASE_SERVICE_ACCOUNT_JSON_MISSING'};try{const service=JSON.parse(firebaseServiceAccount) as{project_id?:string;client_email?:string;private_key?:string};if(!service.project_id||!service.client_email||!service.private_key)return{configured:false,attempted:false,sent:0,failed:tokens.length,reason:'FIREBASE_SERVICE_ACCOUNT_INVALID'};const accessToken=await googleAccessToken(service);let sent=0;let failed=0;let firstReason='';for(const token of tokens){const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(service.project_id)}/messages:send`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json; charset=UTF-8'},body:JSON.stringify({message:{token,notification:{title,body},data,android:{priority:'HIGH',notification:{channel_id:type==='call'?'yomy_calls':'yomy_default',sound:'default'}}}})});if(response.ok){sent++;continue}failed++;const errorBody=await response.json().catch(()=>({})) as Record<string,unknown>;if(!firstReason)firstReason=sanitizeFcmError(response.status,errorBody);const errText=JSON.stringify(errorBody);if(errText.includes('UNREGISTERED')||errText.includes('registration-token-not-registered'))await admin.from('native_push_tokens').delete().eq('token',token)}return{configured:true,attempted:true,sent,failed,reason:firstReason||undefined}}catch(error){const reason=error instanceof Error?error.message.slice(0,220):'NATIVE_FCM_EXCEPTION';console.warn(`native push delivery failed: ${reason}`);return{configured:true,attempted:true,sent:0,failed:tokens.length,reason}}}
+async function resolveTargets(type:string,targetId:string|null,data:Record<string,unknown>,actorId:string){if(targetId&&!['post','story'].includes(type))return[targetId];if(type==='post'&&data.post_id){const{data:post}=await admin.from('posts').select('id,user_id,status,visibility').eq('id',String(data.post_id)).maybeSingle();if(!post||post.user_id!==actorId||post.status!=='published')return[];const{data:followers}=await admin.from('follows').select('follower_id').eq('following_id',actorId).eq('status','accepted');return(followers||[]).map(row=>row.follower_id).filter((id:string)=>id!==actorId)}if(type==='story'&&data.story_id){const{data:story}=await admin.from('stories').select('id,user_id,expires_at,visibility').eq('id',String(data.story_id)).maybeSingle();if(!story||story.user_id!==actorId||new Date(story.expires_at).getTime()<=Date.now())return[];const{data:followers}=await admin.from('follows').select('follower_id').eq('following_id',actorId).eq('status','accepted');return(followers||[]).map(row=>row.follower_id).filter((id:string)=>id!==actorId)}return[]}
+Deno.serve(async req=>{if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json(405,{error:'Method not allowed'});const authHeader=req.headers.get('Authorization');if(!authHeader?.startsWith('Bearer '))return json(401,{error:'Missing authorization'});const token=authHeader.slice('Bearer '.length);const{data:{user},error:authError}=await admin.auth.getUser(token);if(authError||!user)return json(401,{error:'Invalid session'});const body=await req.json().catch(()=>null);if(!body?.type||!body?.title||!body?.body)return json(400,{error:'Invalid payload'});const type=String(body.type);const targetId=body.targetUserId?String(body.targetUserId):null;const data=body.data&&typeof body.data==='object'?body.data as Record<string,unknown>:{};const targets=await resolveTargets(type,targetId,data,user.id);if(!targets.length)return json(403,{error:'No authorized notification targets'});if(type==='notification'){if(!data.notification_id||!targetId)return json(400,{error:'notification_id and targetUserId are required'});const{data:notification}=await admin.from('notifications').select('id,actor_id,user_id').eq('id',String(data.notification_id)).maybeSingle();if(!notification||notification.actor_id!==user.id||notification.user_id!==targetId)return json(403,{error:'Not authorized to send this push'})}else if(type==='message'){const{data:message}=await admin.from('messages').select('id,sender_id,receiver_id,deleted_for_everyone').eq('id',String(data.message_id||'')).maybeSingle();if(!message||message.sender_id!==user.id||message.receiver_id!==targetId||message.deleted_for_everyone)return json(403,{error:'Not authorized to send this push'})}else if(type==='call'){const{data:call}=await admin.from('call_sessions').select('id,caller_id,callee_id,status').eq('id',String(data.call_id||'')).maybeSingle();if(!call||call.caller_id!==user.id||call.callee_id!==targetId||call.status!=='ringing')return json(403,{error:'Not authorized to send this push'})}else if(!['post','story'].includes(type))return json(400,{error:'Unsupported push type'});const payloadData=toStringRecord(data);let webSent=0;if(vapidSubject&&vapidPublicKey&&vapidPrivateKey){webpush.setVapidDetails(vapidSubject,vapidPublicKey,vapidPrivateKey);const{data:subscriptions}=await admin.from('push_subscriptions').select('id,endpoint,p256dh,auth').in('user_id',targets);const payload=JSON.stringify({type,title:String(body.title),body:String(body.body),tag:`${type}-${payloadData.call_id||payloadData.message_id||payloadData.post_id||payloadData.story_id||Date.now()}`,data:payloadData});for(const subscription of subscriptions||[]){try{await webpush.sendNotification({endpoint:subscription.endpoint,keys:{p256dh:subscription.p256dh,auth:subscription.auth}},payload,{TTL:type==='call'?45:300});webSent++}catch(error){const statusCode=error&&typeof error==='object'&&'statusCode'in error?Number((error as{statusCode:number}).statusCode):0;if(statusCode===404||statusCode===410)await admin.from('push_subscriptions').delete().eq('id',subscription.id)}}}const{data:nativeTokens}=await admin.from('native_push_tokens').select('token').in('user_id',targets);const native=await sendNative((nativeTokens||[]).map(row=>row.token),String(body.title),String(body.body),payloadData,type);if(native.failed>0&&native.sent===0&&nativeTokens?.length)return json(502,{error:'Native push delivery failed',nativeConfigured:native.configured,nativeAttempted:native.attempted,nativeSent:native.sent,nativeFailed:native.failed,nativeReason:native.reason||'FCM delivery failed',webSent,recipients:targets.length});return json(200,{webSent,nativeSent:native.sent,nativeFailed:native.failed,nativeConfigured:native.configured,nativeAttempted:native.attempted,nativeReason:native.reason||null,recipients:targets.length})})
