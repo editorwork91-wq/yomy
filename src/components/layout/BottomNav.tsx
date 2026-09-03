@@ -28,7 +28,7 @@ export default function BottomNav() {
               cn(
                 'relative flex size-11 items-center justify-center rounded-xl transition-all duration-200 active:scale-95',
                 isActive
-                  ? 'text-foreground bg-muted/35'
+                  ? 'bg-gradient-to-tr from-violet-600 via-pink-500 to-orange-400 text-white shadow-[0_4px_16px_rgba(236,72,153,0.22)]'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/55'
               )
             }
@@ -38,7 +38,7 @@ export default function BottomNav() {
                 {label === 'Profile' && profile?.avatar_url ? (
                   <div className={cn(
                     'size-7 rounded-full overflow-hidden ring-1 ring-border/70 ring-offset-1 ring-offset-background transition-transform duration-200',
-                    isActive && 'scale-105'
+                    isActive && 'scale-105 ring-white/80 ring-offset-0'
                   )}>
                     <img src={profile.avatar_url} alt="" className="size-full object-cover" />
                   </div>
@@ -46,8 +46,8 @@ export default function BottomNav() {
                   <Icon className={cn('size-[1.42rem] stroke-[1.7]', isActive && 'stroke-[1.85]')} />
                 )}
                 <span className={cn(
-                  'absolute bottom-0.5 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full transition-all duration-200',
-                  isActive ? 'bg-foreground opacity-100' : 'bg-foreground opacity-0'
+                  'absolute -bottom-0.5 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full transition-all duration-200',
+                  isActive ? 'bg-white opacity-100' : 'bg-foreground opacity-0'
                 )} />
               </>
             )}

@@ -31,10 +31,10 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
           )}
           {showLogo && (
             <Link to="/" className="group inline-flex items-center gap-2.5 rounded-xl px-1.5 py-1 transition-transform duration-200 active:scale-[0.98]">
-              <span className="relative inline-flex size-8 items-center justify-center overflow-hidden rounded-[10px] bg-black ring-1 ring-white/10 shadow-[0_0_18px_rgba(150,80,255,0.18)]">
+              <span className="relative inline-flex size-8 items-center justify-center overflow-hidden rounded-[10px] bg-black ring-1 ring-white/10 shadow-[0_0_20px_rgba(168,85,247,0.22)]">
                 <BrandMark size={28} className="scale-[1.16]" />
               </span>
-              <span className="text-[1.55rem] leading-none font-semibold tracking-[-0.055em] text-foreground">
+              <span className="text-[1.55rem] leading-none font-semibold tracking-[-0.055em] bg-gradient-to-r from-violet-500 via-pink-500 to-orange-400 bg-clip-text text-transparent">
                 Yomy
               </span>
             </Link>
