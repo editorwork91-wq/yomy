@@ -35,6 +35,13 @@ jobs:
           if [ -f android/app/google-services.json ]; then
             cp android/app/google-services.json /tmp/YomyGoogleServices.json
           fi
+          rm -rf /tmp/YomyLauncherResources
+          mkdir -p /tmp/YomyLauncherResources
+          find android/app/src/main/res -type f -name 'ic_launcher*' -print0 | while IFS= read -r -d '' file; do
+            rel="${file#android/app/src/main/res/}"
+            mkdir -p "/tmp/YomyLauncherResources/$(dirname "$rel")"
+            cp "$file" "/tmp/YomyLauncherResources/$rel"
+          done
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -62,8 +69,11 @@ jobs:
             echo "Firebase Android configuration is unavailable; native FCM registration will not produce a device token."
           fi
 
-      - name: Restore native bridge and permissions
+      - name: Restore launcher branding and native bridge
         run: |
+          if [ -d /tmp/YomyLauncherResources ]; then
+            cp -a /tmp/YomyLauncherResources/. android/app/src/main/res/
+          fi
           python3 - <<'PY'
           from pathlib import Path
           manifest = Path('android/app/src/main/AndroidManifest.xml')
