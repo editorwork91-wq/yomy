@@ -45,8 +45,31 @@ export async function sendPushEvent(input: {
   body: string
   data: Record<string, string>
 }): Promise<void> {
-  const { error } = await supabase.functions.invoke('send-push', { body: input })
-  if (error) console.warn('push delivery request failed:', error.message)
+  try {
+    const { data, error } = await supabase.functions.invoke('send-push', { body: input })
+    if (error) {
+      console.warn('push delivery request failed:', error.message)
+      return
+    }
+    if (data && typeof data === 'object' && 'nativeFailed' in data) {
+      const result = data as Record<string, unknown>
+      const nativeFailed = Number(result.nativeFailed ?? 0)
+      const nativeSent = Number(result.nativeSent ?? 0)
+      if (nativeFailed > 0 || nativeSent === 0) {
+        console.warn('Yomy native push result:', {
+          type: input.type,
+          nativeConfigured: result.nativeConfigured,
+          nativeAttempted: result.nativeAttempted,
+          nativeSent,
+          nativeFailed,
+          nativeReason: result.nativeReason ?? null,
+          recipients: result.recipients ?? null,
+        })
+      }
+    }
+  } catch (error) {
+    console.warn('push delivery request unavailable:', error instanceof Error ? error.message : error)
+  }
 }
 
 export async function sendLatestActivityPush(input: {
