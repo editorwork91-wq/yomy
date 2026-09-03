@@ -26,22 +26,31 @@ export default function BottomNav() {
             onClick={label === 'Create' ? (e) => { e.preventDefault(); navigate('/create') } : undefined}
             className={({ isActive }) =>
               cn(
-                'relative flex size-11 items-center justify-center rounded-xl transition-all duration-200',
-                'active:scale-95',
+                'relative flex size-11 items-center justify-center rounded-xl transition-all duration-200 active:scale-95',
                 isActive
-                  ? 'text-foreground'
+                  ? 'text-foreground bg-muted/35'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted/55'
               )
             }
           >
-            {label === 'Profile' && profile?.avatar_url ? (
-              <div className="size-7 rounded-full overflow-hidden ring-1 ring-border/70 ring-offset-1 ring-offset-background transition-transform duration-200 group-data-[active=true]:scale-105">
-                <img src={profile.avatar_url} alt="" className="size-full object-cover" />
-              </div>
-            ) : (
-              <Icon className="size-[1.42rem] stroke-[1.7]" />
+            {({ isActive }) => (
+              <>
+                {label === 'Profile' && profile?.avatar_url ? (
+                  <div className={cn(
+                    'size-7 rounded-full overflow-hidden ring-1 ring-border/70 ring-offset-1 ring-offset-background transition-transform duration-200',
+                    isActive && 'scale-105'
+                  )}>
+                    <img src={profile.avatar_url} alt="" className="size-full object-cover" />
+                  </div>
+                ) : (
+                  <Icon className={cn('size-[1.42rem] stroke-[1.7]', isActive && 'stroke-[1.85]')} />
+                )}
+                <span className={cn(
+                  'absolute bottom-0.5 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full transition-all duration-200',
+                  isActive ? 'bg-foreground opacity-100' : 'bg-foreground opacity-0'
+                )} />
+              </>
             )}
-            <span className="absolute bottom-0.5 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full bg-foreground opacity-0 transition-opacity duration-200" />
           </NavLink>
         ))}
       </div>
