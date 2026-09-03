@@ -29,9 +29,12 @@ jobs:
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY || secrets.VAPID_PUBLIC_KEY }}
         run: npm run build
 
-      - name: Save repository MainActivity implementation
+      - name: Save repository native Android configuration
         run: |
           cp android/app/src/main/java/com/yomy/app/MainActivity.java /tmp/YomyMainActivity.java
+          if [ -f android/app/google-services.json ]; then
+            cp android/app/google-services.json /tmp/YomyGoogleServices.json
+          fi
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -51,20 +54,22 @@ jobs:
         run: |
           if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
             printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
+          elif [ -f /tmp/YomyGoogleServices.json ]; then
+            cp /tmp/YomyGoogleServices.json android/app/google-services.json
           elif [ -f google-services.json ]; then
             cp google-services.json android/app/google-services.json
           else
             echo "Firebase Android configuration is unavailable; native FCM registration will not produce a device token."
           fi
 
-      - name: Apply safe Android startup configuration and restore native bridge
+      - name: Restore native bridge and permissions
         run: |
           python3 - <<'PY'
           from pathlib import Path
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
-          if 'xmlns:tools=' not in s:
-              s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">')
+          if 'xmlns:tools=' in s:
+              s = s.replace(' xmlns:tools="http://schemas.android.com/tools"', '')
           marker = '    <uses-permission android:name="android.permission.INTERNET" />'
           additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />'''
           if 'android.permission.CAMERA' not in s:
@@ -73,9 +78,9 @@ jobs:
               s = s.replace('    <uses-permission android:name="android.permission.RECORD_AUDIO" />', '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />')
           if 'android.permission.VIBRATE' not in s:
               s = s.replace('</manifest>', '    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n</manifest>')
-          firebase_provider = '''\n        <provider\n            android:name="com.google.firebase.provider.FirebaseInitProvider"\n            android:authorities="${applicationId}.firebaseinitprovider"\n            tools:node="remove" />\n'''
-          if 'com.google.firebase.provider.FirebaseInitProvider' not in s:
-              s = s.replace('    <application\n', firebase_provider + '\n    <application\n')
+          # Keep Firebase's normal Android startup provider. It initializes the
+          # FirebaseApp before Capacitor native push registration can run.
+          s = s.replace('''\n        <provider\n            android:name="com.google.firebase.provider.FirebaseInitProvider"\n            android:authorities="${applicationId}.firebaseinitprovider"\n            tools:node="remove" />\n''', '\n')
           manifest.write_text(s)
           Path('android/app/src/main/java/com/yomy/app/MainActivity.java').write_text(Path('/tmp/YomyMainActivity.java').read_text())
           PY
