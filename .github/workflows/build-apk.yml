@@ -97,13 +97,13 @@ jobs:
 
       - name: Apply official Yomy launcher icon
         run: |
-          for spec in "mipmap-mdpi:48" "mipmap-hdpi:72" "mipmap-xhdpi:96" "mipmap-xxhdpi:144" "mipmap-xxxhdpi:192"; do
-            dir="${spec%%:*}"
-            size="${spec##*:}"
+          for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             mkdir -p "android/app/src/main/res/$dir"
-            convert YOMY-LOGO.jpeg -resize "${size}x${size}" "android/app/src/main/res/$dir/ic_launcher.png"
-            cp "android/app/src/main/res/$dir/ic_launcher.png" "android/app/src/main/res/$dir/ic_launcher_round.png"
+            cp YOMY-LOGO.jpeg "android/app/src/main/res/$dir/ic_launcher.jpg"
+            cp YOMY-LOGO.jpeg "android/app/src/main/res/$dir/ic_launcher_round.jpg"
           done
+          # Android 26+ uses the tracked adaptive icon resources, both backed by
+          # the official YOMY-LOGO.jpeg image rather than the legacy SVG logo.
 
       - name: Build Debug APK
         working-directory: ./android
