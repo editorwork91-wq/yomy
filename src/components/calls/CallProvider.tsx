@@ -13,8 +13,13 @@ type Signal = { id: number; call_id: string; sender_id: string; recipient_id: st
 type CallSession = { id: string; caller_id: string; callee_id: string; kind: CallKind; status: CallStatus; created_at: string; answered_at?: string | null }
 type Peer = { id: string; username: string; full_name: string; avatar_url: string }
 type CallContextValue = { startCall: (peer: Peer, kind: CallKind) => Promise<void> }
-
 type AudioRouteBridge = { setSpeaker: (enabled: boolean) => void }
+type NativeNotificationBridge = {
+  stopCall?: () => void
+  getPendingCallAction?: () => string
+  clearPendingCallAction?: () => void
+}
+
 const CallContext = createContext<CallContextValue | null>(null)
 const TURN_URLS = (import.meta.env.VITE_TURN_URLS as string | undefined)?.split(',').map(v => v.trim()).filter(Boolean) || []
 const ICE_SERVERS: RTCIceServer[] = [
@@ -23,6 +28,14 @@ const ICE_SERVERS: RTCIceServer[] = [
     ? [{ urls: TURN_URLS, username: import.meta.env.VITE_TURN_USERNAME, credential: import.meta.env.VITE_TURN_CREDENTIAL }]
     : []),
 ]
+
+function getNativeNotifications() {
+  return (window as Window & { YomyNotification?: NativeNotificationBridge }).YomyNotification
+}
+
+function stopNativeCallNotification() {
+  getNativeNotifications()?.stopCall?.()
+}
 
 function MediaView({ stream, muted }: { stream: MediaStream | null; muted?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null)
@@ -58,6 +71,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const cleanup = useCallback(() => {
     if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
     timeoutRef.current = null
+    stopNativeCallNotification()
     setNativeSpeaker(false)
     pcRef.current?.close()
     pcRef.current = null
@@ -134,13 +148,13 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     activeRef.current = call; setActive(call); setPeer(target)
     try {
       await setupPeer(call, true)
-      await sendPushEvent({ type: 'call', targetUserId: target.id, title: kind === 'video' ? 'Incoming video call' : 'Incoming call', body: 'Someone is calling you on Yomy', data: { url: `/messages/${target.username}?call=${call.id}`, call_id: call.id } })
+      await sendPushEvent({ type: 'call', targetUserId: target.id, title: kind === 'video' ? 'Incoming video call' : 'Incoming call', body: 'Someone is calling you on Yomy', data: { url: `/messages/${target.username}?call=${call.id}`, call_id: call.id, kind } })
       timeoutRef.current = window.setTimeout(async () => {
         if (activeRef.current?.id === call.id) {
           await supabase.from('call_sessions').update({ status: 'missed', ended_at: new Date().toISOString() }).eq('id', call.id)
           cleanup()
         }
-      }, 45000)
+      }, 60000)
     } catch (err) {
       await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id)
       cleanup(); toast.error(err instanceof Error ? err.message : 'Could not access microphone/camera')
@@ -149,12 +163,13 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   const acceptIncoming = useCallback(async () => {
     if (!incoming || !user) return
+    stopNativeCallNotification()
     const call = incoming
     const callerProfile = await profileFor(call.caller_id)
     if (!callerProfile) { toast.error('Caller profile not found'); return }
     try {
       const now = new Date().toISOString()
-      const { error } = await supabase.from('call_sessions').update({ status: 'active', answered_at: now, started_at: now }).eq('id', call.id).eq('callee_id', user.id)
+      const { error } = await supabase.from('call_sessions').update({ status: 'active', answered_at: now, started_at: now }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing')
       if (error) throw error
       activeRef.current = { ...call, status: 'active' }; setActive({ ...call, status: 'active' }); setIncoming(null); setPeer(callerProfile)
       const pc = await setupPeer(call, false)
@@ -180,7 +195,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   const declineIncoming = useCallback(async () => {
     if (!incoming || !user) return
-    await supabase.from('call_sessions').update({ status: 'declined', ended_at: new Date().toISOString() }).eq('id', incoming.id).eq('callee_id', user.id)
+    stopNativeCallNotification()
+    await supabase.from('call_sessions').update({ status: 'declined', ended_at: new Date().toISOString() }).eq('id', incoming.id).eq('callee_id', user.id).eq('status', 'ringing')
     cleanup()
   }, [cleanup, incoming, user])
 
@@ -214,6 +230,10 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'call_sessions' }, payload => {
         const call = payload.new as CallSession
+        if (call.id === incoming?.id && ['declined','missed','failed','ended','active'].includes(call.status)) {
+          stopNativeCallNotification()
+          if (call.status !== 'active') { setIncoming(null); setPeer(null) }
+        }
         if (call.id !== activeRef.current?.id) return
         if (['declined','missed','failed','ended'].includes(call.status)) cleanup()
         else if (call.status === 'active') setActive(call)
@@ -236,7 +256,30 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       })
       .subscribe()
     return () => { mounted = false; void supabase.removeChannel(channel) }
-  }, [cleanup, profileFor, user])
+  }, [cleanup, incoming?.id, profileFor, user])
+
+  useEffect(() => {
+    if (!incoming) return
+    const bridge = getNativeNotifications()
+    const pending = bridge?.getPendingCallAction?.() || ''
+    if (pending) {
+      const [action, callId] = pending.split('|')
+      if (callId === incoming.id) {
+        bridge?.clearPendingCallAction?.()
+        if (action === 'accept') void acceptIncoming()
+        else if (action === 'decline') void declineIncoming()
+      }
+    }
+    const onNativeAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string; callId?: string }>).detail
+      if (detail?.callId !== incoming.id) return
+      bridge?.clearPendingCallAction?.()
+      if (detail.action === 'accept') void acceptIncoming()
+      if (detail.action === 'decline') void declineIncoming()
+    }
+    window.addEventListener('yomy-call-action', onNativeAction)
+    return () => window.removeEventListener('yomy-call-action', onNativeAction)
+  }, [acceptIncoming, declineIncoming, incoming])
 
   const toggleMic = () => { const track = localStream?.getAudioTracks()[0]; if (!track) return; track.enabled = !track.enabled; setMuted(!track.enabled) }
   const toggleCamera = () => { const track = localStream?.getVideoTracks()[0]; if (!track) return; track.enabled = !track.enabled; setCameraOff(!track.enabled) }
