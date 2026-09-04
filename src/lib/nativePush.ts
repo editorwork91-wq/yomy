@@ -38,8 +38,15 @@ export async function registerNativePush(): Promise<boolean> {
       })
       await PushNotifications.addListener('registrationError', error => console.warn('native push registration failed:', error))
       await PushNotifications.addListener('pushNotificationActionPerformed', event => {
-        const url = event.notification.data?.url
-        if (typeof url === 'string' && url) window.location.assign(url)
+        const data = event.notification.data as Record<string, unknown> | undefined
+        const destination = typeof data?.url === 'string' && data.url
+          ? data.url
+          : typeof data?.deep_link === 'string' && data.deep_link
+            ? data.deep_link
+            : typeof data?.deepLink === 'string' && data.deepLink
+              ? data.deepLink
+              : '/notifications'
+        window.location.assign(destination)
       })
     }
 
