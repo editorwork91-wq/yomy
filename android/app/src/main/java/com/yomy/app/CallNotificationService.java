@@ -106,11 +106,11 @@ public class CallNotificationService extends Service {
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(true)
-                .setTimeoutAfter(RING_DURATION_MS)
                 .setContentIntent(open)
                 .addAction(new Notification.Action.Builder(null, "فتح المكالمة", open).build())
                 .addAction(new Notification.Action.Builder(null, "إلغاء", decline).build());
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) builder.setTimeoutAfter(RING_DURATION_MS);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
         return builder.build();
     }
