@@ -46,7 +46,11 @@ export async function sendPushEvent(input: {
   data: Record<string, string>
 }): Promise<void> {
   try {
-    const { data, error } = await supabase.functions.invoke('send-push', { body: input })
+    const safeData = input.type === 'call' && input.data.call_id
+      ? { ...input.data, url: `/messages?call=${encodeURIComponent(input.data.call_id)}` }
+      : input.data
+    const requestBody = { ...input, data: safeData }
+    const { data, error } = await supabase.functions.invoke('send-push', { body: requestBody })
     if (error) {
       console.warn('push delivery request failed:', error.message)
       return
