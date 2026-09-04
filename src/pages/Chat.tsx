@@ -55,6 +55,8 @@ export default function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const lastTapRef = useRef<Record<string, number>>({})
+  const messagesRef = useRef<Message[]>([])
+  const reconciliationTimerRef = useRef<number | null>(null)
 
   const targetUsername = username || searchParams.get('to')
 
@@ -105,10 +107,41 @@ export default function Chat() {
     setIsMuted(!!muted)
   }, [user, otherUser, hydrateReplyPreviews])
 
+  const reconcileMissingMessages = useCallback(async () => {
+    if (!user || !otherUser) return
+    const existing = messagesRef.current
+    const known = new Set(existing.map(message => message.id))
+    let query = supabase
+      .from('messages')
+      .select('*, message_reactions(id, user_id, emoji)')
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${otherUser.id}),and(sender_id.eq.${otherUser.id},receiver_id.eq.${user.id})`)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+      .limit(50)
+    const latestCreatedAt = existing[existing.length - 1]?.created_at
+    if (latestCreatedAt) query = query.gt('created_at', latestCreatedAt)
+    const { data, error } = await query
+    if (error || !data?.length) return
+    const fresh = hydrateReplyPreviews((data as Message[]).filter(message => !known.has(message.id)))
+    if (!fresh.length) return
+    setMessages(prev => {
+      const ids = new Set(prev.map(message => message.id))
+      const next = [...prev, ...fresh.filter(message => !ids.has(message.id))]
+      messagesRef.current = next
+      return next
+    })
+    if (fresh.some(message => message.receiver_id === user.id && !message.is_seen && !message.deleted_for_everyone)) {
+      const { error: seenError } = await supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })
+      if (seenError) console.warn('message reconciliation seen update failed:', seenError.message)
+    }
+  }, [hydrateReplyPreviews, otherUser, user])
+
   useEffect(() => { void fetchOtherUser() }, [fetchOtherUser])
   useEffect(() => { if (otherUser) void fetchMessages() }, [otherUser, fetchMessages])
+  useEffect(() => { messagesRef.current = messages }, [messages])
   useEffect(() => () => {
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current)
+    if (reconciliationTimerRef.current) window.clearInterval(reconciliationTimerRef.current)
     if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
     recordingStreamRef.current?.getTracks().forEach(track => track.stop())
     if (pendingMedia) URL.revokeObjectURL(pendingMedia.previewUrl)
@@ -132,11 +165,23 @@ export default function Chat() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, () => void fetchMessages(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void fetchMessages(false))
       .subscribe(status => {
-        if (status === 'CHANNEL_ERROR') console.error('Chat realtime channel error')
-        if (status === 'TIMED_OUT') console.error('Chat realtime channel timed out')
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') console.warn('Chat realtime degraded; reconciliation fallback active')
       })
-    return () => { void supabase.removeChannel(channel) }
-  }, [user, otherUser, fetchMessages])
+
+    const onOnline = () => void reconcileMissingMessages()
+    const onVisibility = () => { if (document.visibilityState === 'visible') void reconcileMissingMessages() }
+    window.addEventListener('online', onOnline)
+    document.addEventListener('visibilitychange', onVisibility)
+    reconciliationTimerRef.current = window.setInterval(() => void reconcileMissingMessages(), 4000)
+
+    return () => {
+      if (reconciliationTimerRef.current) window.clearInterval(reconciliationTimerRef.current)
+      reconciliationTimerRef.current = null
+      window.removeEventListener('online', onOnline)
+      document.removeEventListener('visibilitychange', onVisibility)
+      void supabase.removeChannel(channel)
+    }
+  }, [user, otherUser, fetchMessages, reconcileMissingMessages])
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [messages])
 
