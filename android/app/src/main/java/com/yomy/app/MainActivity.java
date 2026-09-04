@@ -22,6 +22,7 @@ import com.getcapacitor.BridgeWebChromeClient;
 public class MainActivity extends BridgeActivity {
     private static final int YOMY_PERMISSIONS = 7001;
     private static final int YOMY_WEB_PERMISSION_REQUEST = 7002;
+    private static final String EXTRA_DEEP_LINK = "yomy_deep_link";
     private PermissionRequest pendingWebPermissionRequest;
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
@@ -32,6 +33,7 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         captureCallAction(getIntent());
+        captureDeepLink(getIntent());
         requestYomyPermissions();
         installMediaPermissionBridge();
         installAudioRouteBridge();
@@ -42,6 +44,7 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         captureCallAction(intent);
+        captureDeepLink(intent);
     }
 
     private void captureCallAction(Intent intent) {
@@ -62,6 +65,25 @@ public class MainActivity extends BridgeActivity {
             if (getBridge() == null || getBridge().getWebView() == null) return;
             getBridge().getWebView().evaluateJavascript(
                     "window.dispatchEvent(new CustomEvent('yomy-call-action',{detail:{action:" + safeAction + ",callId:" + safeCallId + "}}));",
+                    null
+            );
+        }, 350);
+    }
+
+    private void captureDeepLink(Intent intent) {
+        if (intent == null) return;
+        String destination = intent.getStringExtra(EXTRA_DEEP_LINK);
+        if (destination == null || destination.trim().isEmpty()) return;
+        dispatchDeepLinkToWeb(destination.trim());
+    }
+
+    private void dispatchDeepLinkToWeb(String destination) {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        final String safeDestination = JSONObject.quote(destination);
+        getBridge().getWebView().postDelayed(() -> {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            getBridge().getWebView().evaluateJavascript(
+                    "window.location.assign(" + safeDestination + ");",
                     null
             );
         }, 350);
@@ -128,8 +150,8 @@ public class MainActivity extends BridgeActivity {
     }
 
     private final class LocalNotificationBridge {
-        @JavascriptInterface public void show(String title, String body, String kind) {
-            runOnUiThread(() -> showLocalNotification(title, body, kind));
+        @JavascriptInterface public void show(String title, String body, String kind, String url) {
+            runOnUiThread(() -> showLocalNotification(title, body, kind, url));
         }
         @JavascriptInterface public void showCall(String title, String body, String callId, String kind) {
             runOnUiThread(() -> CallNotificationService.start(MainActivity.this, callId, title, body, kind));
@@ -137,7 +159,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface public void stopCall() {
             runOnUiThread(() -> {
                 Intent intent = new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) MainActivity.this.startService(intent); else MainActivity.this.startService(intent);
+                MainActivity.this.startService(intent);
             });
         }
         @JavascriptInterface public String getPendingCallAction() {
@@ -150,7 +172,7 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
-    private void showLocalNotification(String title, String body, String kind) {
+    private void showLocalNotification(String title, String body, String kind, String url) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
@@ -163,7 +185,9 @@ public class MainActivity extends BridgeActivity {
             manager.createNotificationChannel(channel);
         }
 
-        Intent intent = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent intent = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        if (url != null && !url.trim().isEmpty()) intent.putExtra(EXTRA_DEEP_LINK, url.trim());
         int requestCode = (int) (System.currentTimeMillis() & 0x7fffffff);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
