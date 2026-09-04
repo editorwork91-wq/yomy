@@ -18,7 +18,14 @@ public class CallActionReceiver extends BroadcastReceiver {
 
         context.stopService(new Intent(context, CallNotificationService.class));
 
-        if (ACTION_DECLINE.equals(action)) return;
+        if (ACTION_DECLINE.equals(action)) {
+            Intent launch = new Intent(context, MainActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra(EXTRA_CALL_ID, callId)
+                    .putExtra(EXTRA_ACTION, "decline");
+            context.startActivity(launch);
+            return;
+        }
 
         if (ACTION_ACCEPT.equals(action) || ACTION_OPEN.equals(action)) {
             Intent launch = new Intent(context, MainActivity.class)
