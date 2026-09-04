@@ -1,7 +1,6 @@
 package com.yomy.app;
 
 import android.app.Notification;
-import android.app.NotificationAction;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -39,7 +38,6 @@ public class CallNotificationService extends Service {
     private MediaPlayer ringtonePlayer;
     private Vibrator vibrator;
     private String activeCallId;
-
     private final Runnable timeout = this::stopRinging;
 
     public static void start(Context context, String callId, String title, String body, String kind) {
@@ -127,8 +125,7 @@ public class CallNotificationService extends Service {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager == null) return;
-        NotificationChannel existing = manager.getNotificationChannel(CHANNEL_ID);
-        if (existing != null) return;
+        if (manager.getNotificationChannel(CHANNEL_ID) != null) return;
 
         NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Yomy Calls", NotificationManager.IMPORTANCE_HIGH);
         channel.setDescription("Incoming Yomy calls");
@@ -138,17 +135,18 @@ public class CallNotificationService extends Service {
     }
 
     private void startPlaybackRespectingSystemMode() {
-        AudioManager audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        if (audio == null) return;
-        int mode = audio.getRingerMode();
-        if (mode == AudioManager.RINGER_MODE_SILENT) return;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-            if (nm != null && nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) return;
-        }
-
-        if (mode == AudioManager.RINGER_MODE_NORMAL) playDefaultRingtone();
-        if (mode == AudioManager.RINGER_MODE_NORMAL || mode == AudioManager.RINGER_MODE_VIBRATE) startVibration();
+        try {
+            AudioManager audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null) return;
+            int mode = audio.getRingerMode();
+            if (mode == AudioManager.RINGER_MODE_SILENT) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null && nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) return;
+            }
+            if (mode == AudioManager.RINGER_MODE_NORMAL) playDefaultRingtone();
+            if (mode == AudioManager.RINGER_MODE_NORMAL || mode == AudioManager.RINGER_MODE_VIBRATE) startVibration();
+        } catch (Exception ignored) {}
     }
 
     private void playDefaultRingtone() {
