@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
+import org.json.JSONObject;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
@@ -24,14 +25,46 @@ public class MainActivity extends BridgeActivity {
     private PermissionRequest pendingWebPermissionRequest;
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
+    private String pendingCallAction;
+    private String pendingCallId;
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        captureCallAction(getIntent());
         requestYomyPermissions();
         installMediaPermissionBridge();
         installAudioRouteBridge();
         installLocalNotificationBridge();
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        captureCallAction(intent);
+    }
+
+    private void captureCallAction(Intent intent) {
+        if (intent == null) return;
+        String action = intent.getStringExtra(CallActionReceiver.EXTRA_ACTION);
+        String callId = intent.getStringExtra(CallActionReceiver.EXTRA_CALL_ID);
+        if (action == null || callId == null || callId.trim().isEmpty()) return;
+        pendingCallAction = action;
+        pendingCallId = callId;
+        dispatchCallActionToWeb(action, callId);
+    }
+
+    private void dispatchCallActionToWeb(String action, String callId) {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        final String safeAction = JSONObject.quote(action);
+        final String safeCallId = JSONObject.quote(callId);
+        getBridge().getWebView().postDelayed(() -> {
+            if (getBridge() == null || getBridge().getWebView() == null) return;
+            getBridge().getWebView().evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('yomy-call-action',{detail:{action:" + safeAction + ",callId:" + safeCallId + "}}));",
+                    null
+            );
+        }, 350);
     }
 
     private void requestYomyPermissions() {
@@ -97,6 +130,23 @@ public class MainActivity extends BridgeActivity {
     private final class LocalNotificationBridge {
         @JavascriptInterface public void show(String title, String body, String kind) {
             runOnUiThread(() -> showLocalNotification(title, body, kind));
+        }
+        @JavascriptInterface public void showCall(String title, String body, String callId, String kind) {
+            runOnUiThread(() -> CallNotificationService.start(MainActivity.this, callId, title, body, kind));
+        }
+        @JavascriptInterface public void stopCall() {
+            runOnUiThread(() -> {
+                Intent intent = new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) MainActivity.this.startService(intent); else MainActivity.this.startService(intent);
+            });
+        }
+        @JavascriptInterface public String getPendingCallAction() {
+            if (pendingCallAction == null || pendingCallId == null) return "";
+            return pendingCallAction + "|" + pendingCallId;
+        }
+        @JavascriptInterface public void clearPendingCallAction() {
+            pendingCallAction = null;
+            pendingCallId = null;
         }
     }
 
