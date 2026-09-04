@@ -16,12 +16,16 @@ export function showYomyLocalNotification(title: string, body: string, kind: 'me
     }
 
     if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title || 'Yomy', {
+      const notification = new Notification(title || 'Yomy', {
         body,
         icon: '/YOMY-LOGO.jpeg',
         badge: '/YOMY-LOGO.jpeg',
-        tag: `yomy-${kind}`,
+        tag: `yomy-${kind}-${Date.now()}`,
       })
+      notification.onclick = () => {
+        window.focus()
+        notification.close()
+      }
       return true
     }
   } catch (error) {
