@@ -1,7 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 
 type NativeNotificationBridge = {
-  show: (title: string, body: string, kind?: 'message' | 'call') => void
+  show: (title: string, body: string, kind?: 'message' | 'call', url?: string) => void
 }
 
 export function showYomyLocalNotification(
@@ -16,7 +16,7 @@ export function showYomyLocalNotification(
     if (Capacitor.isNativePlatform()) {
       const bridge = (window as Window & { YomyNotification?: NativeNotificationBridge }).YomyNotification
       if (!bridge?.show) return false
-      bridge.show(title, body, kind)
+      bridge.show(title, body, kind, url)
       return true
     }
 
