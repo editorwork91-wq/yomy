@@ -3,7 +3,6 @@ package com.yomy.app;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Bundle;
 
 public class CallActionReceiver extends BroadcastReceiver {
     public static final String ACTION_ACCEPT = "com.yomy.app.CALL_ACCEPT";
@@ -17,14 +16,9 @@ public class CallActionReceiver extends BroadcastReceiver {
         String callId = intent == null ? null : intent.getStringExtra(EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
 
-        Intent stop = new Intent(context, CallNotificationService.class)
-                .setAction(CallNotificationService.ACTION_STOP)
-                .putExtra(EXTRA_CALL_ID, callId);
-        context.startService(stop);
+        context.stopService(new Intent(context, CallNotificationService.class));
 
-        if (ACTION_DECLINE.equals(action)) {
-            return;
-        }
+        if (ACTION_DECLINE.equals(action)) return;
 
         if (ACTION_ACCEPT.equals(action) || ACTION_OPEN.equals(action)) {
             Intent launch = new Intent(context, MainActivity.class)
