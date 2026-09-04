@@ -25,11 +25,7 @@ const RECENT_KEY = 'yomy:event-engine:recent-ids'
 const MAX_RECENT = 300
 
 function readCursor(): string | null {
-  try {
-    return localStorage.getItem(CURSOR_KEY)
-  } catch {
-    return null
-  }
+  try { return localStorage.getItem(CURSOR_KEY) } catch { return null }
 }
 
 function writeCursor(value: string) {
@@ -59,8 +55,7 @@ function messageBody(payload: Record<string, unknown>) {
 }
 
 function activityCopy(payload: Record<string, unknown>) {
-  const type = String(payload.notification_type || '')
-  switch (type) {
+  switch (String(payload.notification_type || '')) {
     case 'like': return 'liked your post'
     case 'comment': return 'commented on your post'
     case 'comment_like': return 'liked your comment'
@@ -120,8 +115,6 @@ export default function YomyEventEngine() {
     if (event.recipient_id !== user?.id) return
     if (recentIdsRef.current.has(event.id)) return
 
-    // MESSAGE_NOTIFICATION is a legacy mirror of MESSAGE_CREATED. Only the canonical
-    // event presents the message so the user can never get two alerts for one message.
     if (event.event_type === 'MESSAGE_NOTIFICATION') {
       remember(event)
       return
@@ -131,6 +124,8 @@ export default function YomyEventEngine() {
     const actorName = actor?.username || 'Yomy'
 
     if (event.event_type === 'MESSAGE_CREATED') {
+      const { error } = await supabase.rpc('mark_message_delivered', { p_message_id: event.source_id })
+      if (error) console.warn('Yomy message delivery reconciliation failed:', error.message)
       remember(event)
       if (isMessageOpen(actor?.username || null)) return
       showYomyLocalNotification(actorName, messageBody(event.payload), 'message')
@@ -205,7 +200,6 @@ export default function YomyEventEngine() {
     recentIdsRef.current = readRecent()
     cursorRef.current = readCursor()
 
-    // Establish a baseline on a fresh install so historical alerts are not replayed.
     void reconcile(Boolean(cursorRef.current))
 
     const onOnline = () => void reconcile(true)
