@@ -46,12 +46,13 @@ export async function sendPushEvent(input: {
   data: Record<string, string>
 }): Promise<void> {
   try {
+    const callKind = input.data.call_kind || input.data.kind || 'voice'
     const safeData = input.type === 'call' && input.data.call_id
       ? {
           ...input.data,
           event_type: 'CALL_INCOMING',
           call_id: input.data.call_id,
-          call_kind: input.data.call_kind || 'voice',
+          call_kind: callKind,
           push_title: input.title,
           push_body: input.body,
           url: `/messages?call=${encodeURIComponent(input.data.call_id)}`,
