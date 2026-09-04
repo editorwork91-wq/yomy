@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
 import YomyEventEngine from '@/components/notifications/YomyEventEngine'
+import YomyReminderEngine from '@/components/notifications/YomyReminderEngine'
 import PushManager from '@/components/notifications/PushManager'
 import CallProvider from '@/components/calls/CallProvider'
 import Login from '@/pages/auth/Login'
@@ -57,6 +58,7 @@ export function App() {
       <CallProvider>
         <AppRoutes />
         <YomyEventEngine />
+        <YomyReminderEngine />
         <PushManager />
       </CallProvider>
     </BrowserRouter>
