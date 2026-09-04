@@ -1,7 +1,12 @@
 package com.yomy.app;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
@@ -26,6 +31,7 @@ public class MainActivity extends BridgeActivity {
         requestYomyPermissions();
         installMediaPermissionBridge();
         installAudioRouteBridge();
+        installLocalNotificationBridge();
     }
 
     private void requestYomyPermissions() {
@@ -81,6 +87,56 @@ public class MainActivity extends BridgeActivity {
 
     private final class AudioRouteBridge {
         @JavascriptInterface public void setSpeaker(boolean enabled) { runOnUiThread(() -> setSpeakerRoute(enabled)); }
+    }
+
+    private void installLocalNotificationBridge() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        getBridge().getWebView().addJavascriptInterface(new LocalNotificationBridge(), "YomyNotification");
+    }
+
+    private final class LocalNotificationBridge {
+        @JavascriptInterface public void show(String title, String body, String kind) {
+            runOnUiThread(() -> showLocalNotification(title, body, kind));
+        }
+    }
+
+    private void showLocalNotification(String title, String body, String kind) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        String channelId = "call".equals(kind) ? "yomy_calls" : "yomy_default";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            String channelName = "call".equals(kind) ? "Yomy Calls" : "Yomy";
+            NotificationChannel channel = new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH);
+            channel.setDescription("Yomy " + ("call".equals(kind) ? "incoming call" : "message") + " notifications");
+            channel.enableVibration(true);
+            manager.createNotificationChannel(channel);
+        }
+
+        Intent intent = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int requestCode = (int) (System.currentTimeMillis() & 0x7fffffff);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, requestCode, intent, flags);
+
+        String safeTitle = title == null || title.trim().isEmpty() ? "Yomy" : title.trim();
+        String safeBody = body == null ? "" : body.trim();
+        if (safeTitle.length() > 80) safeTitle = safeTitle.substring(0, 80);
+        if (safeBody.length() > 240) safeBody = safeBody.substring(0, 240);
+
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Notification.Builder(this, channelId)
+                : new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH);
+        builder.setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(safeTitle)
+                .setContentText(safeBody)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setShowWhen(true)
+                .setCategory("call".equals(kind) ? Notification.CATEGORY_CALL : Notification.CATEGORY_MESSAGE)
+                .setVisibility(Notification.VISIBILITY_PRIVATE);
+
+        manager.notify(requestCode, builder.build());
     }
 
     private void setSpeakerRoute(boolean enabled) {
