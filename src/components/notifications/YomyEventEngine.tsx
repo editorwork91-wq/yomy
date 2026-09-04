@@ -100,8 +100,7 @@ export default function YomyEventEngine() {
 
   const isMessageOpen = useCallback((username: string | null) => {
     if (!username) return false
-    const match = location.pathname.match(/^\/messages\/([^/]+)$/)
-    return match?.[1] === username
+    return location.pathname.match(/^\/messages\/([^/]+)$/)?.[1] === username
   }, [location.pathname])
 
   const flushBucket = useCallback(async (key: string) => {
@@ -129,6 +128,7 @@ export default function YomyEventEngine() {
     if (event.recipient_id !== user?.id || recentIdsRef.current.has(event.id)) return
     if (event.event_type === 'MESSAGE_NOTIFICATION') { remember(event); return }
     remember(event)
+
     const actor = await profileFor(event.actor_id)
     const actorName = actor?.username || 'Yomy'
 
@@ -139,21 +139,21 @@ export default function YomyEventEngine() {
       showYomyLocalNotification(actorName, messageBody(event.payload), 'message', event.deep_link || '/messages')
       return
     }
+
     if (event.event_type === 'CALL_INCOMING') {
-      const kind = String(event.payload.kind || 'voice')
-      showYomyLocalNotification(actorName, kind === 'video' ? 'Incoming video call' : 'Incoming voice call', 'call', event.deep_link || '/messages')
+      // CallProvider owns the foreground incoming-call surface. Background/closed
+      // delivery is handled by the native/web push transport using this event's link.
       return
     }
+
     if (event.event_type === 'REMINDER_FIRED') {
-      const title = String(event.payload.title || 'Yomy reminder')
-      const body = String(event.payload.body || 'Reminder')
-      showYomyLocalNotification(title, body, 'message', event.deep_link || '/notifications')
+      showYomyLocalNotification(String(event.payload.title || 'Yomy reminder'), String(event.payload.body || 'Reminder'), 'message', event.deep_link || '/notifications')
       return
     }
+
     if (isAggregatable(event.event_type)) { await queueActivity(event, actorName); return }
     if (event.source_table === 'notifications') {
       showYomyLocalNotification(actorName, activityCopy(event.payload), 'message', event.deep_link || '/notifications')
-      return
     }
   }, [isMessageOpen, profileFor, queueActivity, remember, user?.id])
 
