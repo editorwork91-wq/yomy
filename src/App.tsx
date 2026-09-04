@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
 import RealtimeInbox from '@/components/realtime/RealtimeInbox'
 import PushManager from '@/components/notifications/PushManager'
+import CallNotificationBridge from '@/components/notifications/CallNotificationBridge'
 import CallProvider from '@/components/calls/CallProvider'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
@@ -57,6 +58,7 @@ export function App() {
       <CallProvider>
         <AppRoutes />
         <RealtimeInbox />
+        <CallNotificationBridge />
         <PushManager />
       </CallProvider>
     </BrowserRouter>
