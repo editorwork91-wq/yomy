@@ -47,7 +47,15 @@ export async function sendPushEvent(input: {
 }): Promise<void> {
   try {
     const safeData = input.type === 'call' && input.data.call_id
-      ? { ...input.data, url: `/messages?call=${encodeURIComponent(input.data.call_id)}` }
+      ? {
+          ...input.data,
+          event_type: 'CALL_INCOMING',
+          call_id: input.data.call_id,
+          call_kind: input.data.call_kind || 'voice',
+          push_title: input.title,
+          push_body: input.body,
+          url: `/messages?call=${encodeURIComponent(input.data.call_id)}`,
+        }
       : input.data
     const requestBody = { ...input, data: safeData }
     const { data, error } = await supabase.functions.invoke('send-push', { body: requestBody })
