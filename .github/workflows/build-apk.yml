@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "feat/android-incoming-call-ringing" ]
 
 jobs:
   build:
@@ -32,6 +32,12 @@ jobs:
       - name: Save repository native Android configuration
         run: |
           cp android/app/src/main/java/com/yomy/app/MainActivity.java /tmp/YomyMainActivity.java
+          mkdir -p /tmp/YomyNativeJava
+          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java; do
+            if [ -f "android/app/src/main/java/com/yomy/app/$file" ]; then
+              cp "android/app/src/main/java/com/yomy/app/$file" "/tmp/YomyNativeJava/$file"
+            fi
+          done
           if [ -f android/app/google-services.json ]; then
             cp android/app/google-services.json /tmp/YomyGoogleServices.json
           fi
@@ -74,6 +80,11 @@ jobs:
           if [ -d /tmp/YomyLauncherResources ]; then
             cp -a /tmp/YomyLauncherResources/. android/app/src/main/res/
           fi
+          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java; do
+            if [ -f "/tmp/YomyNativeJava/$file" ]; then
+              cp "/tmp/YomyNativeJava/$file" "android/app/src/main/java/com/yomy/app/$file"
+            fi
+          done
           python3 - <<'PY'
           from pathlib import Path
           manifest = Path('android/app/src/main/AndroidManifest.xml')
@@ -81,16 +92,13 @@ jobs:
           if 'xmlns:tools=' in s:
               s = s.replace(' xmlns:tools="http://schemas.android.com/tools"', '')
           marker = '    <uses-permission android:name="android.permission.INTERNET" />'
-          additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />'''
-          if 'android.permission.CAMERA' not in s:
+          additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />'''
+          if 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' not in s:
               s = s.replace(marker, marker + additions)
-          elif 'android.permission.MODIFY_AUDIO_SETTINGS' not in s:
-              s = s.replace('    <uses-permission android:name="android.permission.RECORD_AUDIO" />', '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />')
-          if 'android.permission.VIBRATE' not in s:
-              s = s.replace('</manifest>', '    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n</manifest>')
-          # Keep Firebase's normal Android startup provider. It initializes the
-          # FirebaseApp before Capacitor native push registration can run.
           s = s.replace('''\n        <provider\n            android:name="com.google.firebase.provider.FirebaseInitProvider"\n            android:authorities="${applicationId}.firebaseinitprovider"\n            tools:node="remove" />\n''', '\n')
+          services = '''\n        <service\n            android:name=".CallNotificationService"\n            android:exported="false"\n            android:stopWithTask="false"\n            android:foregroundServiceType="specialUse">\n            <property\n                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n                android:value="time-sensitive incoming call ringing and user call action handling" />\n        </service>\n\n        <service\n            android:name=".YomyFirebaseMessagingService"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="com.google.firebase.MESSAGING_EVENT" />\n            </intent-filter>\n        </service>\n\n        <receiver\n            android:name=".CallActionReceiver"\n            android:exported="false" />\n'''
+          if '.CallNotificationService' not in s:
+              s = s.replace('    </application>', services + '    </application>')
           manifest.write_text(s)
           Path('android/app/src/main/java/com/yomy/app/MainActivity.java').write_text(Path('/tmp/YomyMainActivity.java').read_text())
           PY
