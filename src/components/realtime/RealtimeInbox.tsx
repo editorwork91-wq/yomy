@@ -2,11 +2,13 @@ import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { showYomyLocalNotification } from '@/lib/localNotification'
 
 export default function RealtimeInbox() {
   const { user } = useAuth()
   const location = useLocation()
   const soundRef = useRef<AudioContext | null>(null)
+  const notifiedMessageIds = useRef(new Set<string>())
 
   const ping = () => {
     try {
@@ -30,9 +32,6 @@ export default function RealtimeInbox() {
   useEffect(() => {
     if (!user) return
 
-    // When Yomy comes online, reconcile any messages that arrived while the
-    // app was not connected. This makes delivery state recoverable after a
-    // reconnect instead of depending on one Realtime event.
     void supabase.rpc('mark_all_messages_delivered').then(({ error }) => {
       if (error) console.error('queued message delivery reconciliation failed:', error.message)
     })
@@ -43,14 +42,40 @@ export default function RealtimeInbox() {
       .on('postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
         async ({ new: rawMessage }) => {
-          const message = rawMessage as { id: string; sender_id: string }
-          // A realtime INSERT means the recipient's connected Yomy client
-          // received the message. Persist that delivery receipt.
+          const message = rawMessage as {
+            id: string
+            sender_id: string
+            content?: string | null
+            media_type?: '' | 'image' | 'video' | 'audio' | null
+            deleted_for_everyone?: boolean
+          }
+          if (message.deleted_for_everyone) return
+
           const { error: deliveryError } = await supabase.rpc('mark_message_delivered', { p_message_id: message.id })
           if (deliveryError) console.error('message delivery receipt failed:', deliveryError.message)
 
           const { data: sender } = await supabase.from('profiles').select('username').eq('id', message.sender_id).maybeSingle()
-          if (sender?.username !== currentChat) ping()
+          const senderName = sender?.username || 'Yomy'
+          const inCurrentChat = sender?.username === currentChat
+          if (inCurrentChat) return
+
+          ping()
+          if (!notifiedMessageIds.current.has(message.id)) {
+            notifiedMessageIds.current.add(message.id)
+            if (notifiedMessageIds.current.size > 500) {
+              const oldest = notifiedMessageIds.current.values().next().value
+              if (oldest) notifiedMessageIds.current.delete(oldest)
+            }
+
+            const body = message.media_type === 'audio'
+              ? '🎙️ Voice message'
+              : message.media_type === 'video'
+                ? '🎬 Video message'
+                : message.media_type === 'image'
+                  ? '📷 Photo'
+                  : (message.content?.trim() || 'New message')
+            showYomyLocalNotification(senderName, body, 'message')
+          }
         }
       )
       .subscribe()
