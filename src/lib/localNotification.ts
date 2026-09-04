@@ -4,7 +4,12 @@ type NativeNotificationBridge = {
   show: (title: string, body: string, kind?: 'message' | 'call') => void
 }
 
-export function showYomyLocalNotification(title: string, body: string, kind: 'message' | 'call' = 'message'): boolean {
+export function showYomyLocalNotification(
+  title: string,
+  body: string,
+  kind: 'message' | 'call' = 'message',
+  url?: string,
+): boolean {
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false
 
   try {
@@ -25,6 +30,7 @@ export function showYomyLocalNotification(title: string, body: string, kind: 'me
       notification.onclick = () => {
         window.focus()
         notification.close()
+        if (url) window.location.assign(url)
       }
       return true
     }
