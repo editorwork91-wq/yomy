@@ -2,9 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
-import RealtimeInbox from '@/components/realtime/RealtimeInbox'
+import YomyEventEngine from '@/components/notifications/YomyEventEngine'
 import PushManager from '@/components/notifications/PushManager'
-import CallNotificationBridge from '@/components/notifications/CallNotificationBridge'
 import CallProvider from '@/components/calls/CallProvider'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
@@ -57,8 +56,7 @@ export function App() {
     <BrowserRouter>
       <CallProvider>
         <AppRoutes />
-        <RealtimeInbox />
-        <CallNotificationBridge />
+        <YomyEventEngine />
         <PushManager />
       </CallProvider>
     </BrowserRouter>
