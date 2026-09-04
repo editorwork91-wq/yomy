@@ -19,33 +19,27 @@ type YomyEvent = {
 }
 
 type Profile = { id: string; username: string | null }
+type ActivityBucket = { count: number; actorNames: string[]; timer: number }
 
 const CURSOR_KEY = 'yomy:event-engine:last-created-at'
 const RECENT_KEY = 'yomy:event-engine:recent-ids'
-const MAX_RECENT = 300
+const MAX_RECENT = 500
+const AGGREGATE_WINDOW_MS = 3000
 
 function readCursor(): string | null {
   try { return localStorage.getItem(CURSOR_KEY) } catch { return null }
 }
-
-function writeCursor(value: string) {
-  try { localStorage.setItem(CURSOR_KEY, value) } catch { /* non-fatal */ }
-}
-
+function writeCursor(value: string) { try { localStorage.setItem(CURSOR_KEY, value) } catch {} }
 function readRecent(): Set<string> {
   try {
     const raw = localStorage.getItem(RECENT_KEY)
     const parsed = raw ? JSON.parse(raw) : []
     return new Set(Array.isArray(parsed) ? parsed.filter(value => typeof value === 'string').slice(-MAX_RECENT) : [])
-  } catch {
-    return new Set()
-  }
+  } catch { return new Set() }
 }
-
 function persistRecent(ids: Set<string>) {
-  try { localStorage.setItem(RECENT_KEY, JSON.stringify(Array.from(ids).slice(-MAX_RECENT))) } catch { /* non-fatal */ }
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(Array.from(ids).slice(-MAX_RECENT))) } catch {}
 }
-
 function messageBody(payload: Record<string, unknown>) {
   const mediaType = String(payload.media_type || '')
   if (mediaType === 'audio') return '🎙️ Voice message'
@@ -53,7 +47,6 @@ function messageBody(payload: Record<string, unknown>) {
   if (mediaType === 'image') return '📷 Photo'
   return 'New message'
 }
-
 function activityCopy(payload: Record<string, unknown>) {
   switch (String(payload.notification_type || '')) {
     case 'like': return 'liked your post'
@@ -68,6 +61,19 @@ function activityCopy(payload: Record<string, unknown>) {
     default: return 'You have new activity'
   }
 }
+function isAggregatable(type: string) {
+  return type === 'LIKE_CREATED' || type === 'COMMENT_LIKE_CREATED' || type === 'POST_ACTIVITY' || type === 'STORY_CREATED'
+}
+function aggregationKey(event: YomyEvent) {
+  return `${event.event_type}:${event.entity_id || event.source_id}`
+}
+function activitySummary(type: string, count: number, names: string[]) {
+  const primary = names[0] || 'Someone'
+  if (count <= 1) return `${primary} ${type === 'POST_ACTIVITY' ? 'published a new post' : 'interacted with you'}`
+  const extra = count - 1
+  const noun = type === 'LIKE_CREATED' ? 'likes' : type === 'COMMENT_LIKE_CREATED' ? 'comment likes' : 'new activities'
+  return `${primary}${extra > 0 ? ` + ${extra}` : ''} ${noun}`
+}
 
 export default function YomyEventEngine() {
   const { user } = useAuth()
@@ -76,16 +82,15 @@ export default function YomyEventEngine() {
   const senderCacheRef = useRef<Map<string, Profile>>(new Map())
   const cursorRef = useRef<string | null>(null)
   const processingRef = useRef(false)
+  const bucketsRef = useRef<Map<string, ActivityBucket>>(new Map())
+  const timersRef = useRef<Set<number>>(new Set())
 
   const remember = useCallback((event: YomyEvent) => {
     recentIdsRef.current.add(event.id)
-    if (recentIdsRef.current.size > MAX_RECENT) {
-      const iterator = recentIdsRef.current.values()
-      while (recentIdsRef.current.size > MAX_RECENT) {
-        const oldest = iterator.next().value as string | undefined
-        if (!oldest) break
-        recentIdsRef.current.delete(oldest)
-      }
+    while (recentIdsRef.current.size > MAX_RECENT) {
+      const oldest = recentIdsRef.current.values().next().value as string | undefined
+      if (!oldest) break
+      recentIdsRef.current.delete(oldest)
     }
     persistRecent(recentIdsRef.current)
     if (!cursorRef.current || event.created_at > cursorRef.current) {
@@ -111,117 +116,107 @@ export default function YomyEventEngine() {
     return match?.[1] === username
   }, [location.pathname])
 
-  const present = useCallback(async (event: YomyEvent) => {
-    if (event.recipient_id !== user?.id) return
-    if (recentIdsRef.current.has(event.id)) return
+  const flushBucket = useCallback(async (key: string) => {
+    const bucket = bucketsRef.current.get(key)
+    if (!bucket) return
+    bucketsRef.current.delete(key)
+    const [eventType] = key.split(':', 1)
+    const title = bucket.actorNames[0] || 'Yomy'
+    const body = activitySummary(eventType, bucket.count, bucket.actorNames)
+    showYomyLocalNotification(title, body, 'message', '/notifications')
+  }, [])
 
-    if (event.event_type === 'MESSAGE_NOTIFICATION') {
-      remember(event)
+  const queueActivity = useCallback(async (event: YomyEvent, actorName: string) => {
+    const key = aggregationKey(event)
+    const existing = bucketsRef.current.get(key)
+    if (existing) {
+      existing.count += 1
+      if (actorName && !existing.actorNames.includes(actorName) && existing.actorNames.length < 4) existing.actorNames.push(actorName)
       return
     }
+    const timer = window.setTimeout(() => {
+      timersRef.current.delete(timer)
+      void flushBucket(key)
+    }, AGGREGATE_WINDOW_MS)
+    timersRef.current.add(timer)
+    bucketsRef.current.set(key, { count: 1, actorNames: actorName ? [actorName] : [], timer })
+  }, [flushBucket])
+
+  const present = useCallback(async (event: YomyEvent) => {
+    if (event.recipient_id !== user?.id || recentIdsRef.current.has(event.id)) return
+    if (event.event_type === 'MESSAGE_NOTIFICATION') { remember(event); return }
 
     const actor = await profileFor(event.actor_id)
     const actorName = actor?.username || 'Yomy'
+    remember(event)
 
     if (event.event_type === 'MESSAGE_CREATED') {
       const { error } = await supabase.rpc('mark_message_delivered', { p_message_id: event.source_id })
       if (error) console.warn('Yomy message delivery reconciliation failed:', error.message)
-      remember(event)
       if (isMessageOpen(actor?.username || null)) return
-      showYomyLocalNotification(actorName, messageBody(event.payload), 'message')
+      showYomyLocalNotification(actorName, messageBody(event.payload), 'message', event.deep_link || '/messages')
       return
     }
 
     if (event.event_type === 'CALL_INCOMING') {
-      remember(event)
       const kind = String(event.payload.kind || 'voice')
-      showYomyLocalNotification(actorName, kind === 'video' ? 'Incoming video call' : 'Incoming voice call', 'call')
+      showYomyLocalNotification(actorName, kind === 'video' ? 'Incoming video call' : 'Incoming voice call', 'call', event.deep_link || '/messages')
+      return
+    }
+
+    if (isAggregatable(event.event_type)) {
+      await queueActivity(event, actorName)
       return
     }
 
     if (event.source_table === 'notifications') {
-      remember(event)
-      showYomyLocalNotification(actorName, activityCopy(event.payload), 'message')
+      showYomyLocalNotification(actorName, activityCopy(event.payload), 'message', event.deep_link || '/notifications')
       return
     }
-
-    remember(event)
-  }, [isMessageOpen, profileFor, remember, user?.id])
+  }, [isMessageOpen, profileFor, queueActivity, remember, user?.id])
 
   const reconcile = useCallback(async (presentNew: boolean) => {
     if (!user || processingRef.current) return
     processingRef.current = true
     try {
-      const storedRecent = readRecent()
-      storedRecent.forEach(id => recentIdsRef.current.add(id))
+      readRecent().forEach(id => recentIdsRef.current.add(id))
       cursorRef.current = cursorRef.current || readCursor()
-
-      let query = supabase
-        .from('notification_events')
+      let query = supabase.from('notification_events')
         .select('id,recipient_id,actor_id,event_type,priority,source_table,source_id,entity_id,deep_link,payload,created_at')
-        .eq('recipient_id', user.id)
-        .order('created_at', { ascending: true })
-        .limit(200)
-
+        .eq('recipient_id', user.id).order('created_at', { ascending: true }).limit(200)
       if (cursorRef.current) query = query.gt('created_at', cursorRef.current)
-
       const { data, error } = await query
-      if (error) {
-        console.warn('Yomy event reconciliation failed:', error.message)
-        return
-      }
-
+      if (error) { console.warn('Yomy event reconciliation failed:', error.message); return }
       const events = (data || []) as YomyEvent[]
       if (!events.length && !cursorRef.current) {
-        const { data: latest } = await supabase
-          .from('notification_events')
-          .select('id,created_at')
-          .eq('recipient_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-        if (latest?.[0]?.created_at) {
-          cursorRef.current = latest[0].created_at
-          writeCursor(latest[0].created_at)
-        }
+        const { data: latest } = await supabase.from('notification_events').select('id,created_at').eq('recipient_id', user.id).order('created_at', { ascending: false }).limit(1)
+        if (latest?.[0]?.created_at) { cursorRef.current = latest[0].created_at; writeCursor(latest[0].created_at) }
         return
       }
-
       for (const event of events) {
-        if (presentNew) await present(event)
-        else remember(event)
+        if (presentNew) await present(event); else remember(event)
       }
-    } finally {
-      processingRef.current = false
-    }
+    } finally { processingRef.current = false }
   }, [present, remember, user])
 
   useEffect(() => {
     if (!user) return
     recentIdsRef.current = readRecent()
     cursorRef.current = readCursor()
-
     void reconcile(Boolean(cursorRef.current))
-
     const onOnline = () => void reconcile(true)
     const onVisibility = () => { if (document.visibilityState === 'visible') void reconcile(true) }
     window.addEventListener('online', onOnline)
     document.addEventListener('visibilitychange', onVisibility)
-
-    const channel = supabase
-      .channel(`yomy-event-engine-${user.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notification_events',
-        filter: `recipient_id=eq.${user.id}`,
-      }, payload => { void present(payload.new as YomyEvent) })
-      .subscribe(status => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') void reconcile(true)
-      })
-
+    const channel = supabase.channel(`yomy-event-engine-${user.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notification_events', filter: `recipient_id=eq.${user.id}` }, payload => { void present(payload.new as YomyEvent) })
+      .subscribe(status => { if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') void reconcile(true) })
     return () => {
       window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisibility)
+      timersRef.current.forEach(timer => window.clearTimeout(timer))
+      timersRef.current.clear()
+      bucketsRef.current.clear()
       void supabase.removeChannel(channel)
     }
   }, [present, reconcile, user])
