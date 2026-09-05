@@ -109,8 +109,23 @@ jobs:
               else:
                   raise SystemExit('Unable to locate Capacitor dependency anchor in android/app/build.gradle')
               build.write_text(bs)
+          main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
+          ms = main.read_text()
+          if 'configureIncomingCallWindow();' not in ms:
+              ms = ms.replace('        super.onCreate(savedInstanceState);\n', '        super.onCreate(savedInstanceState);\n        configureIncomingCallWindow();\n', 1)
+          if 'private void configureIncomingCallWindow()' not in ms:
+              anchor = '    private void captureCallAction(Intent intent) {'
+              method = '''    private void configureIncomingCallWindow() {\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {\n            setShowWhenLocked(true);\n            setTurnScreenOn(true);\n        }\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {\n            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n        }\n    }\n\n'''
+              if anchor in ms:
+                  ms = ms.replace(anchor, method + anchor, 1)
+              else:
+                  raise SystemExit('Unable to locate MainActivity call-action anchor')
+          ms = ms.replace(\
+              'window.location.assign(" + safeDestination + ");',\
+              'window.history.pushState({}, "", ' + 'safeDestination' + '); window.dispatchEvent(new PopStateEvent("popstate"));'\
+          )
+          main.write_text(ms)
           manifest.write_text(s)
-          Path('android/app/src/main/java/com/yomy/app/MainActivity.java').write_text(Path('/tmp/YomyMainActivity.java').read_text())
           PY
 
       - name: Apply official Yomy launcher icon
