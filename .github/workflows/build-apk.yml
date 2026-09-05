@@ -87,6 +87,7 @@ jobs:
           done
           python3 - <<'PY'
           from pathlib import Path
+
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
           if 'xmlns:tools=' in s:
@@ -95,10 +96,10 @@ jobs:
           additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />'''
           if 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' not in s:
               s = s.replace(marker, marker + additions)
-          s = s.replace('''\n        <provider\n            android:name="com.google.firebase.provider.FirebaseInitProvider"\n            android:authorities="${applicationId}.firebaseinitprovider"\n            tools:node="remove" />\n''', '\n')
           services = '''\n        <service\n            android:name=".CallNotificationService"\n            android:exported="false"\n            android:stopWithTask="false"\n            android:foregroundServiceType="specialUse">\n            <property\n                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n                android:value="time-sensitive incoming call ringing and user call action handling" />\n        </service>\n\n        <service\n            android:name=".YomyFirebaseMessagingService"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="com.google.firebase.MESSAGING_EVENT" />\n            </intent-filter>\n        </service>\n\n        <receiver\n            android:name=".CallActionReceiver"\n            android:exported="false" />\n'''
           if '.CallNotificationService' not in s:
               s = s.replace('    </application>', services + '    </application>')
+
           build = Path('android/app/build.gradle')
           bs = build.read_text()
           if 'firebase-messaging' not in bs:
@@ -109,20 +110,17 @@ jobs:
               else:
                   raise SystemExit('Unable to locate Capacitor dependency anchor in android/app/build.gradle')
               build.write_text(bs)
+
           main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
           ms = main.read_text()
-          if 'configureIncomingCallWindow();' not in ms:
-              ms = ms.replace('        super.onCreate(savedInstanceState);\n', '        super.onCreate(savedInstanceState);\n        configureIncomingCallWindow();\n', 1)
-          if 'private void configureIncomingCallWindow()' not in ms:
-              anchor = '    private void captureCallAction(Intent intent) {'
-              method = '''    private void configureIncomingCallWindow() {\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {\n            setShowWhenLocked(true);\n            setTurnScreenOn(true);\n        }\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {\n            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);\n        }\n    }\n\n'''
-              if anchor in ms:
-                  ms = ms.replace(anchor, method + anchor, 1)
-              else:
-                  raise SystemExit('Unable to locate MainActivity call-action anchor')
+
+          # The full-screen behavior is owned by the native call notification
+          # service. Do not mutate MainActivity just to make CI survive source
+          # formatting differences between Capacitor generations.
           old_js = 'window.location.assign(" + safeDestination + ");'
           new_js = 'window.history.pushState({}, \'\', " + safeDestination + "); window.dispatchEvent(new PopStateEvent(\'popstate\'));'
-          ms = ms.replace(old_js, new_js)
+          if old_js in ms:
+              ms = ms.replace(old_js, new_js, 1)
           main.write_text(ms)
           manifest.write_text(s)
           PY
