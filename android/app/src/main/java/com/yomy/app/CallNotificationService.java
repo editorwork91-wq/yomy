@@ -4,6 +4,7 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Person;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
@@ -62,7 +63,7 @@ public class CallNotificationService extends Service {
 
         activeCallId = intent.getStringExtra(EXTRA_CALL_ID);
         String title = safe(intent.getStringExtra(EXTRA_TITLE), "Yomy");
-        String body = safe(intent.getStringExtra(EXTRA_BODY), "Incoming call");
+        String body = safe(intent.getStringExtra(EXTRA_BODY), "Incoming voice call");
         String kind = safe(intent.getStringExtra(EXTRA_KIND), "voice");
 
         handler.removeCallbacks(timeout);
@@ -87,15 +88,17 @@ public class CallNotificationService extends Service {
     }
 
     private Notification buildNotification(String title, String body, String kind, String callId) {
-        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? new Notification.Builder(this, CHANNEL_ID)
-                : new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH);
-
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
 
         PendingIntent open = PendingIntent.getBroadcast(this, 41002, actionIntent(CallActionReceiver.ACTION_OPEN, callId), flags);
         PendingIntent decline = PendingIntent.getBroadcast(this, 41003, actionIntent(CallActionReceiver.ACTION_DECLINE, callId), flags);
+        PendingIntent answer = PendingIntent.getBroadcast(this, 41004, actionIntent(CallActionReceiver.ACTION_ACCEPT, callId), flags);
+        PendingIntent fullScreen = PendingIntent.getBroadcast(this, 41005, actionIntent(CallActionReceiver.ACTION_OPEN, callId), flags);
+
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Notification.Builder(this, CHANNEL_ID)
+                : new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH);
 
         builder.setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
@@ -106,13 +109,33 @@ public class CallNotificationService extends Service {
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(true)
-                .setContentIntent(open)
-                .addAction(new Notification.Action.Builder(null, "فتح المكالمة", open).build())
-                .addAction(new Notification.Action.Builder(null, "إلغاء", decline).build());
+                .setContentIntent(open);
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Person caller = new Person.Builder()
+                    .setName(title)
+                    .setImportant(true)
+                    .build();
+            Notification.CallStyle callStyle = Notification.CallStyle.forIncomingCall(caller, decline, answer);
+            builder.setStyle(callStyle);
+            if ("video".equalsIgnoreCase(kind)) builder.addExtras(videoExtras());
+        } else {
+            builder.addAction(new Notification.Action.Builder(null, "رفض", decline).build());
+            builder.addAction(new Notification.Action.Builder(null, "رد", answer).build());
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try { builder.setFullScreenIntent(fullScreen, true); } catch (Exception ignored) {}
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) builder.setTimeoutAfter(RING_DURATION_MS);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
         return builder.build();
+    }
+
+    private android.os.Bundle videoExtras() {
+        android.os.Bundle extras = new android.os.Bundle();
+        extras.putBoolean(Notification.EXTRA_CALL_IS_VIDEO, true);
+        return extras;
     }
 
     private Intent actionIntent(String action, String callId) {
