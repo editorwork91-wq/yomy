@@ -91,10 +91,15 @@ public class CallNotificationService extends Service {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
 
-        PendingIntent open = PendingIntent.getBroadcast(this, 41002, actionIntent(CallActionReceiver.ACTION_OPEN, callId), flags);
+        PendingIntent openAction = PendingIntent.getBroadcast(this, 41002, actionIntent(CallActionReceiver.ACTION_OPEN, callId), flags);
         PendingIntent decline = PendingIntent.getBroadcast(this, 41003, actionIntent(CallActionReceiver.ACTION_DECLINE, callId), flags);
         PendingIntent answer = PendingIntent.getBroadcast(this, 41004, actionIntent(CallActionReceiver.ACTION_ACCEPT, callId), flags);
-        PendingIntent fullScreen = PendingIntent.getBroadcast(this, 41005, actionIntent(CallActionReceiver.ACTION_OPEN, callId), flags);
+
+        Intent openActivityIntent = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(CallActionReceiver.EXTRA_ACTION, "open")
+                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
+        PendingIntent fullScreen = PendingIntent.getActivity(this, 41005, openActivityIntent, flags);
 
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(this, CHANNEL_ID)
@@ -109,15 +114,14 @@ public class CallNotificationService extends Service {
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(true)
-                .setContentIntent(open);
+                .setContentIntent(openAction);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Person caller = new Person.Builder()
                     .setName(title)
                     .setImportant(true)
                     .build();
-            Notification.CallStyle callStyle = Notification.CallStyle.forIncomingCall(caller, decline, answer);
-            builder.setStyle(callStyle);
+            builder.setStyle(Notification.CallStyle.forIncomingCall(caller, decline, answer));
             if ("video".equalsIgnoreCase(kind)) builder.addExtras(videoExtras());
         } else {
             builder.addAction(new Notification.Action.Builder(null, "رفض", decline).build());
