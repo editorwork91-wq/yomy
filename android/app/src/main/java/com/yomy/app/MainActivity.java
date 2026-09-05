@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
     private static final int YOMY_PERMISSIONS = 7001;
     private static final int YOMY_WEB_PERMISSION_REQUEST = 7002;
     private static final String EXTRA_DEEP_LINK = "yomy_deep_link";
+    private static final long CALL_ACTION_RETRY_WINDOW_MS = 10_000L;
     private PermissionRequest pendingWebPermissionRequest;
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
@@ -47,6 +48,11 @@ public class MainActivity extends BridgeActivity {
         captureDeepLink(intent);
     }
 
+    @Override protected void onResume() {
+        super.onResume();
+        dispatchPendingCallActionWithRetry();
+    }
+
     private void captureCallAction(Intent intent) {
         if (intent == null) return;
         String action = intent.getStringExtra(CallActionReceiver.EXTRA_ACTION);
@@ -54,20 +60,36 @@ public class MainActivity extends BridgeActivity {
         if (action == null || callId == null || callId.trim().isEmpty()) return;
         pendingCallAction = action;
         pendingCallId = callId;
-        dispatchCallActionToWeb(action, callId);
+        dispatchPendingCallActionWithRetry();
     }
 
-    private void dispatchCallActionToWeb(String action, String callId) {
-        if (getBridge() == null || getBridge().getWebView() == null) return;
+    private void dispatchPendingCallActionWithRetry() {
+        final String action = pendingCallAction;
+        final String callId = pendingCallId;
+        if (action == null || callId == null || callId.trim().isEmpty()) return;
+        dispatchCallActionToWeb(action, callId, CALL_ACTION_RETRY_WINDOW_MS);
+    }
+
+    private void dispatchCallActionToWeb(String action, String callId, long retryWindowMs) {
+        final long deadline = System.currentTimeMillis() + retryWindowMs;
         final String safeAction = JSONObject.quote(action);
         final String safeCallId = JSONObject.quote(callId);
-        getBridge().getWebView().postDelayed(() -> {
-            if (getBridge() == null || getBridge().getWebView() == null) return;
-            getBridge().getWebView().evaluateJavascript(
-                    "window.dispatchEvent(new CustomEvent('yomy-call-action',{detail:{action:" + safeAction + ",callId:" + safeCallId + "}}));",
-                    null
-            );
-        }, 350);
+        Runnable dispatch = new Runnable() {
+            @Override public void run() {
+                if (getBridge() == null || getBridge().getWebView() == null) {
+                    if (System.currentTimeMillis() < deadline) new android.os.Handler(getMainLooper()).postDelayed(this, 150L);
+                    return;
+                }
+                getBridge().getWebView().evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('yomy-call-action',{detail:{action:" + safeAction + ",callId:" + safeCallId + "}}));",
+                        null
+                );
+                if (System.currentTimeMillis() < deadline && pendingCallAction != null && pendingCallId != null) {
+                    new android.os.Handler(getMainLooper()).postDelayed(this, 500L);
+                }
+            }
+        };
+        new android.os.Handler(getMainLooper()).postDelayed(dispatch, 150L);
     }
 
     private void captureDeepLink(Intent intent) {
@@ -83,7 +105,7 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().postDelayed(() -> {
             if (getBridge() == null || getBridge().getWebView() == null) return;
             getBridge().getWebView().evaluateJavascript(
-                    "window.location.assign(" + safeDestination + ");",
+                    "window.history.pushState({},''," + safeDestination + "); window.dispatchEvent(new PopStateEvent('popstate'));",
                     null
             );
         }, 350);
@@ -150,26 +172,11 @@ public class MainActivity extends BridgeActivity {
     }
 
     private final class LocalNotificationBridge {
-        @JavascriptInterface public void show(String title, String body, String kind, String url) {
-            runOnUiThread(() -> showLocalNotification(title, body, kind, url));
-        }
-        @JavascriptInterface public void showCall(String title, String body, String callId, String kind) {
-            runOnUiThread(() -> CallNotificationService.start(MainActivity.this, callId, title, body, kind));
-        }
-        @JavascriptInterface public void stopCall() {
-            runOnUiThread(() -> {
-                Intent intent = new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP);
-                MainActivity.this.startService(intent);
-            });
-        }
-        @JavascriptInterface public String getPendingCallAction() {
-            if (pendingCallAction == null || pendingCallId == null) return "";
-            return pendingCallAction + "|" + pendingCallId;
-        }
-        @JavascriptInterface public void clearPendingCallAction() {
-            pendingCallAction = null;
-            pendingCallId = null;
-        }
+        @JavascriptInterface public void show(String title, String body, String kind, String url) { runOnUiThread(() -> showLocalNotification(title, body, kind, url)); }
+        @JavascriptInterface public void showCall(String title, String body, String callId, String kind) { runOnUiThread(() -> CallNotificationService.start(MainActivity.this, callId, title, body, kind)); }
+        @JavascriptInterface public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }
+        @JavascriptInterface public String getPendingCallAction() { if (pendingCallAction == null || pendingCallId == null) return ""; return pendingCallAction + "|" + pendingCallId; }
+        @JavascriptInterface public void clearPendingCallAction() { pendingCallAction = null; pendingCallId = null; }
     }
 
     private void showLocalNotification(String title, String body, String kind, String url) {
@@ -184,32 +191,18 @@ public class MainActivity extends BridgeActivity {
             channel.enableVibration(true);
             manager.createNotificationChannel(channel);
         }
-
-        Intent intent = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent intent = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         if (url != null && !url.trim().isEmpty()) intent.putExtra(EXTRA_DEEP_LINK, url.trim());
         int requestCode = (int) (System.currentTimeMillis() & 0x7fffffff);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
         PendingIntent pendingIntent = PendingIntent.getActivity(this, requestCode, intent, flags);
-
         String safeTitle = title == null || title.trim().isEmpty() ? "Yomy" : title.trim();
         String safeBody = body == null ? "" : body.trim();
         if (safeTitle.length() > 80) safeTitle = safeTitle.substring(0, 80);
         if (safeBody.length() > 240) safeBody = safeBody.substring(0, 240);
-
-        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? new Notification.Builder(this, channelId)
-                : new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH);
-        builder.setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(safeTitle)
-                .setContentText(safeBody)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .setShowWhen(true)
-                .setCategory("call".equals(kind) ? Notification.CATEGORY_CALL : Notification.CATEGORY_MESSAGE)
-                .setVisibility(Notification.VISIBILITY_PRIVATE);
-
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? new Notification.Builder(this, channelId) : new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH);
+        builder.setSmallIcon(R.mipmap.ic_launcher).setContentTitle(safeTitle).setContentText(safeBody).setAutoCancel(true).setContentIntent(pendingIntent).setShowWhen(true).setCategory("call".equals(kind) ? Notification.CATEGORY_CALL : Notification.CATEGORY_MESSAGE).setVisibility(Notification.VISIBILITY_PRIVATE);
         manager.notify(requestCode, builder.build());
     }
 
@@ -219,12 +212,16 @@ public class MainActivity extends BridgeActivity {
             if (audioManager.getMode() != AudioManager.MODE_IN_COMMUNICATION) previousAudioMode = audioManager.getMode();
             audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                AudioDeviceInfo desired = null;
-                for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                    if (enabled && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) { desired = device; break; }
-                    if (!enabled && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) { desired = device; break; }
+                if (enabled) {
+                    AudioDeviceInfo desired = null;
+                    for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                        if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) { desired = device; break; }
+                    }
+                    if (desired != null) audioManager.setCommunicationDevice(desired);
+                } else {
+                    audioManager.clearCommunicationDevice();
+                    audioManager.setSpeakerphoneOn(false);
                 }
-                if (desired != null) audioManager.setCommunicationDevice(desired);
             } else audioManager.setSpeakerphoneOn(enabled);
         } catch (Exception ignored) {}
     }
