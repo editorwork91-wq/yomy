@@ -16,6 +16,15 @@ public class CallActionReceiver extends BroadcastReceiver {
         String callId = intent == null ? null : intent.getStringExtra(EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
 
+        if (ACTION_OPEN.equals(action)) {
+            Intent launch = new Intent(context, MainActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    .putExtra(EXTRA_CALL_ID, callId)
+                    .putExtra(EXTRA_ACTION, "open");
+            context.startActivity(launch);
+            return;
+        }
+
         context.stopService(new Intent(context, CallNotificationService.class));
 
         if (ACTION_DECLINE.equals(action)) {
@@ -23,15 +32,6 @@ public class CallActionReceiver extends BroadcastReceiver {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     .putExtra(EXTRA_CALL_ID, callId)
                     .putExtra(EXTRA_ACTION, "decline");
-            context.startActivity(launch);
-            return;
-        }
-
-        if (ACTION_OPEN.equals(action)) {
-            Intent launch = new Intent(context, MainActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    .putExtra(EXTRA_CALL_ID, callId)
-                    .putExtra(EXTRA_ACTION, "open");
             context.startActivity(launch);
             return;
         }
