@@ -120,10 +120,9 @@ jobs:
                   ms = ms.replace(anchor, method + anchor, 1)
               else:
                   raise SystemExit('Unable to locate MainActivity call-action anchor')
-          ms = ms.replace(\
-              'window.location.assign(" + safeDestination + ");',\
-              'window.history.pushState({}, "", ' + 'safeDestination' + '); window.dispatchEvent(new PopStateEvent("popstate"));'\
-          )
+          old_js = 'window.location.assign(" + safeDestination + ");'
+          new_js = 'window.history.pushState({}, \'\', " + safeDestination + "); window.dispatchEvent(new PopStateEvent(\'popstate\'));'
+          ms = ms.replace(old_js, new_js)
           main.write_text(ms)
           manifest.write_text(s)
           PY
