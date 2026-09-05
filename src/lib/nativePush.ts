@@ -5,6 +5,22 @@ import { supabase } from '@/lib/supabase'
 let listenersInstalled = false
 let channelsCreated = false
 
+function navigateInSpa(destination: string) {
+  const safeDestination = destination && destination.startsWith('/') ? destination : '/notifications'
+  try {
+    window.history.pushState({}, '', safeDestination)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  } catch {
+    window.location.hash = `#${safeDestination}`
+  }
+}
+
+function dispatchIncomingCallOpen(callId: string) {
+  if (!callId) return false
+  window.dispatchEvent(new CustomEvent('yomy-call-action', { detail: { action: 'open', callId } }))
+  return true
+}
+
 export async function registerNativePush(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false
 
@@ -39,6 +55,13 @@ export async function registerNativePush(): Promise<boolean> {
       await PushNotifications.addListener('registrationError', error => console.warn('native push registration failed:', error))
       await PushNotifications.addListener('pushNotificationActionPerformed', event => {
         const data = event.notification.data as Record<string, unknown> | undefined
+        const callId = typeof data?.call_id === 'string' ? data.call_id : ''
+        const eventType = typeof data?.event_type === 'string' ? data.event_type : ''
+        if (callId && (eventType === 'CALL_INCOMING' || data?.type === 'call' || data?.call_kind)) {
+          dispatchIncomingCallOpen(callId)
+          return
+        }
+
         const destination = typeof data?.url === 'string' && data.url
           ? data.url
           : typeof data?.deep_link === 'string' && data.deep_link
@@ -46,7 +69,7 @@ export async function registerNativePush(): Promise<boolean> {
             : typeof data?.deepLink === 'string' && data.deepLink
               ? data.deepLink
               : '/notifications'
-        window.location.assign(destination)
+        navigateInSpa(destination)
       })
     }
 
