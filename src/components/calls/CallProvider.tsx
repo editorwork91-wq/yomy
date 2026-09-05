@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX } from 'lucide-react'
+import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { sendPushEvent } from '@/lib/push'
@@ -111,9 +111,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     const username = callerProfile.username
     if (!username) return
     const destination = `/messages/${encodeURIComponent(username)}?call=${encodeURIComponent(callId)}`
-    if (location.pathname !== `/messages/${username}` || location.search !== `?call=${callId}`) {
-      navigate(destination, { replace: false })
-    }
+    if (location.pathname !== `/messages/${username}` || location.search !== `?call=${callId}`) navigate(destination, { replace: false })
   }, [location.pathname, location.search, navigate])
 
   const loadIncomingById = useCallback(async (callId: string) => {
@@ -174,15 +172,9 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   const startCall = useCallback(async (target: Peer, kind: CallKind): Promise<void> => {
     if (!user || activeRef.current || incoming) return
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast.error('Microphone/camera is not available in this browser')
-      return
-    }
+    if (!navigator.mediaDevices?.getUserMedia) { toast.error('Microphone/camera is not available in this browser'); return }
     const { data, error } = await supabase.from('call_sessions').insert({ caller_id: user.id, callee_id: target.id, kind, status: 'ringing' }).select('*').single()
-    if (error || !data) {
-      toast.error(error?.message || 'Could not start call')
-      return
-    }
+    if (error || !data) { toast.error(error?.message || 'Could not start call'); return }
     const call = data as CallSession
     activeRef.current = call; setActive(call); setPeer(target)
     try {
@@ -206,19 +198,11 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     stopNativeCallNotification()
     try {
       const now = new Date().toISOString()
-      const { data: activated, error } = await supabase.from('call_sessions')
-        .update({ status: 'active', answered_at: now, started_at: now })
-        .eq('id', call.id)
-        .eq('callee_id', user.id)
-        .eq('status', 'ringing')
-        .select('id')
-        .maybeSingle()
-      if (error) throw error
+      const { data: activated, error } = await supabase.from('call_sessions').update({ status: 'active', answered_at: now, started_at: now }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing').select('id').maybeSingle()
+      if (activated == null) return
       if (!activated) return
       activeRef.current = { ...call, status: 'active', answered_at: now, started_at: now }
-      setActive(activeRef.current)
-      setIncoming(null)
-      setPeer(callerProfile)
+      setActive(activeRef.current); setIncoming(null); setPeer(callerProfile)
       openCallRoute(callerProfile, call.id)
       const pc = await setupPeer(activeRef.current, false)
       const { data: signals } = await supabase.from('call_signals').select('*').eq('call_id', call.id).order('id')
@@ -227,8 +211,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         if (signal.signal_type === 'offer') {
           processedSignals.current.add(signal.id)
           await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
+          const answer = await pc.createAnswer(); await pc.setLocalDescription(answer)
           await sendSignal(call, 'answer', answer as unknown as Record<string, unknown>)
         } else if (signal.signal_type === 'ice-candidate') candidates.push(signal)
       }
@@ -241,28 +224,17 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     }
   }, [cleanup, openCallRoute, sendSignal, setupPeer, user])
 
-  const acceptIncoming = useCallback(async () => {
-    if (!incoming || !peer) return
-    await acceptCall(incoming, peer)
-  }, [acceptCall, incoming, peer])
-
+  const acceptIncoming = useCallback(async () => { if (!incoming || !peer) return; await acceptCall(incoming, peer) }, [acceptCall, incoming, peer])
   const declineCall = useCallback(async (call: CallSession) => {
     if (!user || call.status !== 'ringing') return
     stopNativeCallNotification()
     await supabase.from('call_sessions').update({ status: 'declined', ended_at: new Date().toISOString() }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing')
     cleanup()
   }, [cleanup, user])
-
-  const declineIncoming = useCallback(async () => {
-    if (incoming) await declineCall(incoming)
-  }, [declineCall, incoming])
-
+  const declineIncoming = useCallback(async () => { if (incoming) await declineCall(incoming) }, [declineCall, incoming])
   const endCall = useCallback(async () => {
     const call = activeRef.current
-    if (call) {
-      await supabase.from('call_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', call.id)
-      await sendSignal(call, 'hangup', {})
-    }
+    if (call) { await supabase.from('call_sessions').update({ status: 'ended', ended_at: new Date().toISOString() }).eq('id', call.id); await sendSignal(call, 'hangup', {}) }
     cleanup()
   }, [cleanup, sendSignal])
 
@@ -272,10 +244,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     const loadRinging = async () => {
       const { data } = await supabase.from('call_sessions').select('*').eq('callee_id', user.id).eq('status', 'ringing').order('created_at', { ascending: false }).limit(5)
       if (!mounted || activeRef.current) return
-      for (const row of (data || []) as CallSession[]) {
-        const loaded = await loadIncomingById(row.id)
-        if (loaded) break
-      }
+      for (const row of (data || []) as CallSession[]) { const loaded = await loadIncomingById(row.id); if (loaded) break }
     }
     void loadRinging()
     const channel = supabase.channel(`calls-${user.id}`)
@@ -288,52 +257,35 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'call_sessions' }, payload => {
         const call = payload.new as CallSession
         if (call.id === incoming?.id && ['declined','missed','failed','ended','active'].includes(call.status)) {
-          stopNativeCallNotification()
-          if (call.status !== 'active') { setIncoming(null); setPeer(null) }
+          stopNativeCallNotification(); if (call.status !== 'active') { setIncoming(null); setPeer(null) }
         }
         if (call.id !== activeRef.current?.id) return
         if (['declined','missed','failed','ended'].includes(call.status)) cleanup()
         else if (call.status === 'active') { activeRef.current = call; setActive(call) }
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_signals', filter: `recipient_id=eq.${user.id}` }, async payload => {
-        const signal = payload.new as Signal
-        const call = activeRef.current; const pc = pcRef.current
+        const signal = payload.new as Signal; const call = activeRef.current; const pc = pcRef.current
         if (!call || signal.call_id !== call.id || processedSignals.current.has(signal.id) || !pc) return
         processedSignals.current.add(signal.id)
         try {
-          if (signal.signal_type === 'answer') {
-            await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
-            for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
-            pendingCandidates.current = []
-          } else if (signal.signal_type === 'ice-candidate') {
-            if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
-            else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
-          } else if (signal.signal_type === 'hangup') cleanup()
+          if (signal.signal_type === 'answer') { await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit); for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate); pendingCandidates.current = [] }
+          else if (signal.signal_type === 'ice-candidate') { if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit); else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit) }
+          else if (signal.signal_type === 'hangup') cleanup()
         } catch (err) { console.error('signal handling failed:', err) }
       })
-      .subscribe(status => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') console.warn('Call realtime degraded; call state reconciliation active')
-      })
+      .subscribe(status => { if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') console.warn('Call realtime degraded; call state reconciliation active') })
     return () => { mounted = false; void supabase.removeChannel(channel) }
   }, [cleanup, incoming?.id, loadIncomingById, openCallRoute, user])
 
   const handleNativeAction = useCallback(async (action: string, callId: string) => {
     if (!action || !callId || !user) return
-    const dedupeKey = `${action}:${callId}`
-    if (handledNativeActionsRef.current.has(dedupeKey)) return
+    const dedupeKey = `${action}:${callId}`; if (handledNativeActionsRef.current.has(dedupeKey)) return
     handledNativeActionsRef.current.add(dedupeKey)
     const loaded = await loadIncomingById(callId)
-    if (!loaded) {
-      getNativeNotifications()?.clearPendingCallAction?.()
-      return
-    }
-    if (action === 'open') {
-      openCallRoute(loaded.callerProfile, callId)
-    } else if (action === 'accept') {
-      await acceptCall(loaded.call, loaded.callerProfile)
-    } else if (action === 'decline') {
-      await declineCall(loaded.call)
-    }
+    if (!loaded) { getNativeNotifications()?.clearPendingCallAction?.(); return }
+    if (action === 'open') openCallRoute(loaded.callerProfile, callId)
+    else if (action === 'accept') await acceptCall(loaded.call, loaded.callerProfile)
+    else if (action === 'decline') await declineCall(loaded.call)
     getNativeNotifications()?.clearPendingCallAction?.()
     window.setTimeout(() => handledNativeActionsRef.current.delete(dedupeKey), 2000)
   }, [acceptCall, declineCall, loadIncomingById, openCallRoute, user])
@@ -343,11 +295,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     const processPending = async () => {
       const pending = bridge?.getPendingCallAction?.() || ''
       if (!pending) return
-      const splitAt = pending.indexOf('|')
-      if (splitAt <= 0) return
-      const action = pending.slice(0, splitAt)
-      const callId = pending.slice(splitAt + 1)
-      await handleNativeAction(action, callId)
+      const splitAt = pending.indexOf('|'); if (splitAt <= 0) return
+      await handleNativeAction(pending.slice(0, splitAt), pending.slice(splitAt + 1))
     }
     void processPending()
     const onNativeAction = (event: Event) => {
@@ -362,8 +311,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     if (!active || active.status !== 'active') { setElapsedSeconds(0); return }
     const startAt = new Date(active.started_at || active.answered_at || active.created_at).getTime()
     const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startAt) / 1000)))
-    tick()
-    const timer = window.setInterval(tick, 1000)
+    tick(); const timer = window.setInterval(tick, 1000)
     return () => window.clearInterval(timer)
   }, [active])
 
@@ -383,39 +331,9 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   return <CallContext.Provider value={value}>
     {children}
     <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
-    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#08110f] text-white overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(255,255,255,0.10),transparent_36%)]" />
-      <div className="relative min-h-full flex flex-col items-center px-7 pt-20 pb-10">
-        <div className="text-center">
-          <p className="text-sm text-white/55 mb-3">Yomy</p>
-          <Avatar className="size-36 mx-auto border-4 border-white/10 shadow-2xl">
-            <AvatarImage src={peer.avatar_url} />
-            <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <h2 className="mt-6 text-3xl font-medium tracking-tight">{peer.username}</h2>
-          <p className="mt-2 text-base text-white/60">Incoming {incoming.kind === 'video' ? 'video' : 'voice'} call</p>
-          <p className="mt-1 text-sm text-white/40">Swipe up to accept</p>
-        </div>
-        <div className="mt-auto w-full max-w-sm grid grid-cols-2 gap-10 items-end pb-8">
-          <div className="text-center"><Button variant="destructive" size="lg" className="mx-auto rounded-full size-[68px] shadow-xl bg-red-600 hover:bg-red-700" onClick={() => void declineIncoming()}><PhoneOff className="size-7" /></Button><p className="mt-3 text-sm text-white/70">Decline</p></div>
-          <div className="text-center"><Button size="lg" className="mx-auto rounded-full size-[68px] shadow-xl bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => void acceptIncoming()}>{incoming.kind === 'video' ? <Video className="size-7" /> : <Phone className="size-7" />}</Button><p className="mt-3 text-sm text-white/70">Answer</p></div>
-        </div>
-      </div>
-    </div>}
-
-    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7">
-      <Avatar className="size-32 border-4 border-white/10"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
-      <h2 className="mt-6 text-2xl font-semibold">{peer.username}</h2>
-      <p className="mt-2 text-white/60">Calling…</p>
-      <div className="mt-auto pb-12"><Button variant="destructive" size="lg" className="rounded-full size-16" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button></div>
-    </div>}
-
-    {showActive && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col text-white">
-      <div className="flex items-center justify-between p-4 pt-6"><div><p className="font-semibold text-lg">{peer.username}</p><p className="text-sm opacity-70">{connected ? formatDuration(elapsedSeconds) : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>
-      <div className="relative flex-1 flex items-center justify-center p-4">{active?.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <div className="size-40 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>}</div>
-      <div className="flex justify-center gap-4 p-6 pb-10"><Button variant={speakerOn ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? 'Use earpiece' : 'Use speaker'}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div>
-    </div>}
+    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#08110f] text-white overflow-hidden"><div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(255,255,255,0.10),transparent_36%)]" /><div className="relative min-h-full flex flex-col items-center px-7 pt-20 pb-10"><div className="text-center"><p className="text-sm text-white/55 mb-3">Yomy</p><Avatar className="size-36 mx-auto border-4 border-white/10 shadow-2xl"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar><h2 className="mt-6 text-3xl font-medium tracking-tight">{peer.username}</h2><p className="mt-2 text-base text-white/60">Incoming {incoming.kind === 'video' ? 'video' : 'voice'} call</p><p className="mt-1 text-sm text-white/40">Swipe up to accept</p></div><div className="mt-auto w-full max-w-sm grid grid-cols-2 gap-10 items-end pb-8"><div className="text-center"><Button variant="destructive" size="lg" className="mx-auto rounded-full size-[68px] shadow-xl bg-red-600 hover:bg-red-700" onClick={() => void declineIncoming()}><PhoneOff className="size-7" /></Button><p className="mt-3 text-sm text-white/70">Decline</p></div><div className="text-center"><Button size="lg" className="mx-auto rounded-full size-[68px] shadow-xl bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => void acceptIncoming()}>{incoming.kind === 'video' ? <Video className="size-7" /> : <Phone className="size-7" />}</Button><p className="mt-3 text-sm text-white/70">Answer</p></div></div></div></div>}
+    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7"><Avatar className="size-32 border-4 border-white/10"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar><h2 className="mt-6 text-2xl font-semibold">{peer.username}</h2><p className="mt-2 text-white/60">Calling…</p><div className="mt-auto pb-12"><Button variant="destructive" size="lg" className="rounded-full size-16" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button></div></div>}
+    {showActive && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col text-white"><div className="flex items-center justify-between p-4 pt-6"><div><p className="font-semibold text-lg">{peer.username}</p><p className="text-sm opacity-70">{connected ? formatDuration(elapsedSeconds) : 'Connecting…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active?.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <div className="size-40 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>}</div><div className="flex justify-center gap-4 p-6 pb-10"><Button variant={speakerOn ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? 'Use earpiece' : 'Use speaker'}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
   </CallContext.Provider>
 }
 
