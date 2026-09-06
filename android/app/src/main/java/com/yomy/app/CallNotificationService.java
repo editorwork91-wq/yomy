@@ -91,15 +91,22 @@ public class CallNotificationService extends Service {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
 
-        PendingIntent openAction = PendingIntent.getBroadcast(this, 41002, actionIntent(CallActionReceiver.ACTION_OPEN, callId), flags);
         PendingIntent decline = PendingIntent.getBroadcast(this, 41003, actionIntent(CallActionReceiver.ACTION_DECLINE, callId), flags);
-        PendingIntent answer = PendingIntent.getBroadcast(this, 41004, actionIntent(CallActionReceiver.ACTION_ACCEPT, callId), flags);
 
-        Intent openActivityIntent = new Intent(this, MainActivity.class)
+        // Both a normal tap and the explicit Answer action launch MainActivity directly.
+        // This is intentional: Android must bring the real call screen to the foreground
+        // instead of routing through a broadcast and hoping the WebView is already ready.
+        Intent openIntent = new Intent(this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(CallActionReceiver.EXTRA_ACTION, "open")
                 .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
-        PendingIntent fullScreen = PendingIntent.getActivity(this, 41005, openActivityIntent, flags);
+        PendingIntent open = PendingIntent.getActivity(this, 41005, openIntent, flags);
+
+        Intent answerIntent = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(CallActionReceiver.EXTRA_ACTION, "accept")
+                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
+        PendingIntent answer = PendingIntent.getActivity(this, 41004, answerIntent, flags);
 
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(this, CHANNEL_ID)
@@ -114,7 +121,7 @@ public class CallNotificationService extends Service {
                 .setAutoCancel(false)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(true)
-                .setContentIntent(openAction);
+                .setContentIntent(open);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Person caller = new Person.Builder()
@@ -129,7 +136,7 @@ public class CallNotificationService extends Service {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try { builder.setFullScreenIntent(fullScreen, true); } catch (Exception ignored) {}
+            try { builder.setFullScreenIntent(open, true); } catch (Exception ignored) {}
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) builder.setTimeoutAfter(RING_DURATION_MS);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
