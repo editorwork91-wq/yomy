@@ -80,6 +80,7 @@ jobs:
           if [ -d /tmp/YomyLauncherResources ]; then
             cp -a /tmp/YomyLauncherResources/. android/app/src/main/res/
           fi
+          cp /tmp/YomyMainActivity.java android/app/src/main/java/com/yomy/app/MainActivity.java
           for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java IncomingCallActivity.java; do
             if [ -f "/tmp/YomyNativeJava/$file" ]; then
               cp "/tmp/YomyNativeJava/$file" "android/app/src/main/java/com/yomy/app/$file"
@@ -122,58 +123,16 @@ jobs:
           if old_js in ms:
               ms = ms.replace(old_js, new_js, 1)
 
-          # Hard-cancel the call notification from the app-side stop bridge too.
           ms = ms.replace(
               'public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }',
               'public void stopCall() { runOnUiThread(() -> CallActionReceiver.cancelCallNotification(MainActivity.this)); }',
               1
           )
 
-          # Voice calls should default to the small upper earpiece. The
-          # loudspeaker is strictly opt-in. If an external communication route
-          # exists (Bluetooth / wired), preserve Androids normal routing instead
-          # of stealing it; otherwise explicitly select the built-in earpiece.
-          old_route = '''                } else {
-                    audioManager.clearCommunicationDevice();
-                    audioManager.setSpeakerphoneOn(false);
-                    return;
-                }
-                if (desired != null) {
-                    audioManager.setCommunicationDevice(desired);
-                    audioManager.setSpeakerphoneOn(true);
-                }'''
-          if old_route in ms:
-              new_route = '''                } else {
-                    boolean hasExternalRoute = false;
-                    for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                        int type = device.getType();
-                        if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                                || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                                || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                                || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                                || type == AudioDeviceInfo.TYPE_USB_HEADSET) {
-                            hasExternalRoute = true;
-                            break;
-                        }
-                    }
-                    if (!hasExternalRoute) {
-                        for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                            if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) { desired = device; break; }
-                        }
-                    } else {
-                        audioManager.clearCommunicationDevice();
-                        audioManager.setSpeakerphoneOn(false);
-                        return;
-                    }
-                }
-                if (desired != null) {
-                    audioManager.setCommunicationDevice(desired);
-                    audioManager.setSpeakerphoneOn(enabled);
-                }'''
-              ms = ms.replace(old_route, new_route, 1)
+          # MainActivity is restored from the repository so voice calls start on
+          # the built-in upper earpiece; speaker mode remains explicit opt-in.
+          main.write_text(ms)
 
-          # Ensure opening the native call UI cancels the foreground call
-          # notification immediately; the native screen owns the ringing UX.
           incoming = Path('android/app/src/main/java/com/yomy/app/IncomingCallActivity.java')
           if incoming.exists():
               ins = incoming.read_text()
@@ -185,7 +144,6 @@ jobs:
               incoming.write_text(ins)
 
           manifest.write_text(s)
-          main.write_text(ms)
           PY
 
       - name: Apply official Yomy launcher icon
