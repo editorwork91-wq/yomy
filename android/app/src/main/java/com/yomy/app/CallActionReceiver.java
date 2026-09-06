@@ -16,7 +16,9 @@ public class CallActionReceiver extends BroadcastReceiver {
         String callId = intent == null ? null : intent.getStringExtra(EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
 
+        Intent stop = new Intent(context, CallNotificationService.class);
         if (ACTION_OPEN.equals(action)) {
+            context.stopService(stop);
             Intent launch = new Intent(context, MainActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     .putExtra(EXTRA_CALL_ID, callId)
@@ -25,7 +27,7 @@ public class CallActionReceiver extends BroadcastReceiver {
             return;
         }
 
-        context.stopService(new Intent(context, CallNotificationService.class));
+        context.stopService(stop);
 
         if (ACTION_DECLINE.equals(action)) {
             Intent launch = new Intent(context, MainActivity.class)
