@@ -48,7 +48,7 @@ public class MainActivity extends BridgeActivity {
         captureDeepLink(intent);
     }
 
-    @Override protected void onResume() {
+    @Override public void onResume() {
         super.onResume();
         dispatchPendingCallActionWithRetry();
     }
