@@ -122,24 +122,18 @@ jobs:
           if old_js in ms:
               ms = ms.replace(old_js, new_js, 1)
 
-          # Do not force BUILTIN_EARPIECE on modern Android. Clearing the explicit
-          # communication device preserves the handset/Bluetooth route selected by
-          # Android while keeping the loudspeaker strictly opt-in.
+          # Hard-cancel the call notification from the app-side stop bridge too.
+          ms = ms.replace(
+              'public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }',
+              'public void stopCall() { runOnUiThread(() -> CallActionReceiver.cancelCallNotification(MainActivity.this)); }',
+              1
+          )
+
+          # Voice calls should default to the small upper earpiece. The
+          # loudspeaker is strictly opt-in. If an external communication route
+          # exists (Bluetooth / wired), preserve Androids normal routing instead
+          # of stealing it; otherwise explicitly select the built-in earpiece.
           old_route = '''                } else {
-                    AudioDeviceInfo desired = null;
-                    for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                        if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) { desired = device; break; }
-                    }
-                }
-                if (desired != null) {
-                    audioManager.setCommunicationDevice(desired);
-                    if (!enabled) audioManager.setSpeakerphoneOn(false);
-                } else if (!enabled) {
-                    audioManager.clearCommunicationDevice();
-                    audioManager.setSpeakerphoneOn(false);
-                }'''
-          if old_route in ms:
-              new_route = '''                } else {
                     audioManager.clearCommunicationDevice();
                     audioManager.setSpeakerphoneOn(false);
                     return;
@@ -148,9 +142,50 @@ jobs:
                     audioManager.setCommunicationDevice(desired);
                     audioManager.setSpeakerphoneOn(true);
                 }'''
+          if old_route in ms:
+              new_route = '''                } else {
+                    boolean hasExternalRoute = false;
+                    for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                        int type = device.getType();
+                        if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                                || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                                || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+                                || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                                || type == AudioDeviceInfo.TYPE_USB_HEADSET) {
+                            hasExternalRoute = true;
+                            break;
+                        }
+                    }
+                    if (!hasExternalRoute) {
+                        for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                            if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) { desired = device; break; }
+                        }
+                    } else {
+                        audioManager.clearCommunicationDevice();
+                        audioManager.setSpeakerphoneOn(false);
+                        return;
+                    }
+                }
+                if (desired != null) {
+                    audioManager.setCommunicationDevice(desired);
+                    audioManager.setSpeakerphoneOn(enabled);
+                }'''
               ms = ms.replace(old_route, new_route, 1)
-          main.write_text(ms)
+
+          # Ensure opening the native call UI cancels the foreground call
+          # notification immediately; the native screen owns the ringing UX.
+          incoming = Path('android/app/src/main/java/com/yomy/app/IncomingCallActivity.java')
+          if incoming.exists():
+              ins = incoming.read_text()
+              ins = ins.replace(
+                  'startService(new Intent(this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP));',
+                  'CallActionReceiver.cancelCallNotification(this);',
+                  1
+              )
+              incoming.write_text(ins)
+
           manifest.write_text(s)
+          main.write_text(ms)
           PY
 
       - name: Apply official Yomy launcher icon
