@@ -212,17 +212,26 @@ public class MainActivity extends BridgeActivity {
             if (audioManager.getMode() != AudioManager.MODE_IN_COMMUNICATION) previousAudioMode = audioManager.getMode();
             audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                AudioDeviceInfo desired = null;
                 if (enabled) {
-                    AudioDeviceInfo desired = null;
                     for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
                         if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) { desired = device; break; }
                     }
-                    if (desired != null) audioManager.setCommunicationDevice(desired);
                 } else {
+                    for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
+                        if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) { desired = device; break; }
+                    }
+                }
+                if (desired != null) {
+                    audioManager.setCommunicationDevice(desired);
+                    if (!enabled) audioManager.setSpeakerphoneOn(false);
+                } else if (!enabled) {
                     audioManager.clearCommunicationDevice();
                     audioManager.setSpeakerphoneOn(false);
                 }
-            } else audioManager.setSpeakerphoneOn(enabled);
+            } else {
+                audioManager.setSpeakerphoneOn(enabled);
+            }
         } catch (Exception ignored) {}
     }
 
