@@ -1,12 +1,23 @@
 package com.yomy.app;
 
 import android.app.Activity;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.media.AudioAttributes;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -25,14 +36,26 @@ public class IncomingCallActivity extends Activity {
     private static final int DECLINE = Color.rgb(222, 74, 74);
     private static final int TRACK = Color.rgb(24, 39, 35);
     private static final int KNOB = Color.rgb(255, 255, 255);
+    private static final long RING_DURATION_MS = 60_000L;
+    private static final long[] VIBRATION_PATTERN = {0L, 900L, 500L, 900L, 500L};
 
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable timeout = this::finishIncoming;
     private String callId;
     private boolean finished;
+    private MediaPlayer ringtonePlayer;
+    private Vibrator vibrator;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         configureWindow();
         buildUi();
+        // Once this native screen is visible, the foreground notification is no
+        // longer needed. The activity owns the same system-respecting ringtone
+        // for the remainder of the 60-second incoming-call window.
+        stopCallService();
+        startPlaybackRespectingSystemMode();
+        handler.postDelayed(timeout, RING_DURATION_MS);
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -51,7 +74,6 @@ public class IncomingCallActivity extends Activity {
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                             | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                             | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                            | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR * 0
             );
         } else {
             window.getDecorView().setSystemUiVisibility(
@@ -130,7 +152,7 @@ public class IncomingCallActivity extends Activity {
         controlParams.setMargins(0, dp(12), 0, dp(6));
         content.addView(control, controlParams);
 
-        TextView fallback = text("Tap the action areas", 12, Color.rgb(115, 137, 130), Typeface.NORMAL);
+        TextView fallback = text("Release after the slider crosses the center", 12, Color.rgb(115, 137, 130), Typeface.NORMAL);
         fallback.setGravity(Gravity.CENTER);
         content.addView(fallback, new LinearLayout.LayoutParams(-1, -2));
 
@@ -146,6 +168,7 @@ public class IncomingCallActivity extends Activity {
     private void answer() {
         if (finished || callId == null || callId.isEmpty()) return;
         finished = true;
+        finishPlayback();
         stopCallService();
         launchMain("accept");
     }
@@ -153,6 +176,7 @@ public class IncomingCallActivity extends Activity {
     private void decline() {
         if (finished || callId == null || callId.isEmpty()) return;
         finished = true;
+        finishPlayback();
         stopCallService();
         Intent launch = new Intent(this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -160,6 +184,7 @@ public class IncomingCallActivity extends Activity {
                 .putExtra(CallActionReceiver.EXTRA_ACTION, "decline");
         startActivity(launch);
         finish();
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 
     private void launchMain(String action) {
@@ -172,10 +197,83 @@ public class IncomingCallActivity extends Activity {
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
 
+    private void finishIncoming() {
+        if (finished) return;
+        finished = true;
+        finishPlayback();
+        stopCallService();
+        finish();
+    }
+
     private void stopCallService() {
         try {
             startService(new Intent(this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP));
         } catch (Exception ignored) {}
+    }
+
+    private void startPlaybackRespectingSystemMode() {
+        try {
+            AudioManager audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audio == null) return;
+            int mode = audio.getRingerMode();
+            if (mode == AudioManager.RINGER_MODE_SILENT) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                if (nm != null && nm.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) return;
+            }
+            if (mode == AudioManager.RINGER_MODE_NORMAL) playDefaultRingtone();
+            if (mode == AudioManager.RINGER_MODE_NORMAL || mode == AudioManager.RINGER_MODE_VIBRATE) startVibration();
+        } catch (Exception ignored) {}
+    }
+
+    private void playDefaultRingtone() {
+        try {
+            Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            if (uri == null) uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            ringtonePlayer = new MediaPlayer();
+            ringtonePlayer.setAudioAttributes(new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build());
+            ringtonePlayer.setDataSource(this, uri);
+            ringtonePlayer.setLooping(true);
+            ringtonePlayer.prepare();
+            ringtonePlayer.start();
+        } catch (Exception ignored) {
+            finishPlayback();
+        }
+    }
+
+    private void startVibration() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                VibratorManager vm = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
+                vibrator = vm == null ? null : vm.getDefaultVibrator();
+            } else {
+                vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            }
+            if (vibrator == null || !vibrator.hasVibrator()) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) vibrator.vibrate(VibrationEffect.createWaveform(VIBRATION_PATTERN, 0));
+            else vibrator.vibrate(VIBRATION_PATTERN, 0);
+        } catch (Exception ignored) {}
+    }
+
+    private void finishPlayback() {
+        handler.removeCallbacks(timeout);
+        if (ringtonePlayer != null) {
+            try { if (ringtonePlayer.isPlaying()) ringtonePlayer.stop(); } catch (Exception ignored) {}
+            try { ringtonePlayer.release(); } catch (Exception ignored) {}
+            ringtonePlayer = null;
+        }
+        if (vibrator != null) {
+            try { vibrator.cancel(); } catch (Exception ignored) {}
+            vibrator = null;
+        }
+    }
+
+    @Override protected void onDestroy() {
+        finishPlayback();
+        super.onDestroy();
     }
 
     private TextView text(String value, float sizeSp, int color, int typefaceStyle) {
