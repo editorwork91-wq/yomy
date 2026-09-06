@@ -33,7 +33,7 @@ jobs:
         run: |
           cp android/app/src/main/java/com/yomy/app/MainActivity.java /tmp/YomyMainActivity.java
           mkdir -p /tmp/YomyNativeJava
-          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java; do
+          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java IncomingCallActivity.java; do
             if [ -f "android/app/src/main/java/com/yomy/app/$file" ]; then
               cp "android/app/src/main/java/com/yomy/app/$file" "/tmp/YomyNativeJava/$file"
             fi
@@ -80,7 +80,7 @@ jobs:
           if [ -d /tmp/YomyLauncherResources ]; then
             cp -a /tmp/YomyLauncherResources/. android/app/src/main/res/
           fi
-          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java; do
+          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java IncomingCallActivity.java; do
             if [ -f "/tmp/YomyNativeJava/$file" ]; then
               cp "/tmp/YomyNativeJava/$file" "android/app/src/main/java/com/yomy/app/$file"
             fi
@@ -100,6 +100,10 @@ jobs:
           if '.CallNotificationService' not in s:
               s = s.replace('    </application>', services + '    </application>')
 
+          activity = '''\n        <activity\n            android:name=".IncomingCallActivity"\n            android:exported="false"\n            android:excludeFromRecents="true"\n            android:launchMode="singleTop"\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"\n            android:theme="@style/AppTheme.NoActionBarLaunch" />\n'''
+          if '.IncomingCallActivity' not in s:
+              s = s.replace('        <activity\n            android:configChanges=', activity + '\n        <activity\n            android:configChanges=', 1)
+
           build = Path('android/app/build.gradle')
           bs = build.read_text()
           if 'firebase-messaging' not in bs:
@@ -113,10 +117,6 @@ jobs:
 
           main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
           ms = main.read_text()
-
-          # The full-screen behavior is owned by the native call notification
-          # service. Do not mutate MainActivity just to make CI survive source
-          # formatting differences between Capacitor generations.
           old_js = 'window.location.assign(" + safeDestination + ");'
           new_js = 'window.history.pushState({}, \'\', " + safeDestination + "); window.dispatchEvent(new PopStateEvent(\'popstate\'));'
           if old_js in ms:
