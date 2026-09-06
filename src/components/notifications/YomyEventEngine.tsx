@@ -57,6 +57,19 @@ function activityCopy(payload: Record<string, unknown>) {
     default: return 'You have new activity'
   }
 }
+function callLabel(payload: Record<string, unknown>) {
+  return String(payload.kind || '').toLowerCase() === 'video' ? 'Video call' : 'Voice call'
+}
+function callResultCopy(event: YomyEvent) {
+  const label = callLabel(event.payload)
+  switch (event.event_type) {
+    case 'CALL_ACCEPTED': return `${label} answered`
+    case 'CALL_DECLINED': return `${label} declined`
+    case 'CALL_MISSED': return `Missed ${label.toLowerCase()}`
+    case 'CALL_FAILED': return `${label} failed`
+    default: return null
+  }
+}
 function isAggregatable(type: string) { return type === 'LIKE_CREATED' || type === 'COMMENT_LIKE_CREATED' || type === 'POST_ACTIVITY' || type === 'STORY_CREATED' }
 function aggregationKey(event: YomyEvent) { return `${event.event_type}:${event.entity_id || event.source_id}` }
 function activitySummary(type: string, count: number, names: string[]) {
@@ -143,6 +156,12 @@ export default function YomyEventEngine() {
     if (event.event_type === 'CALL_INCOMING') {
       // CallProvider owns the foreground incoming-call surface. Background/closed
       // delivery is handled by the native/web push transport using this event's link.
+      return
+    }
+
+    const callResult = callResultCopy(event)
+    if (callResult) {
+      showYomyLocalNotification(actorName, callResult, 'message', event.deep_link || '/messages')
       return
     }
 
