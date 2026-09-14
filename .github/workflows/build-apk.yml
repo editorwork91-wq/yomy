@@ -8,53 +8,41 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
-
       - name: Install dependencies & Capacitor Android
         run: |
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/android
-
       - name: Build web app
         env:
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY || secrets.VAPID_PUBLIC_KEY }}
         run: npm run build
-
-      - name: Save repository native Android configuration
+      - name: Save native Yomy configuration
         run: |
-          cp android/app/src/main/java/com/yomy/app/MainActivity.java /tmp/YomyMainActivity.java
-          if [ -f android/app/google-services.json ]; then
-            cp android/app/google-services.json /tmp/YomyGoogleServices.json
-          fi
-          rm -rf /tmp/YomyLauncherResources
-          mkdir -p /tmp/YomyLauncherResources
-          find android/app/src/main/res -type f -name 'ic_launcher*' -print0 | while IFS= read -r -d '' file; do
-            rel="${file#android/app/src/main/res/}"
-            mkdir -p "/tmp/YomyLauncherResources/$(dirname "$rel")"
-            cp "$file" "/tmp/YomyLauncherResources/$rel"
+          mkdir -p /tmp/YomyNativeJava /tmp/YomyLauncherResources
+          cp android/app/src/main/java/com/yomy/app/MainActivity.java /tmp/YomyNativeJava/MainActivity.java
+          for file in CallActionReceiver.java CallNotificationService.java IncomingCallActivity.java YomyFirebaseMessagingService.java; do
+            [ -f "android/app/src/main/java/com/yomy/app/$file" ] && cp "android/app/src/main/java/com/yomy/app/$file" "/tmp/YomyNativeJava/$file"
           done
-
+          [ -f android/app/google-services.json ] && cp android/app/google-services.json /tmp/YomyGoogleServices.json
+          find android/app/src/main/res -type f -name 'ic_launcher*' -print0 | while IFS= read -r -d '' file; do rel="${file#android/app/src/main/res/}"; mkdir -p "/tmp/YomyLauncherResources/$(dirname "$rel")"; cp "$file" "/tmp/YomyLauncherResources/$rel"; done
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
-
       - name: Generate Android Platform
         run: |
           rm -rf android
           npx cap add android
           npx cap sync android
-
       - name: Restore Firebase Android configuration
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -63,42 +51,31 @@ jobs:
             printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > android/app/google-services.json
           elif [ -f /tmp/YomyGoogleServices.json ]; then
             cp /tmp/YomyGoogleServices.json android/app/google-services.json
-          elif [ -f google-services.json ]; then
-            cp google-services.json android/app/google-services.json
-          else
-            echo "Firebase Android configuration is unavailable; native FCM registration will not produce a device token."
           fi
-
-      - name: Restore launcher branding and native bridge
+      - name: Restore Yomy native call bridge
         run: |
-          if [ -d /tmp/YomyLauncherResources ]; then
-            cp -a /tmp/YomyLauncherResources/. android/app/src/main/res/
-          fi
+          cp /tmp/YomyNativeJava/MainActivity.java android/app/src/main/java/com/yomy/app/MainActivity.java
+          for file in CallActionReceiver.java CallNotificationService.java IncomingCallActivity.java YomyFirebaseMessagingService.java; do
+            [ -f "/tmp/YomyNativeJava/$file" ] && cp "/tmp/YomyNativeJava/$file" "android/app/src/main/java/com/yomy/app/$file"
+          done
+          cp -a /tmp/YomyLauncherResources/. android/app/src/main/res/ 2>/dev/null || true
           python3 - <<'PY'
           from pathlib import Path
-          manifest = Path('android/app/src/main/AndroidManifest.xml')
-          s = manifest.read_text()
-          if 'xmlns:tools=' in s:
-              s = s.replace(' xmlns:tools="http://schemas.android.com/tools"', '')
-          marker = '    <uses-permission android:name="android.permission.INTERNET" />'
-          additions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />'''
-          if 'android.permission.CAMERA' not in s:
-              s = s.replace(marker, marker + additions)
-          elif 'android.permission.MODIFY_AUDIO_SETTINGS' not in s:
-              s = s.replace('    <uses-permission android:name="android.permission.RECORD_AUDIO" />', '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />')
-          if 'android.permission.VIBRATE' not in s:
-              s = s.replace('</manifest>', '    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n</manifest>')
-          # Keep Firebase's normal Android startup provider. It initializes the
-          # FirebaseApp before Capacitor native push registration can run.
-          s = s.replace('''\n        <provider\n            android:name="com.google.firebase.provider.FirebaseInitProvider"\n            android:authorities="${applicationId}.firebaseinitprovider"\n            tools:node="remove" />\n''', '\n')
-          manifest.write_text(s)
-          Path('android/app/src/main/java/com/yomy/app/MainActivity.java').write_text(Path('/tmp/YomyMainActivity.java').read_text())
+          m=Path('android/app/src/main/AndroidManifest.xml'); s=m.read_text()
+          perms='''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />'''
+          marker='    <uses-permission android:name="android.permission.INTERNET" />'
+          if 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' not in s: s=s.replace(marker, marker+perms)
+          services='''\n        <service android:name=".CallNotificationService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse">\n            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="time-sensitive incoming call ringing and user call action handling" />\n        </service>\n        <service android:name=".YomyFirebaseMessagingService" android:exported="false">\n            <intent-filter><action android:name="com.google.firebase.MESSAGING_EVENT" /></intent-filter>\n        </service>\n        <receiver android:name=".CallActionReceiver" android:exported="false" />\n        <activity android:name=".IncomingCallActivity" android:exported="false" android:excludeFromRecents="true" android:launchMode="singleTop" android:showWhenLocked="true" android:turnScreenOn="true" android:theme="@style/AppTheme.NoActionBarLaunch" />\n'''
+          if '.CallNotificationService' not in s: s=s.replace('    </application>',services+'    </application>')
+          m.write_text(s)
+          b=Path('android/app/build.gradle'); bs=b.read_text()
+          if 'firebase-messaging' not in bs:
+              anchor="    implementation project(':capacitor-android')"
+              bs=bs.replace(anchor,anchor+"\n    implementation platform('com.google.firebase:firebase-bom:34.18.0')\n    implementation 'com.google.firebase:firebase-messaging'",1)
+              b.write_text(bs)
           PY
-
       - name: Apply official Yomy launcher icon
         run: |
-          # Use the public canonical YOMY-LOGO.jpeg for all Android launcher
-          # variants so the external icon matches the web/PWA branding exactly.
           rm -f android/app/src/main/res/drawable/ic_launcher_background.xml
           for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             mkdir -p "android/app/src/main/res/$dir"
@@ -106,13 +83,11 @@ jobs:
             cp public/YOMY-LOGO.jpeg "android/app/src/main/res/$dir/ic_launcher.jpg"
             cp public/YOMY-LOGO.jpeg "android/app/src/main/res/$dir/ic_launcher_round.jpg"
           done
-
       - name: Build Debug APK
         working-directory: ./android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
-
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
