@@ -7,6 +7,9 @@ import YomyReminderEngine from '@/components/notifications/YomyReminderEngine'
 import PushManager from '@/components/notifications/PushManager'
 import CallProvider from '@/components/calls/CallProvider'
 import CallLifecycleRepair from '@/components/calls/CallLifecycleRepair'
+import PresenceHeartbeat from '@/components/realtime/PresenceHeartbeat'
+import MessageDeliveryBridge from '@/components/realtime/MessageDeliveryBridge'
+import CallNotificationBridge from '@/components/notifications/CallNotificationBridge'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
 import Feed from '@/pages/Feed'
@@ -62,6 +65,9 @@ export function App() {
         <YomyReminderEngine />
         <PushManager />
         <CallLifecycleRepair />
+        <PresenceHeartbeat />
+        <MessageDeliveryBridge />
+        <CallNotificationBridge />
       </CallProvider>
     </BrowserRouter>
     <Toaster
