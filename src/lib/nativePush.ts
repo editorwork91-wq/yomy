@@ -5,9 +5,16 @@ import { supabase } from '@/lib/supabase'
 let listenersInstalled = false
 let channelsCreated = false
 
+type NativeNotificationData = Record<string, unknown>
+
+function openDestination(destination: string) {
+  if (!destination) return
+  window.history.pushState({}, '', destination)
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
 export async function registerNativePush(): Promise<boolean> {
   if (!Capacitor.isNativePlatform()) return false
-
   try {
     const permission = await PushNotifications.checkPermissions()
     const finalPermission = permission.receive === 'granted' ? permission : await PushNotifications.requestPermissions()
@@ -18,9 +25,7 @@ export async function registerNativePush(): Promise<boolean> {
         await PushNotifications.createChannel({ id: 'yomy_default', name: 'Yomy', description: 'Yomy notifications', importance: 5, sound: 'default', vibration: true, lights: true })
         await PushNotifications.createChannel({ id: 'yomy_calls', name: 'Yomy Calls', description: 'Incoming Yomy calls', importance: 5, sound: 'default', vibration: true, lights: true })
         channelsCreated = true
-      } catch (error) {
-        console.warn('native push channel setup skipped:', error)
-      }
+      } catch (error) { console.warn('native push channel setup skipped:', error) }
     }
 
     if (!listenersInstalled) {
@@ -32,21 +37,19 @@ export async function registerNativePush(): Promise<boolean> {
           const platform = Capacitor.getPlatform() === 'ios' ? 'ios' : 'android'
           const { error } = await supabase.from('native_push_tokens').upsert({ user_id: user.id, platform, token: token.value, user_agent: navigator.userAgent.slice(0, 512), updated_at: new Date().toISOString() }, { onConflict: 'user_id,token' })
           if (error) console.warn('native push token save failed:', error.message)
-        } catch (error) {
-          console.warn('native push token persistence skipped:', error instanceof Error ? error.message : error)
-        }
+        } catch (error) { console.warn('native push token persistence skipped:', error instanceof Error ? error.message : error) }
       })
       await PushNotifications.addListener('registrationError', error => console.warn('native push registration failed:', error))
       await PushNotifications.addListener('pushNotificationActionPerformed', event => {
-        const data = event.notification.data as Record<string, unknown> | undefined
-        const destination = typeof data?.url === 'string' && data.url
-          ? data.url
-          : typeof data?.deep_link === 'string' && data.deep_link
-            ? data.deep_link
-            : typeof data?.deepLink === 'string' && data.deepLink
-              ? data.deepLink
-              : '/notifications'
-        window.location.assign(destination)
+        const data = (event.notification.data || {}) as NativeNotificationData
+        const callId = typeof data.call_id === 'string' ? data.call_id : ''
+        const eventType = typeof data.event_type === 'string' ? data.event_type : ''
+        const destination = typeof data.url === 'string' && data.url ? data.url : typeof data.deep_link === 'string' && data.deep_link ? data.deep_link : '/notifications'
+        if (callId && eventType === 'CALL_INCOMING') {
+          window.dispatchEvent(new CustomEvent('yomy-call-action', { detail: { action: 'open', callId } }))
+          return
+        }
+        openDestination(destination)
       })
     }
 
