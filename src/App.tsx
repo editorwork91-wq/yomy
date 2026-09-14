@@ -6,6 +6,7 @@ import YomyEventEngine from '@/components/notifications/YomyEventEngine'
 import YomyReminderEngine from '@/components/notifications/YomyReminderEngine'
 import PushManager from '@/components/notifications/PushManager'
 import CallProvider from '@/components/calls/CallProvider'
+import CallHistoryPanel from '@/components/calls/CallHistoryPanel'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
 import Feed from '@/pages/Feed'
@@ -60,6 +61,7 @@ export function App() {
         <YomyEventEngine />
         <YomyReminderEngine />
         <PushManager />
+        <CallHistoryPanel />
       </CallProvider>
     </BrowserRouter>
     <Toaster
