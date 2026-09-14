@@ -14,22 +14,18 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         String callId = value(data, "call_id");
         if (callId.isEmpty()) return;
 
-        // Terminal call events must shut down any native ringing UI immediately.
-        // They never start a new ringtone.
         if (isTerminalCallEvent(eventType)) {
             try { CallActionReceiver.cancelCallNotification(this); } catch (Exception ignored) {}
             try {
                 android.content.Intent launch = new android.content.Intent(this, MainActivity.class)
                         .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
                         .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
-                        .putExtra(CallActionReceiver.EXTRA_ACTION, "open");
+                        .putExtra(CallActionReceiver.EXTRA_ACTION, "terminal");
                 startActivity(launch);
             } catch (Exception ignored) {}
             return;
         }
 
-        // Only the explicit incoming-call event is allowed to start the
-        // foreground ringing service. Terminal/result events never ring.
         if (!"CALL_INCOMING".equals(eventType)) return;
         if (message.getPriority() != RemoteMessage.PRIORITY_HIGH) return;
 
