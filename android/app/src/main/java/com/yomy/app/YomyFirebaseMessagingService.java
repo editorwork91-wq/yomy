@@ -10,10 +10,14 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         Map<String, String> data = message.getData();
         if (data == null || data.isEmpty()) return;
 
+        // Only the explicit incoming-call event is allowed to start the
+        // foreground ringing service. Terminal/result events also contain a
+        // call_id, but must never trigger a second ring on either device.
         String eventType = value(data, "event_type");
-        String callId = value(data, "call_id");
-        if (!"CALL_INCOMING".equals(eventType) && !(callId != null && !callId.isEmpty())) return;
+        if (!"CALL_INCOMING".equals(eventType)) return;
 
+        String callId = value(data, "call_id");
+        if (callId.isEmpty()) return;
         if (message.getPriority() != RemoteMessage.PRIORITY_HIGH) return;
 
         String title = first(data, "push_title", "title");
@@ -26,7 +30,7 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         try {
             CallNotificationService.start(this, callId, title, body, kind);
         } catch (Exception ignored) {
-            // The heads-up notification path remains the fallback if the OS refuses the FGS start.
+            // The normal push notification remains available if the OS refuses FGS start.
         }
     }
 
