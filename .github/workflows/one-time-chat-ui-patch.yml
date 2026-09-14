@@ -1,0 +1,110 @@
+name: One-time Chat UI Patch
+
+on:
+  push:
+    branches: ["feat/pro-call-chat-lifecycle-2026-09-14"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply safe source patch
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('src/pages/Chat.tsx')
+          s = p.read_text()
+          if 'type CallLog = ' in s:
+              raise SystemExit('Chat.tsx already contains the call-log UI patch')
+
+          s = s.replace(
+              "import { Send, ImagePlus, Eye, EyeOff, Lock, Mic, Phone, Video, MoreVertical, Trash2, Volume2, Ban, Reply, Copy, Pencil, X, Square } from 'lucide-react'",
+              "import { Send, ImagePlus, Eye, EyeOff, Lock, Mic, Phone, PhoneCall, Video, MoreVertical, Trash2, Volume2, Ban, Reply, Copy, Pencil, X, Square, ArrowDownLeft, ArrowUpRight } from 'lucide-react'",
+              1,
+          )
+
+          marker = "function formatSeconds(total: number) {\n  const minutes = Math.floor(total / 60).toString().padStart(2, '0')\n  const seconds = (total % 60).toString().padStart(2, '0')\n  return `${minutes}:${seconds}`\n}\n"
+          helper = marker + "\ntype CallLog = { kind: 'voice' | 'video'; result: 'completed' | 'cancelled' | 'declined' | 'missed' | 'failed'; duration: number }\n\nfunction parseCallLog(content: string): CallLog | null {\n  const [prefix, kind, result, durationText] = String(content || '').split('|')\n  if (prefix !== 'YOMY_CALL_LOG' || !['voice', 'video'].includes(kind) || !['completed', 'cancelled', 'declined', 'missed', 'failed'].includes(result)) return null\n  const duration = Number.parseInt(durationText || '0', 10)\n  return { kind: kind as CallLog['kind'], result: result as CallLog['result'], duration: Number.isFinite(duration) ? Math.max(0, duration) : 0 }\n}\n\nfunction callLogLabel(log: CallLog) {\n  if (log.result === 'completed') return `${log.kind === 'video' ? 'Video' : 'Voice'} call`\n  if (log.result === 'declined') return `${log.kind === 'video' ? 'Video' : 'Voice'} call declined`\n  if (log.result === 'missed') return `Missed ${log.kind === 'video' ? 'video' : 'voice'} call`\n  if (log.result === 'cancelled') return `${log.kind === 'video' ? 'Video' : 'Voice'} call cancelled`\n  return `${log.kind === 'video' ? 'Video' : 'Voice'} call failed`\n}\n"
+          if marker not in s:
+              raise SystemExit('formatSeconds marker not found')
+          s = s.replace(marker, helper, 1)
+
+          s = s.replace(
+              "    const unseen = hydrated.filter(m => m.receiver_id === user.id && !m.is_seen && !m.deleted_for_everyone)\n",
+              "    const unseen = hydrated.filter(m => m.receiver_id === user.id && !m.is_seen && !m.deleted_for_everyone)\n    const undelivered = hydrated.filter(m => m.receiver_id === user.id && !m.delivered_at && !m.deleted_for_everyone)\n    if (undelivered.length) {\n      const { error: deliveredError } = await supabase.rpc('mark_messages_delivered', { p_other_user_id: otherUser.id })\n      if (deliveredError) console.error('mark_messages_delivered failed:', deliveredError.message)\n    }\n",
+              1,
+          )
+
+          s = s.replace(
+              "        const { error: seenError } = await supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })\n",
+              "        const { error: deliveredError } = await supabase.rpc('mark_message_delivered', { p_message_id: newMsg.id })\n        if (deliveredError) console.error('mark_message_delivered realtime failed:', deliveredError.message)\n        const { error: seenError } = await supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })\n",
+              1,
+          )
+
+          s = s.replace(
+              "          const reactions = msg.message_reactions || []\n",
+              "          const reactions = msg.message_reactions || []\n          const callLog = msg.media_type === 'call' ? parseCallLog(msg.content) : null\n",
+              1,
+          )
+
+          s = s.replace(
+              "{msg.deleted_for_everyone ? <p className=\"text-sm italic opacity-60\">Message deleted</p> : msg.view_once && msg.media_url && !msg.view_once_opened ?",
+              "{msg.deleted_for_everyone ? <p className=\"text-sm italic opacity-60\">Message deleted</p> : callLog ? <div className=\"min-w-[190px] py-1\"><div className=\"flex items-center gap-3\"><div className={cn('size-10 rounded-full flex items-center justify-center shrink-0', callLog.result === 'completed' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-red-500/15 text-red-500')}>{callLog.result === 'completed' ? <ArrowUpRight className=\"size-5\" /> : <ArrowDownLeft className=\"size-5\" />}</div><div className=\"min-w-0\"><p className=\"text-sm font-semibold\">{callLogLabel(callLog)}</p>{callLog.result === 'completed' && <p className=\"text-xs opacity-65 mt-0.5\">{formatSeconds(callLog.duration)}</p>}</div><div className=\"ml-auto opacity-70\">{callLog.kind === 'video' ? <Video className=\"size-4\" /> : <PhoneCall className=\"size-4\" />}</div></div></div> : msg.view_once && msg.media_url && !msg.view_once_opened ?",
+              1,
+          )
+
+          s = s.replace(
+              "{msg.is_seen ? '✓✓' : '✓'}",
+              "{msg.is_seen ? '✓✓' : msg.delivered_at ? '✓✓' : '✓'}",
+              1,
+          )
+          s = s.replace(
+              "msg.is_seen ? 'text-emerald-300' : 'opacity-60'",
+              "msg.is_seen ? 'text-emerald-300' : msg.delivered_at ? 'opacity-80' : 'opacity-60'",
+              1,
+          )
+
+          s = s.replace(
+              "is_seen: false, is_encrypted: true, view_once: viewOnceMode,",
+              "is_seen: false, delivered_at: null, is_encrypted: true, view_once: viewOnceMode,",
+              1,
+          )
+          s = s.replace(
+              "is_seen: false, is_encrypted: true,\n          view_once: false",
+              "is_seen: false, delivered_at: null, is_encrypted: true,\n          view_once: false",
+              1,
+          )
+
+          s = s.replace(
+              "{replyTo.content || (replyTo.media_type === 'audio' ? '🎙️ Voice' : replyTo.media_type === 'image' ? '📷 Photo' : replyTo.media_type === 'video' ? '🎬 Video' : '📎 Media')}",
+              "{replyTo.content || (replyTo.media_type === 'audio' ? '🎙️ Voice' : replyTo.media_type === 'image' ? '📷 Photo' : replyTo.media_type === 'video' ? '🎬 Video' : replyTo.media_type === 'call' ? '📞 Call' : '📎 Media')}",
+              1,
+          )
+
+          p.write_text(s)
+
+          # Fail closed if any key replacement was unexpectedly skipped.
+          required = ['type CallLog = ', "mark_messages_delivered", "mark_message_delivered", "msg.media_type === 'call' ? parseCallLog"]
+          missing = [item for item in required if item not in s]
+          if missing:
+              raise SystemExit(f'Patch incomplete: {missing}')
+      
+      - name: Commit patch and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name "yomy-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/pages/Chat.tsx
+          git rm .github/workflows/one-time-chat-ui-patch.yml
+          git commit -m "feat(chat): show call logs and delivery receipts"
+          git push origin HEAD:${GITHUB_REF_NAME}
