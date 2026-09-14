@@ -14,169 +14,37 @@ import android.os.Build;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
-
+import org.json.JSONObject;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
-    private static final int YOMY_PERMISSIONS = 7001;
-    private static final int YOMY_WEB_PERMISSION_REQUEST = 7002;
-    private PermissionRequest pendingWebPermissionRequest;
-    private AudioManager audioManager;
-    private int previousAudioMode = AudioManager.MODE_NORMAL;
+    private static final int YOMY_PERMISSIONS=7001, YOMY_WEB_PERMISSION_REQUEST=7002;
+    private static final String EXTRA_DEEP_LINK="yomy_deep_link";
+    private static final long CALL_ACTION_RETRY_WINDOW_MS=10_000L;
+    private PermissionRequest pendingWebPermissionRequest; private AudioManager audioManager; private int previousAudioMode=AudioManager.MODE_NORMAL;
+    private String pendingCallAction,pendingCallId;
 
-    @Override public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-        requestYomyPermissions();
-        installMediaPermissionBridge();
-        installAudioRouteBridge();
-        installLocalNotificationBridge();
-    }
-
-    private void requestYomyPermissions() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
-        java.util.ArrayList<String> permissions = new java.util.ArrayList<>();
-        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.CAMERA);
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.RECORD_AUDIO);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) permissions.add(Manifest.permission.POST_NOTIFICATIONS);
-        if (!permissions.isEmpty()) requestPermissions(permissions.toArray(new String[0]), YOMY_PERMISSIONS);
-    }
-
-    private void installMediaPermissionBridge() {
-        if (getBridge() == null || getBridge().getWebView() == null) return;
-        getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
-            @Override public void onPermissionRequest(final PermissionRequest request) { runOnUiThread(() -> handleWebPermissionRequest(request)); }
-        });
-    }
-
-    private void handleWebPermissionRequest(PermissionRequest request) {
-        if (request == null || isFinishing()) return;
-        java.util.ArrayList<String> nativePermissions = new java.util.ArrayList<>();
-        for (String resource : request.getResources()) {
-            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) nativePermissions.add(Manifest.permission.RECORD_AUDIO);
-            else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) nativePermissions.add(Manifest.permission.CAMERA);
-        }
-        java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>(nativePermissions);
-        nativePermissions.clear(); nativePermissions.addAll(unique);
-        if (nativePermissions.isEmpty()) { request.grant(request.getResources()); return; }
-        if (pendingWebPermissionRequest != null) { try { pendingWebPermissionRequest.deny(); } catch (Exception ignored) {} }
-        pendingWebPermissionRequest = request;
-        boolean allGranted = true;
-        for (String permission : nativePermissions) if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) { allGranted = false; break; }
-        if (allGranted) { grantPendingWebPermission(); return; }
-        requestPermissions(nativePermissions.toArray(new String[0]), YOMY_WEB_PERMISSION_REQUEST);
-    }
-
-    private void grantPendingWebPermission() {
-        PermissionRequest request = pendingWebPermissionRequest; pendingWebPermissionRequest = null;
-        if (request == null) return;
-        try { request.grant(request.getResources()); } catch (Exception ignored) {}
-    }
-
-    private void denyPendingWebPermission() {
-        PermissionRequest request = pendingWebPermissionRequest; pendingWebPermissionRequest = null;
-        if (request == null) return;
-        try { request.deny(); } catch (Exception ignored) {}
-    }
-
-    private void installAudioRouteBridge() {
-        if (getBridge() == null || getBridge().getWebView() == null) return;
-        getBridge().getWebView().addJavascriptInterface(new AudioRouteBridge(), "YomyAudio");
-    }
-
-    private final class AudioRouteBridge {
-        @JavascriptInterface public void setSpeaker(boolean enabled) { runOnUiThread(() -> setSpeakerRoute(enabled)); }
-    }
-
-    private void installLocalNotificationBridge() {
-        if (getBridge() == null || getBridge().getWebView() == null) return;
-        getBridge().getWebView().addJavascriptInterface(new LocalNotificationBridge(), "YomyNotification");
-    }
-
-    private final class LocalNotificationBridge {
-        @JavascriptInterface public void show(String title, String body, String kind) {
-            runOnUiThread(() -> showLocalNotification(title, body, kind));
-        }
-    }
-
-    private void showLocalNotification(String title, String body, String kind) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (manager == null) return;
-        String channelId = "call".equals(kind) ? "yomy_calls" : "yomy_default";
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            String channelName = "call".equals(kind) ? "Yomy Calls" : "Yomy";
-            NotificationChannel channel = new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH);
-            channel.setDescription("Yomy " + ("call".equals(kind) ? "incoming call" : "message") + " notifications");
-            channel.enableVibration(true);
-            manager.createNotificationChannel(channel);
-        }
-
-        Intent intent = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        int requestCode = (int) (System.currentTimeMillis() & 0x7fffffff);
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, requestCode, intent, flags);
-
-        String safeTitle = title == null || title.trim().isEmpty() ? "Yomy" : title.trim();
-        String safeBody = body == null ? "" : body.trim();
-        if (safeTitle.length() > 80) safeTitle = safeTitle.substring(0, 80);
-        if (safeBody.length() > 240) safeBody = safeBody.substring(0, 240);
-
-        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? new Notification.Builder(this, channelId)
-                : new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH);
-        builder.setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(safeTitle)
-                .setContentText(safeBody)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .setShowWhen(true)
-                .setCategory("call".equals(kind) ? Notification.CATEGORY_CALL : Notification.CATEGORY_MESSAGE)
-                .setVisibility(Notification.VISIBILITY_PRIVATE);
-
-        manager.notify(requestCode, builder.build());
-    }
-
-    private void setSpeakerRoute(boolean enabled) {
-        if (audioManager == null) return;
-        try {
-            if (audioManager.getMode() != AudioManager.MODE_IN_COMMUNICATION) previousAudioMode = audioManager.getMode();
-            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                AudioDeviceInfo desired = null;
-                for (AudioDeviceInfo device : audioManager.getAvailableCommunicationDevices()) {
-                    if (enabled && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) { desired = device; break; }
-                    if (!enabled && device.getType() == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE) { desired = device; break; }
-                }
-                if (desired != null) audioManager.setCommunicationDevice(desired);
-            } else audioManager.setSpeakerphoneOn(enabled);
-        } catch (Exception ignored) {}
-    }
-
-    private void restoreAudioRoute() {
-        if (audioManager == null) return;
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) audioManager.clearCommunicationDevice();
-            audioManager.setSpeakerphoneOn(false);
-            audioManager.setMode(previousAudioMode == AudioManager.MODE_IN_COMMUNICATION ? AudioManager.MODE_NORMAL : previousAudioMode);
-        } catch (Exception ignored) {}
-    }
-
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        if (requestCode == YOMY_WEB_PERMISSION_REQUEST) {
-            boolean granted = grantResults.length > 0;
-            for (int result : grantResults) if (result != PackageManager.PERMISSION_GRANTED) { granted = false; break; }
-            if (granted) grantPendingWebPermission(); else denyPendingWebPermission();
-            return;
-        }
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-    }
-
-    @Override public void onDestroy() {
-        denyPendingWebPermission();
-        restoreAudioRoute();
-        super.onDestroy();
-    }
+    @Override public void onCreate(Bundle state){super.onCreate(state);audioManager=(AudioManager)getSystemService(Context.AUDIO_SERVICE);captureCallAction(getIntent());captureDeepLink(getIntent());requestYomyPermissions();installMediaPermissionBridge();installAudioRouteBridge();installLocalNotificationBridge();}
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);captureCallAction(intent);captureDeepLink(intent);}
+    @Override public void onResume(){super.onResume();dispatchPendingCallActionWithRetry();}
+    private void captureCallAction(Intent intent){if(intent==null)return;String a=intent.getStringExtra(CallActionReceiver.EXTRA_ACTION);String id=intent.getStringExtra(CallActionReceiver.EXTRA_CALL_ID);if(a==null||id==null||id.trim().isEmpty())return;pendingCallAction=a;pendingCallId=id;dispatchPendingCallActionWithRetry();}
+    private void dispatchPendingCallActionWithRetry(){final String a=pendingCallAction,id=pendingCallId;if(a==null||id==null||id.trim().isEmpty())return;dispatchCallActionToWeb(a,id,CALL_ACTION_RETRY_WINDOW_MS);}
+    private void dispatchCallActionToWeb(String action,String callId,long retryWindowMs){final long deadline=System.currentTimeMillis()+retryWindowMs;final String safeA=JSONObject.quote(action),safeId=JSONObject.quote(callId);Runnable r=new Runnable(){@Override public void run(){if(getBridge()==null||getBridge().getWebView()==null){if(System.currentTimeMillis()<deadline)new android.os.Handler(getMainLooper()).postDelayed(this,150);return;}getBridge().getWebView().evaluateJavascript("window.dispatchEvent(new CustomEvent('yomy-call-action',{detail:{action:"+safeA+",callId:"+safeId+"}}));",null);if(System.currentTimeMillis()<deadline&&pendingCallAction!=null&&pendingCallId!=null)new android.os.Handler(getMainLooper()).postDelayed(this,500);}};new android.os.Handler(getMainLooper()).postDelayed(r,150);}
+    private void captureDeepLink(Intent intent){if(intent==null)return;String d=intent.getStringExtra(EXTRA_DEEP_LINK);if(d==null||d.trim().isEmpty())return;dispatchDeepLinkToWeb(d.trim());}
+    private void dispatchDeepLinkToWeb(String d){if(getBridge()==null||getBridge().getWebView()==null)return;final String safe=JSONObject.quote(d);getBridge().getWebView().postDelayed(()->{if(getBridge()==null||getBridge().getWebView()==null)return;getBridge().getWebView().evaluateJavascript("window.history.pushState({},'',"+safe+"); window.dispatchEvent(new PopStateEvent('popstate'));",null);},350);}
+    private void requestYomyPermissions(){if(Build.VERSION.SDK_INT<Build.VERSION_CODES.M)return;java.util.ArrayList<String> p=new java.util.ArrayList<>();if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)p.add(Manifest.permission.CAMERA);if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED)p.add(Manifest.permission.RECORD_AUDIO);if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)p.add(Manifest.permission.POST_NOTIFICATIONS);if(!p.isEmpty())requestPermissions(p.toArray(new String[0]),YOMY_PERMISSIONS);}
+    private void installMediaPermissionBridge(){if(getBridge()==null||getBridge().getWebView()==null)return;getBridge().getWebView().setWebChromeClient(new BridgeWebChromeClient(getBridge()){ @Override public void onPermissionRequest(final PermissionRequest request){runOnUiThread(()->handleWebPermissionRequest(request));}});}
+    private void handleWebPermissionRequest(PermissionRequest request){if(request==null||isFinishing())return;java.util.ArrayList<String> p=new java.util.ArrayList<>();for(String r:request.getResources()){if(PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r))p.add(Manifest.permission.RECORD_AUDIO);else if(PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r))p.add(Manifest.permission.CAMERA);}java.util.LinkedHashSet<String> u=new java.util.LinkedHashSet<>(p);p.clear();p.addAll(u);if(p.isEmpty()){request.grant(request.getResources());return;}if(pendingWebPermissionRequest!=null){try{pendingWebPermissionRequest.deny();}catch(Exception ignored){}}pendingWebPermissionRequest=request;boolean all=true;for(String x:p)if(checkSelfPermission(x)!=PackageManager.PERMISSION_GRANTED){all=false;break;}if(all)grantPendingWebPermission();else requestPermissions(p.toArray(new String[0]),YOMY_WEB_PERMISSION_REQUEST);}
+    private void grantPendingWebPermission(){PermissionRequest r=pendingWebPermissionRequest;pendingWebPermissionRequest=null;if(r!=null)try{r.grant(r.getResources());}catch(Exception ignored){}}
+    private void denyPendingWebPermission(){PermissionRequest r=pendingWebPermissionRequest;pendingWebPermissionRequest=null;if(r!=null)try{r.deny();}catch(Exception ignored){}}
+    private void installAudioRouteBridge(){if(getBridge()==null||getBridge().getWebView()==null)return;getBridge().getWebView().addJavascriptInterface(new AudioRouteBridge(),"YomyAudio");}
+    private final class AudioRouteBridge{@JavascriptInterface public void setSpeaker(boolean enabled){runOnUiThread(()->setSpeakerRoute(enabled));}}
+    private void installLocalNotificationBridge(){if(getBridge()==null||getBridge().getWebView()==null)return;getBridge().getWebView().addJavascriptInterface(new LocalNotificationBridge(),"YomyNotification");}
+    private final class LocalNotificationBridge{@JavascriptInterface public void show(String title,String body,String kind,String url){runOnUiThread(()->showLocalNotification(title,body,kind,url));}@JavascriptInterface public void showCall(String title,String body,String callId,String kind){runOnUiThread(()->CallNotificationService.start(MainActivity.this,callId,title,body,kind));}@JavascriptInterface public void stopCall(){runOnUiThread(()->CallActionReceiver.cancelCallNotification(MainActivity.this));}@JavascriptInterface public String getPendingCallAction(){if(pendingCallAction==null||pendingCallId==null)return "";return pendingCallAction+"|"+pendingCallId;}@JavascriptInterface public void clearPendingCallAction(){pendingCallAction=null;pendingCallId=null;}}
+    private void showLocalNotification(String title,String body,String kind,String url){if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.TIRAMISU&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return;NotificationManager manager=(NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);if(manager==null)return;String channelId="call".equals(kind)?"yomy_calls":"yomy_default";if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.O){NotificationChannel c=new NotificationChannel(channelId,"call".equals(kind)?"Yomy Calls":"Yomy",NotificationManager.IMPORTANCE_HIGH);c.setDescription("Yomy notifications");c.enableVibration(true);manager.createNotificationChannel(c);}Intent i=new Intent(this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP|Intent.FLAG_ACTIVITY_CLEAR_TOP);if(url!=null&&!url.trim().isEmpty())i.putExtra(EXTRA_DEEP_LINK,url.trim());int code=(int)(System.currentTimeMillis()&0x7fffffff),flags=PendingIntent.FLAG_UPDATE_CURRENT;if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.M)flags|=PendingIntent.FLAG_IMMUTABLE;PendingIntent pi=PendingIntent.getActivity(this,code,i,flags);Notification.Builder b=Build.VERSION.SDK_INT>=Build.VERSION_CODES.O?new Notification.Builder(this,channelId):new Notification.Builder(this).setPriority(Notification.PRIORITY_HIGH);b.setSmallIcon(R.mipmap.ic_launcher).setContentTitle(title==null||title.trim().isEmpty()?"Yomy":title.trim()).setContentText(body==null?"":body.trim()).setAutoCancel(true).setContentIntent(pi).setCategory("call".equals(kind)?Notification.CATEGORY_CALL:Notification.CATEGORY_MESSAGE).setVisibility(Notification.VISIBILITY_PRIVATE);manager.notify(code,b.build());}
+    private void setSpeakerRoute(boolean enabled){if(audioManager==null)return;try{if(audioManager.getMode()!=AudioManager.MODE_IN_COMMUNICATION)previousAudioMode=audioManager.getMode();audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S){AudioDeviceInfo desired=null;for(AudioDeviceInfo d:audioManager.getAvailableCommunicationDevices()){if(enabled&&d.getType()==AudioDeviceInfo.TYPE_BUILTIN_SPEAKER){desired=d;break;}if(!enabled&&d.getType()==AudioDeviceInfo.TYPE_BUILTIN_EARPIECE){desired=d;break;}}if(desired!=null)audioManager.setCommunicationDevice(desired);else if(!enabled)audioManager.clearCommunicationDevice();}else audioManager.setSpeakerphoneOn(enabled);}catch(Exception ignored){}}
+    private void restoreAudioRoute(){if(audioManager==null)return;try{if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.S)audioManager.clearCommunicationDevice();audioManager.setSpeakerphoneOn(false);audioManager.setMode(previousAudioMode==AudioManager.MODE_IN_COMMUNICATION?AudioManager.MODE_NORMAL:previousAudioMode);}catch(Exception ignored){}}
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){if(requestCode==YOMY_WEB_PERMISSION_REQUEST){boolean granted=grantResults.length>0;for(int r:grantResults)if(r!=PackageManager.PERMISSION_GRANTED){granted=false;break;}if(granted)grantPendingWebPermission();else denyPendingWebPermission();return;}super.onRequestPermissionsResult(requestCode,permissions,grantResults);}
+    @Override public void onDestroy(){denyPendingWebPermission();restoreAudioRoute();super.onDestroy();}
 }
