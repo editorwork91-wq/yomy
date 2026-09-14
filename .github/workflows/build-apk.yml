@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master", "feat/android-incoming-call-ringing" ]
+    branches: [ "main", "master", "feat/android-incoming-call-ringing", "feat/pro-call-chat-lifecycle-2026-09-14" ]
 
 jobs:
   build:
