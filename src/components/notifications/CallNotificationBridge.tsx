@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import { showYomyLocalNotification } from '@/lib/localNotification'
+import { showYomyIncomingCallNotification } from '@/lib/localNotification'
 
 export default function CallNotificationBridge() {
   const { user } = useAuth()
@@ -21,12 +21,20 @@ export default function CallNotificationBridge() {
 
           const { data: caller } = await supabase.from('profiles').select('username').eq('id', call.caller_id).maybeSingle()
           const callerName = caller?.username || 'Yomy'
-          showYomyLocalNotification(callerName, call.kind === 'video' ? 'Incoming video call' : 'Incoming voice call', 'call')
+          showYomyIncomingCallNotification(
+            callerName,
+            call.kind === 'video' ? 'Incoming video call' : 'Incoming voice call',
+            call.id,
+            call.kind,
+          )
         }
       )
       .subscribe()
 
-    return () => { void supabase.removeChannel(channel) }
+    return () => {
+      void supabase.removeChannel(channel)
+      notifiedCallIds.current.clear()
+    }
   }, [user])
 
   return null
