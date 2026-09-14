@@ -57,7 +57,7 @@ export async function registerNativePush(): Promise<boolean> {
         const data = event.notification.data as Record<string, unknown> | undefined
         const callId = typeof data?.call_id === 'string' ? data.call_id : ''
         const eventType = typeof data?.event_type === 'string' ? data.event_type : ''
-        if (callId && (eventType === 'CALL_INCOMING' || data?.type === 'call' || data?.call_kind)) {
+        if (callId && eventType === 'CALL_INCOMING') {
           dispatchIncomingCallOpen(callId)
           return
         }
