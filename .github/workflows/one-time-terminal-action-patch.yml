@@ -1,0 +1,36 @@
+name: One-time Terminal Call Action Patch
+
+on:
+  push:
+    branches: ["feat/pro-call-chat-lifecycle-2026-09-14"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch CallProvider native terminal action
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('src/components/calls/CallProvider.tsx')
+          s = p.read_text()
+          marker = "  const handleNativeAction = useCallback(async (action: string, callId: string) => { if (!action || !callId || !user) return; const dedupeKey = `${action}:${callId}`; if (handledNativeActionsRef.current.has(dedupeKey)) return; handledNativeActionsRef.current.add(dedupeKey); const loaded = await loadIncomingById(callId);"
+          if marker not in s:
+              raise SystemExit('CallProvider native action anchor not found')
+          replacement = "  const handleNativeAction = useCallback(async (action: string, callId: string) => { if (!action || !callId || !user) return; const dedupeKey = `${action}:${callId}`; if (handledNativeActionsRef.current.has(dedupeKey)) return; handledNativeActionsRef.current.add(dedupeKey); if (action === 'terminal') { cleanup(); getNativeNotifications()?.clearPendingCallAction?.(); window.setTimeout(() => handledNativeActionsRef.current.delete(dedupeKey), 2000); return }; const loaded = await loadIncomingById(callId);"
+          p.write_text(s.replace(marker, replacement, 1))
+      - name: Commit patch and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name "yomy-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/calls/CallProvider.tsx
+          git rm .github/workflows/one-time-terminal-action-patch.yml
+          git commit -m "fix(calls): handle terminal native call actions"
+          git push origin HEAD:${GITHUB_REF_NAME}
