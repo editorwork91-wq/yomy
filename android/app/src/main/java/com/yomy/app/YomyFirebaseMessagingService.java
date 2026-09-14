@@ -11,14 +11,18 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         if (data == null || data.isEmpty()) return;
 
         String eventType = value(data, "event_type");
-        String callId = value(data, "call_id");
-        if (!"CALL_INCOMING".equals(eventType) && !(callId != null && !callId.isEmpty())) return;
-
+        // Only the explicit CALL_INCOMING event is allowed to start the native
+        // ringing service. CALL_ACCEPTED / DECLINED / MISSED / FAILED notifications
+        // may carry a call_id for history/deep-linking but must never ring again.
+        if (!"CALL_INCOMING".equals(eventType)) return;
         if (message.getPriority() != RemoteMessage.PRIORITY_HIGH) return;
+
+        String callId = value(data, "call_id");
+        if (callId.isEmpty()) return;
 
         String title = first(data, "push_title", "title");
         String body = first(data, "push_body", "body");
-        String kind = first(data, "kind", "call_kind");
+        String kind = first(data, "call_kind", "kind");
         if (title == null || title.isEmpty()) title = "Yomy";
         if (body == null || body.isEmpty()) body = "Incoming call";
         if (kind == null || kind.isEmpty()) kind = "voice";
@@ -26,13 +30,13 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         try {
             CallNotificationService.start(this, callId, title, body, kind);
         } catch (Exception ignored) {
-            // The heads-up notification path remains the fallback if the OS refuses the FGS start.
+            // The OS may reject foreground-service startup; the persistent push
+            // notification remains available as the platform fallback.
         }
     }
 
     @Override public void onNewToken(String token) {
         super.onNewToken(token);
-        // Capacitor Push Notifications owns token persistence in the web/native bridge.
     }
 
     private static String value(Map<String, String> data, String key) {
