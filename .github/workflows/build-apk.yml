@@ -24,6 +24,21 @@ jobs:
           npm install
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
+      - name: Harden message delivery indicators
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('src/pages/Chat.tsx')
+          s = path.read_text()
+          old = "<span className=\"text-[10px] opacity-60\">{msg.is_seen ? '✓✓' : '✓'}</span>"
+          new = "<span className={cn('text-[10px]', msg.is_seen ? 'text-blue-500' : 'opacity-60')}>{msg.delivered_at ? '✓✓' : '✓'}</span>"
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif "{msg.delivered_at ? '✓✓' : '✓'}" not in s:
+              raise SystemExit('Chat delivery indicator anchor was not found')
+          path.write_text(s)
+          PY
+
       - name: Build web app
         env:
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY || secrets.VAPID_PUBLIC_KEY }}
@@ -129,8 +144,6 @@ jobs:
               1
           )
 
-          # MainActivity is restored from the repository so voice calls start on
-          # the built-in upper earpiece; speaker mode remains explicit opt-in.
           main.write_text(ms)
 
           incoming = Path('android/app/src/main/java/com/yomy/app/IncomingCallActivity.java')
@@ -148,8 +161,6 @@ jobs:
 
       - name: Apply official Yomy launcher icon
         run: |
-          # Use the public canonical YOMY-LOGO.jpeg for all Android launcher
-          # variants so the external icon matches the web/PWA branding exactly.
           rm -f android/app/src/main/res/drawable/ic_launcher_background.xml
           for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             mkdir -p "android/app/src/main/res/$dir"
