@@ -10,14 +10,27 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         Map<String, String> data = message.getData();
         if (data == null || data.isEmpty()) return;
 
-        // Only the explicit incoming-call event is allowed to start the
-        // foreground ringing service. Terminal/result events also contain a
-        // call_id, but must never trigger a second ring on either device.
         String eventType = value(data, "event_type");
-        if (!"CALL_INCOMING".equals(eventType)) return;
-
         String callId = value(data, "call_id");
         if (callId.isEmpty()) return;
+
+        // Terminal call events must shut down any native ringing UI immediately.
+        // They never start a new ringtone.
+        if (isTerminalCallEvent(eventType)) {
+            try { CallActionReceiver.cancelCallNotification(this); } catch (Exception ignored) {}
+            try {
+                android.content.Intent launch = new android.content.Intent(this, MainActivity.class)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
+                        .putExtra(CallActionReceiver.EXTRA_ACTION, "open");
+                startActivity(launch);
+            } catch (Exception ignored) {}
+            return;
+        }
+
+        // Only the explicit incoming-call event is allowed to start the
+        // foreground ringing service. Terminal/result events never ring.
+        if (!"CALL_INCOMING".equals(eventType)) return;
         if (message.getPriority() != RemoteMessage.PRIORITY_HIGH) return;
 
         String title = first(data, "push_title", "title");
@@ -37,6 +50,13 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
     @Override public void onNewToken(String token) {
         super.onNewToken(token);
         // Capacitor Push Notifications owns token persistence in the web/native bridge.
+    }
+
+    private static boolean isTerminalCallEvent(String eventType) {
+        return "CALL_DECLINED".equals(eventType)
+                || "CALL_MISSED".equals(eventType)
+                || "CALL_FAILED".equals(eventType)
+                || "CALL_ENDED".equals(eventType);
     }
 
     private static String value(Map<String, String> data, String key) {
