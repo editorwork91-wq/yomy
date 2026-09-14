@@ -12,8 +12,21 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
 
         String eventType = value(data, "event_type");
         String callId = value(data, "call_id");
-        if (!"CALL_INCOMING".equals(eventType) && !(callId != null && !callId.isEmpty())) return;
+        if (callId.isEmpty()) return;
 
+        if (isTerminalCallEvent(eventType)) {
+            try { CallActionReceiver.cancelCallNotification(this); } catch (Exception ignored) {}
+            try {
+                android.content.Intent launch = new android.content.Intent(this, MainActivity.class)
+                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP | android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                        .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
+                        .putExtra(CallActionReceiver.EXTRA_ACTION, "terminal");
+                startActivity(launch);
+            } catch (Exception ignored) {}
+            return;
+        }
+
+        if (!"CALL_INCOMING".equals(eventType)) return;
         if (message.getPriority() != RemoteMessage.PRIORITY_HIGH) return;
 
         String title = first(data, "push_title", "title");
@@ -26,13 +39,20 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         try {
             CallNotificationService.start(this, callId, title, body, kind);
         } catch (Exception ignored) {
-            // The heads-up notification path remains the fallback if the OS refuses the FGS start.
+            // The normal push notification remains available if the OS refuses FGS start.
         }
     }
 
     @Override public void onNewToken(String token) {
         super.onNewToken(token);
         // Capacitor Push Notifications owns token persistence in the web/native bridge.
+    }
+
+    private static boolean isTerminalCallEvent(String eventType) {
+        return "CALL_DECLINED".equals(eventType)
+                || "CALL_MISSED".equals(eventType)
+                || "CALL_FAILED".equals(eventType)
+                || "CALL_ENDED".equals(eventType);
     }
 
     private static String value(Map<String, String> data, String key) {
