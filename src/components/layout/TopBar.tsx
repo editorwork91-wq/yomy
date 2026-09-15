@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { MessageCircle, Settings } from 'lucide-react'
+import { Clapperboard, MessageCircle, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import BrandMark from '@/components/layout/BrandMark'
 
@@ -23,6 +23,7 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
               size="icon"
               className="size-9 rounded-full hover:bg-muted/70"
               onClick={() => navigate(-1)}
+              aria-label="Back"
             >
               <svg className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -47,6 +48,11 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
           {right || (
             showLogo && (
               <>
+                <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" asChild>
+                  <Link to="/fedo" aria-label="Fedo" title="Fedo">
+                    <Clapperboard className="size-5 stroke-[1.7]" />
+                  </Link>
+                </Button>
                 <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" asChild>
                   <Link to="/settings" aria-label="Settings">
                     <Settings className="size-5 stroke-[1.7]" />
