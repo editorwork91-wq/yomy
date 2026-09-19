@@ -104,6 +104,7 @@ export default function Fedo() {
       .from('fedos')
       .select('*, profiles!user_id(id,username,full_name,avatar_url,is_verified)')
       .eq('status', 'published')
+      .eq('visibility', 'public')
       .order('published_at', { ascending: false })
       .limit(30)
 
