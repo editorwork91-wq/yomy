@@ -70,7 +70,7 @@ Deno.serve(async req => {
   const videoPath = body?.video_path
   const videoShard = Number(body?.video_shard)
   const thumbnailPath = typeof body?.thumbnail_path === 'string' ? body.thumbnail_path : ''
-  const thumbnailShard = Number.isInteger(body?.thumbnail_shard) ? Number(body?.thumbnail_shard) : videoShard
+  const thumbnailShard = typeof body?.thumbnail_shard === 'number' && Number.isInteger(body.thumbnail_shard) ? body.thumbnail_shard : videoShard
   const filename = typeof body?.filename === 'string' ? body.filename.slice(0, 240) : 'fedo.mp4'
   const contentType = typeof body?.content_type === 'string' ? body.content_type.toLowerCase() : 'video/mp4'
   const fileSize = Math.floor(Number(body?.file_size_bytes))
