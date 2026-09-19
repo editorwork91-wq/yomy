@@ -106,7 +106,8 @@ Deno.serve(async req => {
 
   try {
     const shards = loadShards()
-    const requestedShard = typeof body?.shard === 'number' && Number.isInteger(body.shard) ? body.shard : -1
+    const requestedShardRaw = body?.shard
+    const requestedShard = typeof requestedShardRaw === 'number' && Number.isInteger(requestedShardRaw) ? requestedShardRaw : -1
     const index = requestedShard >= 0 && requestedShard < shards.length
       ? requestedShard
       : hash(`${user.id}:${crypto.randomUUID()}`) % shards.length
