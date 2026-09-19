@@ -8,13 +8,15 @@ type PreviewRow = Omit<Fedo, 'profiles'> & { profiles?: Profile | Profile[] }
 
 export default function FedoPreviewStrip() {
   const [items, setItems] = useState<PreviewRow[]>([])
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let mounted = true
+
     void supabase
       .from('fedos')
-      .select('id,user_id,media_path,media_url,thumbnail_url,caption,status,visibility,published_at,deleted_at,retention_until,duration_ms,width,height,file_size_bytes,storage_shard,created_at,updated_at,profiles!user_id(id,username,full_name,avatar_url,is_verified)')
+      .select('id,user_id,media_path,media_url,thumbnail_url,thumbnail_path,storage_node,status,visibility,published_at,deleted_at,retention_until,duration_ms,width,height,file_size_bytes,storage_shard,created_at,updated_at,profiles!user_id(id,username,full_name,avatar_url,is_verified)')
       .eq('status', 'published')
       .eq('visibility', 'public')
       .order('published_at', { ascending: false })
@@ -28,8 +30,51 @@ export default function FedoPreviewStrip() {
         })) as PreviewRow[])
         setLoading(false)
       })
+
     return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    if (!items.length) return
+    let cancelled = false
+
+    void Promise.all(items.map(async item => {
+      try {
+        const asset = item.thumbnail_path ? 'thumbnail' : 'video'
+        const { data, error } = await supabase.functions.invoke('fedo-media-url', {
+          body: { fedo_id: item.id, asset, expires_in: 3600 },
+        })
+
+        if (error || !data?.url) {
+          if (asset === 'thumbnail') {
+            const fallback = await supabase.functions.invoke('fedo-media-url', {
+              body: { fedo_id: item.id, asset: 'video', expires_in: 3600 },
+            })
+            if (!cancelled && fallback.data?.url) {
+              setSignedUrls(current => ({ ...current, [item.id]: String(fallback.data.url) }))
+              return
+            }
+          }
+          const legacy = item.thumbnail_url || item.media_url
+          if (!cancelled && legacy && /^https?:\/\//i.test(legacy)) {
+            setSignedUrls(current => ({ ...current, [item.id]: legacy }))
+          }
+          return
+        }
+
+        if (!cancelled) {
+          setSignedUrls(current => ({ ...current, [item.id]: String(data.url) }))
+        }
+      } catch {
+        const legacy = item.thumbnail_url || item.media_url
+        if (!cancelled && legacy && /^https?:\/\//i.test(legacy)) {
+          setSignedUrls(current => ({ ...current, [item.id]: legacy }))
+        }
+      }
+    }))
+
+    return () => { cancelled = true }
+  }, [items])
 
   return (
     <section className="px-4 py-3" aria-label="Fedo">
@@ -63,22 +108,27 @@ export default function FedoPreviewStrip() {
             ))
           : items.map(item => {
               const profile = item.profiles as Profile | undefined
+              const src = signedUrls[item.id] || (item.thumbnail_url || item.media_url || '')
               return (
                 <Link
                   key={item.id}
                   to={`/fedo?item=${item.id}`}
                   className="relative w-24 aspect-[9/16] overflow-hidden rounded-2xl bg-muted shrink-0 group active:scale-[0.98] transition-transform"
                 >
-                  {item.thumbnail_url ? (
-                    <img src={item.thumbnail_url} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                  {src ? (
+                    item.thumbnail_path || item.thumbnail_url ? (
+                      <img src={src} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
+                    ) : (
+                      <video
+                        src={src}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    )
                   ) : (
-                    <video
-                      src={item.media_url}
-                      muted
-                      playsInline
-                      preload="metadata"
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    />
+                    <div className="absolute inset-0 animate-pulse bg-white/5" />
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent" />
                   <div className="absolute left-2 right-2 bottom-2 text-white">
