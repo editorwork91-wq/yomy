@@ -18,6 +18,7 @@ export default function FedoPreviewStrip() {
       .from('fedos')
       .select('id,user_id,media_path,media_url,thumbnail_url,thumbnail_path,storage_node,status,visibility,published_at,deleted_at,retention_until,duration_ms,width,height,file_size_bytes,storage_shard,created_at,updated_at,profiles!user_id(id,username,full_name,avatar_url,is_verified)')
       .eq('status', 'published')
+      .eq('visibility', 'public')
       .order('published_at', { ascending: false })
       .limit(8)
       .then(({ data, error }) => {
