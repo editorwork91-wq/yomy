@@ -1,2 +1,1 @@
-[functions.moderate-content]
-verify_jwt = true
+[functions.moderate-content]\nverify_jwt = true\n\n[functions.fedo-upload-ticket]\nverify_jwt = true\n\n[functions.fedo-finalize]\nverify_jwt = true\n\n[functions.fedo-media-url]\nverify_jwt = true\n
