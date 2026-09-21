@@ -97,7 +97,7 @@ public class CallNotificationService extends Service {
         // bring up the dedicated native call screen immediately, even when the
         // WebView is cold or the app is already on another screen.
         Intent incomingScreenIntent = new Intent(this, IncomingCallActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(CallNotificationService.EXTRA_CALL_ID, callId)
                 .putExtra(CallNotificationService.EXTRA_TITLE, title)
                 .putExtra(CallNotificationService.EXTRA_BODY, body)
