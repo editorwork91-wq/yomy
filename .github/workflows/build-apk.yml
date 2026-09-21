@@ -116,7 +116,7 @@ jobs:
           if '.CallNotificationService' not in s:
               s = s.replace('    </application>', services + '    </application>')
 
-          activity = '''\n        <activity\n            android:name=".IncomingCallActivity"\n            android:exported="false"\n            android:excludeFromRecents="true"\n            android:launchMode="singleTop"\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"\n            android:theme="@style/AppTheme.NoActionBarLaunch" />\n'''
+          activity = '''\n        <activity\n            android:name=".IncomingCallActivity"\n            android:exported="false"\n            android:excludeFromRecents="true"\n            android:launchMode="singleTop"\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"\n            android:theme="@style/YomyIncomingCallTheme" />\n'''
           if '.IncomingCallActivity' not in s:
               s = s.replace('        <activity\n            android:configChanges=', activity + '\n        <activity\n            android:configChanges=', 1)
 
