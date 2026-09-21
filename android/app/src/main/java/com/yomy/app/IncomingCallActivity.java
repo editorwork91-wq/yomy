@@ -50,11 +50,11 @@ public class IncomingCallActivity extends Activity {
         super.onCreate(state);
         configureWindow();
         buildUi();
-        // Once this native screen is visible, the foreground notification is no
-        // longer needed. The activity owns the same system-respecting ringtone
-        // for the remainder of the 60-second incoming-call window.
-        stopCallService();
-        startPlaybackRespectingSystemMode();
+        // Keep the foreground call service alive while this screen is visible.
+        // Stopping/canceling the notification from onCreate can cause Android
+        // (especially OEM builds) to tear down a full-screen notification activity
+        // immediately after it is shown. The service remains the single owner of
+        // ringtone/vibration and is stopped only after answer/decline/timeout.
         handler.postDelayed(timeout, RING_DURATION_MS);
     }
 
@@ -66,7 +66,7 @@ public class IncomingCallActivity extends Activity {
 
     private void configureWindow() {
         Window window = getWindow();
-        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setStatusBarColor(BG);
         window.setNavigationBarColor(BG);
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -211,6 +211,7 @@ public class IncomingCallActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
+    /*
     private void startPlaybackRespectingSystemMode() {
         try {
             AudioManager audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -257,6 +258,8 @@ public class IncomingCallActivity extends Activity {
             else vibrator.vibrate(VIBRATION_PATTERN, 0);
         } catch (Exception ignored) {}
     }
+
+    */
 
     private void finishPlayback() {
         handler.removeCallbacks(timeout);

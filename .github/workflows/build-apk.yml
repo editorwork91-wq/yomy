@@ -116,7 +116,7 @@ jobs:
           if '.CallNotificationService' not in s:
               s = s.replace('    </application>', services + '    </application>')
 
-          activity = '''\n        <activity\n            android:name=".IncomingCallActivity"\n            android:exported="false"\n            android:excludeFromRecents="true"\n            android:launchMode="singleTop"\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"\n            android:theme="@style/AppTheme.NoActionBarLaunch" />\n'''
+          activity = '''\n        <activity\n            android:name=".IncomingCallActivity"\n            android:exported="false"\n            android:excludeFromRecents="true"\n            android:launchMode="singleTop"\n            android:showWhenLocked="true"\n            android:turnScreenOn="true"\n            android:theme="@style/YomyIncomingCallTheme" />\n'''
           if '.IncomingCallActivity' not in s:
               s = s.replace('        <activity\n            android:configChanges=', activity + '\n        <activity\n            android:configChanges=', 1)
 
@@ -157,6 +157,12 @@ jobs:
               incoming.write_text(ins)
 
           manifest.write_text(s)
+
+          # The Android platform is regenerated on every build, so keep the
+          # dedicated native call theme in the generated project as well.
+          values = Path('android/app/src/main/res/values')
+          values.mkdir(parents=True, exist_ok=True)
+          (values / 'yomy_call_styles.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <style name="YomyIncomingCallTheme" parent="@android:style/Theme.Material.NoActionBar">\n        <item name="android:windowNoTitle">true</item>\n        <item name="android:windowActionModeOverlay">true</item>\n        <item name="android:windowBackground">#081210</item>\n        <item name="android:colorAccent">#20B666</item>\n        <item name="android:fontFamily">sans</item>\n        <item name="android:windowDisablePreview">true</item>\n        <item name="android:windowIsTranslucent">false</item>\n        <item name="android:windowLightStatusBar">false</item>\n        <item name="android:windowLightNavigationBar">false</item>\n    </style>\n</resources>\n''')
           PY
 
       - name: Apply official Yomy launcher icon
