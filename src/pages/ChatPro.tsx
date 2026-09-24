@@ -544,10 +544,8 @@ export default function ChatPro() {
       created_at: createdAt,
       client_message_id: clientMessageId,
     }, { onConflict: 'sender_id,client_message_id' }).select('*').single()
-    const timeoutId = window.setTimeout(() => {}, 8000)
     const timeout = new Promise<{ data: null; error: Error }>(resolve => window.setTimeout(() => resolve({ data: null, error: new Error('NETWORK_TIMEOUT') }), 8000))
     const { data, error } = await Promise.race([request, timeout])
-    window.clearTimeout(timeoutId)
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
