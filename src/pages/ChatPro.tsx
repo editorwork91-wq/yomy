@@ -23,7 +23,6 @@ import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
 import EmojiReactionPicker from '@/components/messages/EmojiReactionPicker'
 import { useAvatarAccent } from '@/hooks/useAvatarAccent'
-import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
@@ -128,11 +127,9 @@ export default function ChatPro() {
   const [input, setInput] = useState('')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editing, setEditing] = useState<Message | null>(null)
-  const [reactionFor, setReactionFor] = useState<string | null>(null)
   const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null)
   const [viewOnceUrl, setViewOnceUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -178,7 +175,11 @@ export default function ChatPro() {
       return
     }
     if (cached?.pendingSync) {
-      const { pendingSync: _pending, ...pendingPreference } = cached
+      const pendingPreference = fallbackPreference(user.id, peerId)
+      pendingPreference.archived = Boolean(cached.archived)
+      pendingPreference.muted = Boolean(cached.muted)
+      pendingPreference.wallpaper = cached.wallpaper
+      pendingPreference.bubble_theme = cached.bubble_theme
       const { error } = await supabase.from('chat_preferences').upsert(pendingPreference, { onConflict: 'user_id,other_user_id' })
       if (!error) await cacheJson(key, pendingPreference)
     }
@@ -248,7 +249,6 @@ export default function ChatPro() {
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(250)
-    window.clearTimeout(timeoutId)
     if (!error && data) {
       const next = data as Message[]
       setMessages(next)
@@ -558,8 +558,6 @@ export default function ChatPro() {
   }
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
-  const refreshChat = useCallback(async () => { await loadMessages(false) }, [loadMessages])
-  const { pullDistance, refreshing } = usePullToRefresh(refreshChat)
   const pref = preference || (user && otherUser ? fallbackPreference(user.id, otherUser.id) : null)
   const myBubble = pref ? bubbleClasses[pref.bubble_theme] : bubbleClasses.default
 
@@ -604,7 +602,7 @@ export default function ChatPro() {
       </header>
 
       {!online && <div className="shrink-0 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline mode: cached chat works. New posts, calls and live updates wait for internet.</span>{pendingCount > 0 && <span className="ml-auto font-semibold">{pendingCount} queued</span>}</div>}
-      {syncing && <div className="shrink-0 px-4 py-1.5 bg-primary/5 border-b text-[11px] text-muted-foreground text-center">Syncing queued messages…</div>}
+      
 
       <div className={'relative flex-1 overflow-hidden ' + wallpaperBackground}>
         <Wallpaper type={sharedWallpaper} />
@@ -649,7 +647,7 @@ export default function ChatPro() {
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
                   </div>}
-                  {reactionFor === message.id && <div className="mt-1 rounded-full border bg-background px-2 py-1 shadow-lg flex gap-1">{['❤️','😂','👍','🔥','😮','😢','🎉','👏'].map(emoji => <button key={emoji} onClick={() => void react(message.id, emoji)} className="size-8 rounded-full hover:bg-muted active:scale-90 transition-transform">{emoji}</button>)}</div>}
+                  
                 </div>
               </div>
             )
