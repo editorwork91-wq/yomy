@@ -703,7 +703,7 @@ export default function ChatPro() {
     cameraStream?.getTracks().forEach(track => track.stop())
     try {
       const constraints: MediaStreamConstraints = {
-        video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: mode === 'video',
       }
       let stream: MediaStream
@@ -753,8 +753,10 @@ export default function ChatPro() {
     setCameraFlash(true)
     window.setTimeout(() => setCameraFlash(false), 110)
     const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
+    const maxWidth = 1440
+    const scale = Math.min(1, maxWidth / Math.max(video.videoWidth, 1))
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale))
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale))
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     if (cameraFacing === 'user') {
@@ -768,7 +770,7 @@ export default function ChatPro() {
       setPendingMedia({ file, kind: 'image', previewUrl: URL.createObjectURL(file) })
       stopCamera()
       setCameraOpen(false)
-    }, 'image/jpeg', 0.94)
+    }, 'image/jpeg', 0.86)
   }
 
   const toggleCameraRecording = () => {
@@ -1072,7 +1074,7 @@ export default function ChatPro() {
                       <>
                         {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-[min(18rem,76vw)] h-24 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
                         {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
-                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onPointerDown={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = window.setTimeout(() => { longPressRef.current = null; void saveImageAsSticker(message) }, 650) }} onPointerUp={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onPointerCancel={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-[1.15rem] max-h-64 max-w-[min(18rem,76vw)] object-cover mb-1.5 shadow-[0_8px_30px_rgba(0,0,0,.10)]" loading="lazy" /></button>}
+                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onPointerDown={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = window.setTimeout(() => { longPressRef.current = null; void saveImageAsSticker(message) }, 650) }} onPointerUp={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onPointerCancel={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-[1.15rem] max-h-64 max-w-[min(18rem,76vw)] object-cover aspect-[4/3] mb-1.5 shadow-[0_8px_30px_rgba(0,0,0,.10)]" loading="lazy" /></button>}
                         {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-64 max-w-[min(18rem,76vw)] mb-1.5" />}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
