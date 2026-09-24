@@ -22,6 +22,7 @@ import EditProfile from '@/pages/EditProfile'
 import Settings from '@/pages/Settings'
 import ChatPro from '@/pages/ChatPro'
 import MessagesPro from '@/pages/MessagesPro'
+import NewChat from '@/pages/NewChat'
 import NetworkStatus from '@/components/system/NetworkStatus'
 import OfflineSyncEngine from '@/components/system/OfflineSyncEngine'
 import RealtimeInbox from '@/components/realtime/RealtimeInbox'
@@ -53,7 +54,7 @@ function AppRoutes() {
     <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/messages" element={<ProtectedRoute><MessagesPro /></ProtectedRoute>} />
-    <Route path="/messages/new" element={<ProtectedRoute><ChatPro /></ProtectedRoute>} />
+    <Route path="/messages/new" element={<ProtectedRoute><NewChat /></ProtectedRoute>} />
     <Route path="/messages/:username" element={<ProtectedRoute><ChatPro /></ProtectedRoute>} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
