@@ -502,9 +502,13 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         nativeNotifications()?.clearPendingCallAction?.()
         window.setTimeout(() => handledNativeActionsRef.current.delete(key), 2500)
         return true
+      } catch {
+        handledNativeActionsRef.current.delete(key)
+        return false
       }
+    }
 
-    const processPending = () => {
+    const processPending = () =>
       const pending = bridge?.getPendingCallAction?.() || ''
       if (!pending) return
       const splitAt = pending.indexOf('|')
