@@ -24,6 +24,15 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
+import android.graphics.LinearGradient;
+import android.graphics.Shader;
+import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.widget.ImageView;
+import android.animation.ValueAnimator;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -42,6 +51,8 @@ public class IncomingCallActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable timeout = this::finishIncoming;
     private String callId;
+    private ImageView avatarImage;
+    private TextView avatarFallback;
     private boolean finished;
     private MediaPlayer ringtonePlayer;
     private Vibrator vibrator;
@@ -102,61 +113,136 @@ public class IncomingCallActivity extends Activity {
         readIntent(getIntent());
         String title = safe(getIntent().getStringExtra(CallNotificationService.EXTRA_TITLE), "Yomy");
         String kind = safe(getIntent().getStringExtra(CallNotificationService.EXTRA_KIND), "voice");
-        String subtitle = "video".equalsIgnoreCase(kind) ? "Incoming video call" : "Incoming voice call";
+        String avatarUrl = safe(getIntent().getStringExtra(CallNotificationService.EXTRA_AVATAR_URL), "");
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(BG);
 
+        CallBackdrop backdrop = new CallBackdrop(this);
+        root.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER_HORIZONTAL);
-        content.setPadding(dp(24), dp(46), dp(24), dp(18));
-        FrameLayout.LayoutParams contentParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-        );
+        content.setPadding(dp(22), dp(28), dp(22), dp(20));
+
+        FrameLayout.LayoutParams contentParams = new FrameLayout.LayoutParams(-1, -1);
         root.addView(content, contentParams);
 
-        TextView brand = text("YOMY", 13, Color.rgb(107, 193, 167), Typeface.BOLD);
-        content.addView(brand, new LinearLayout.LayoutParams(-2, -2));
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setGravity(Gravity.CENTER);
+        TextView brand = text("YOMY", 14, Color.rgb(118, 220, 190), Typeface.BOLD);
+        brandRow.addView(brand, new LinearLayout.LayoutParams(-2, -2));
 
-        SpaceView topSpace = new SpaceView(this);
-        content.addView(topSpace, new LinearLayout.LayoutParams(1, 0, 1f));
+        TextView callBadge = text("  INCOMING CALL  ", 10, Color.rgb(199, 236, 223), Typeface.BOLD);
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setColor(Color.argb(34, 255, 255, 255));
+        badgeBg.setCornerRadius(dp(18));
+        callBadge.setBackground(badgeBg);
+        callBadge.setPadding(dp(10), dp(6), dp(10), dp(6));
+        LinearLayout.LayoutParams badgeParams = new LinearLayout.LayoutParams(-2, -2);
+        badgeParams.setMargins(dp(10), 0, 0, 0);
+        brandRow.addView(callBadge, badgeParams);
+        content.addView(brandRow);
 
-        TextView avatar = text(initials(title), 42, TEXT, Typeface.BOLD);
+        SpaceView top = new SpaceView(this);
+        content.addView(top, new LinearLayout.LayoutParams(1, 0, 0.7f));
+
+        FrameLayout avatarWrap = new FrameLayout(this);
+        LinearLayout.LayoutParams avatarWrapParams = new LinearLayout.LayoutParams(dp(154), dp(154));
+        avatarWrapParams.gravity = Gravity.CENTER_HORIZONTAL;
+        content.addView(avatarWrap, avatarWrapParams);
+
+        TextView ringOuter = text("", 1, Color.TRANSPARENT, Typeface.NORMAL);
+        GradientDrawable outerBg = new GradientDrawable();
+        outerBg.setShape(GradientDrawable.OVAL);
+        outerBg.setColor(Color.TRANSPARENT);
+        outerBg.setStroke(dp(1), Color.argb(34, 118, 220, 190));
+        ringOuter.setBackground(outerBg);
+        avatarWrap.addView(ringOuter, new FrameLayout.LayoutParams(dp(154), dp(154)));
+
+        TextView ringMid = text("", 1, Color.TRANSPARENT, Typeface.NORMAL);
+        GradientDrawable midBg = new GradientDrawable();
+        midBg.setShape(GradientDrawable.OVAL);
+        midBg.setColor(Color.TRANSPARENT);
+        midBg.setStroke(dp(1), Color.argb(48, 255, 255, 255));
+        ringMid.setBackground(midBg);
+        FrameLayout.LayoutParams midParams = new FrameLayout.LayoutParams(dp(140), dp(140), Gravity.CENTER);
+        avatarWrap.addView(ringMid, midParams);
+
+        TextView avatar = text(initials(title), 44, TEXT, Typeface.BOLD);
+        avatarFallback = avatar;
+        avatarImage = new ImageView(this);
+        avatarImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        avatarImage.setVisibility(View.GONE);
         avatar.setGravity(Gravity.CENTER);
-        avatar.setBackgroundColor(Color.rgb(34, 76, 66));
-        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(dp(116), dp(116));
-        avatarParams.gravity = Gravity.CENTER_HORIZONTAL;
-        content.addView(avatar, avatarParams);
+        GradientDrawable avatarBg = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[] { Color.rgb(42, 109, 91), Color.rgb(22, 55, 48) }
+        );
+        avatarBg.setShape(GradientDrawable.OVAL);
+        avatar.setBackground(avatarBg);
+        avatar.setElevation(dp(12));
+        FrameLayout.LayoutParams avatarParams = new FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER);
+        avatarWrap.addView(avatar, avatarParams);
+        FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER);
+        avatarWrap.addView(avatarImage, imageParams);
+        loadAvatar(avatarUrl);
 
-        TextView caller = text(title, 30, TEXT, Typeface.BOLD);
+        TextView caller = text(title, 32, TEXT, Typeface.BOLD);
         caller.setGravity(Gravity.CENTER);
-        caller.setPadding(0, dp(18), 0, 0);
+        caller.setPadding(0, dp(22), 0, 0);
         content.addView(caller, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView type = text(subtitle, 16, MUTED, Typeface.NORMAL);
-        type.setGravity(Gravity.CENTER);
-        type.setPadding(0, dp(6), 0, 0);
-        content.addView(type, new LinearLayout.LayoutParams(-1, -2));
+        TextView subtitle = text("video".equalsIgnoreCase(kind) ? "Incoming video call" : "Incoming voice call", 16, MUTED, Typeface.NORMAL);
+        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setPadding(0, dp(6), 0, 0);
+        content.addView(subtitle, new LinearLayout.LayoutParams(-1, -2));
 
-        SpaceView middleSpace = new SpaceView(this);
-        content.addView(middleSpace, new LinearLayout.LayoutParams(1, 0, 1f));
+        TextView helper = text("Swipe the control to answer or decline", 13, Color.rgb(125, 151, 142), Typeface.NORMAL);
+        helper.setGravity(Gravity.CENTER);
+        helper.setPadding(0, dp(8), 0, 0);
+        content.addView(helper, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView hint = text("Swipe right to answer  •  swipe left to decline", 14, MUTED, Typeface.NORMAL);
-        hint.setGravity(Gravity.CENTER);
-        content.addView(hint, new LinearLayout.LayoutParams(-1, -2));
+        SpaceView middle = new SpaceView(this);
+        content.addView(middle, new LinearLayout.LayoutParams(1, 0, 0.95f));
 
         SwipeCallControl control = new SwipeCallControl(this);
-        LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(-1, dp(82));
-        controlParams.setMargins(0, dp(12), 0, dp(6));
+        LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(-1, dp(112));
         content.addView(control, controlParams);
 
-        TextView fallback = text("Release after the slider crosses the center", 12, Color.rgb(115, 137, 130), Typeface.NORMAL);
-        fallback.setGravity(Gravity.CENTER);
-        content.addView(fallback, new LinearLayout.LayoutParams(-1, -2));
+        TextView foot = text("Move past the center to confirm", 11, Color.rgb(91, 115, 108), Typeface.NORMAL);
+        foot.setGravity(Gravity.CENTER);
+        foot.setPadding(0, dp(8), 0, 0);
+        content.addView(foot, new LinearLayout.LayoutParams(-1, -2));
 
         setContentView(root);
+    }
+
+    private void loadAvatar(String avatarUrl) {
+        if (avatarUrl == null || avatarUrl.isEmpty()) return;
+        new Thread(() -> {
+            try {
+                java.net.URL url = new java.net.URL(avatarUrl);
+                java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(3500);
+                connection.setReadTimeout(4500);
+                connection.setInstanceFollowRedirects(true);
+                connection.connect();
+                if (connection.getResponseCode() / 100 != 2) { connection.disconnect(); return; }
+                java.io.InputStream stream = connection.getInputStream();
+                Bitmap bitmap = BitmapFactory.decodeStream(stream);
+                stream.close();
+                connection.disconnect();
+                if (bitmap == null || isFinishing()) return;
+                runOnUiThread(() -> {
+                    if (isFinishing() || avatarImage == null) return;
+                    avatarImage.setImageBitmap(bitmap);
+                    avatarImage.setVisibility(View.VISIBLE);
+                    if (avatarFallback != null) avatarFallback.setVisibility(View.INVISIBLE);
+                });
+            } catch (Exception ignored) {}
+        }).start();
     }
 
     private void readIntent(Intent intent) {
@@ -307,67 +393,188 @@ public class IncomingCallActivity extends Activity {
         private float downX;
         private float dragX;
         private boolean dragging;
+        private int armed = 0;
+        private boolean actionLocked;
         private final float threshold;
 
         SwipeCallControl(Context context) {
             super(context);
-            threshold = dp(92);
-            setBackgroundColor(TRACK);
+            threshold = dp(76);
             setFocusable(true);
             setClickable(true);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
         }
 
         @Override protected void onDraw(android.graphics.Canvas canvas) {
             super.onDraw(canvas);
-            float centerY = getHeight() / 2f;
-            float max = Math.max(0f, getWidth() / 2f - dp(44));
-            float knobX = getWidth() / 2f + Math.max(-max, Math.min(max, dragX));
+            float w = getWidth();
+            float h = getHeight();
+            float centerX = w / 2f;
+            float centerY = h / 2f;
+            float max = Math.max(dp(76), w / 2f - dp(42));
+            float knobX = centerX + Math.max(-max, Math.min(max, dragX));
+            float ratio = Math.min(1f, Math.abs(dragX) / Math.max(1f, max));
 
             android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
-            paint.setColor(DECLINE);
-            canvas.drawCircle(dp(28), centerY, dp(24), paint);
-            paint.setColor(ANSWER);
-            canvas.drawCircle(getWidth() - dp(28), centerY, dp(24), paint);
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setColor(Color.argb(28, 255, 255, 255));
+            RectF track = new RectF(dp(4), dp(8), w - dp(4), h - dp(8));
+            canvas.drawRoundRect(track, dp(32), dp(32), paint);
+
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1));
+            paint.setColor(Color.argb(28, 255, 255, 255));
+            canvas.drawRoundRect(track, dp(32), dp(32), paint);
+
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setColor(Color.argb(32, 222, 74, 74));
+            canvas.drawCircle(dp(34), centerY, dp(28), paint);
+            paint.setColor(Color.argb(32, 32, 182, 102));
+            canvas.drawCircle(w - dp(34), centerY, dp(28), paint);
+
+            paint.setColor(armed < 0 ? Color.rgb(222, 74, 74) : armed > 0 ? Color.rgb(32, 182, 102) : Color.argb(85, 255, 255, 255));
+            canvas.drawRoundRect(new RectF(centerX - dp(70), centerY - dp(3), centerX + dp(70), centerY + dp(3)), dp(3), dp(3), paint);
 
             paint.setColor(KNOB);
-            canvas.drawCircle(knobX, centerY, dp(30), paint);
+            paint.setShadowLayer(dp(12), 0, dp(4), Color.argb(100, 0, 0, 0));
+            canvas.drawCircle(knobX, centerY, dp(31), paint);
+            paint.clearShadowLayer();
 
-            paint.setColor(Color.rgb(100, 120, 114));
+            paint.setColor(armed < 0 ? Color.rgb(222, 74, 74) : armed > 0 ? Color.rgb(32, 182, 102) : Color.rgb(36, 58, 51));
             paint.setStrokeWidth(dp(3));
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
             paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
-            float alpha = Math.min(1f, Math.abs(dragX) / Math.max(1f, max));
-            paint.setAlpha((int) (255 * Math.max(0.25f, alpha)));
-            canvas.drawLine(getWidth() / 2f, centerY, knobX, centerY, paint);
+            float iconCx = knobX;
+            if (dragX >= 0) {
+                canvas.drawLine(iconCx - dp(8), centerY, iconCx + dp(5), centerY, paint);
+                canvas.drawLine(iconCx + dp(5), centerY, iconCx - dp(2), centerY - dp(7), paint);
+                canvas.drawLine(iconCx + dp(5), centerY, iconCx - dp(2), centerY + dp(7), paint);
+            } else {
+                canvas.drawLine(iconCx + dp(8), centerY, iconCx - dp(5), centerY, paint);
+                canvas.drawLine(iconCx - dp(5), centerY, iconCx + dp(2), centerY - dp(7), paint);
+                canvas.drawLine(iconCx - dp(5), centerY, iconCx + dp(2), centerY + dp(7), paint);
+            }
+
+            paint.setStyle(android.graphics.Paint.Style.FILL);
+            paint.setColor(Color.argb((int)(180 * Math.max(0.25f, 1f - ratio)), 176, 193, 187));
+            paint.setTextAlign(android.graphics.Paint.Align.CENTER);
+            paint.setTextSize(dp(10));
+            paint.setTypeface(Typeface.create("sans", Typeface.BOLD));
+            canvas.drawText("DECLINE", dp(54), centerY + dp(47), paint);
+            canvas.drawText("ANSWER", w - dp(54), centerY + dp(47), paint);
+
+            if (ratio < 0.12f) {
+                paint.setTextSize(dp(9));
+                paint.setColor(Color.argb(130, 255, 255, 255));
+                canvas.drawText("SLIDE", centerX, centerY + dp(4), paint);
+            }
         }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
+            if (actionLocked) return true;
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     downX = event.getX();
                     dragX = 0f;
+                    armed = 0;
                     dragging = true;
+                    performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
                     invalidate();
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     if (!dragging) return true;
+                    float max = Math.max(dp(76), getWidth() / 2f - dp(42));
                     dragX = event.getX() - downX;
+                    dragX = Math.max(-max, Math.min(max, dragX));
+                    int nextArmed = dragX >= threshold ? 1 : dragX <= -threshold ? -1 : 0;
+                    if (nextArmed != armed) {
+                        armed = nextArmed;
+                        if (armed != 0) performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM);
+                    }
                     invalidate();
                     return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     if (!dragging) return true;
                     dragging = false;
-                    float distance = event.getX() - downX;
-                    if (distance >= threshold) answer();
-                    else if (distance <= -threshold) decline();
-                    else {
-                        dragX = 0f;
-                        invalidate();
-                    }
+                    final int action = armed;
+                    final float target = action > 0 ? Math.max(dp(76), getWidth() / 2f - dp(42)) : action < 0 ? -Math.max(dp(76), getWidth() / 2f - dp(42)) : 0f;
+                    animateSnap(target, action);
                     return true;
                 default:
                     return true;
             }
+        }
+
+        private void animateSnap(float target, int action) {
+            float start = dragX;
+            ValueAnimator animator = ValueAnimator.ofFloat(start, target);
+            animator.setDuration(action == 0 ? 220 : 150);
+            animator.setInterpolator(new DecelerateInterpolator());
+            animator.addUpdateListener(value -> {
+                dragX = (float) value.getAnimatedValue();
+                invalidate();
+            });
+            animator.addListener(new android.animation.AnimatorListenerAdapter() {
+                @Override public void onAnimationEnd(android.animation.Animator animation) {
+                    if (action == 0) {
+                        armed = 0;
+                        invalidate();
+                        return;
+                    }
+                    actionLocked = true;
+                    performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM);
+                    handler.postDelayed(() -> {
+                        if (action > 0) answer();
+                        else decline();
+                    }, 90L);
+                }
+            });
+            animator.start();
+        }
+    }
+
+    private static final class CallBackdrop extends View {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Paint glow = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+        CallBackdrop(Context context) {
+            super(context);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas canvas) {
+            float w = getWidth();
+            float h = getHeight();
+
+            paint.setShader(new LinearGradient(
+                    0, 0, w, h,
+                    new int[] { Color.rgb(4, 14, 12), Color.rgb(8, 28, 23), Color.rgb(3, 12, 11) },
+                    null,
+                    Shader.TileMode.CLAMP
+            ));
+            canvas.drawRect(0, 0, w, h, paint);
+            paint.setShader(null);
+
+            glow.setColor(Color.argb(35, 55, 211, 147));
+            glow.setMaskFilter(new android.graphics.BlurMaskFilter(dp(42), android.graphics.BlurMaskFilter.Blur.NORMAL));
+            canvas.drawCircle(w * 0.5f, h * 0.22f, dp(72), glow);
+
+            glow.setColor(Color.argb(20, 71, 126, 255));
+            canvas.drawCircle(w * 0.08f, h * 0.84f, dp(95), glow);
+
+            glow.setColor(Color.argb(18, 255, 255, 255));
+            canvas.drawCircle(w * 0.9f, h * 0.72f, dp(75), glow);
+
+            glow.clearShadowLayer();
+            paint.setColor(Color.argb(12, 255, 255, 255));
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1));
+            canvas.drawCircle(w * 0.5f, h * 0.22f, dp(150), paint);
+        }
+
+        private int dp(int value) {
+            return Math.round(value * getResources().getDisplayMetrics().density);
         }
     }
 

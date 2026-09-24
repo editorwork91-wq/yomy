@@ -173,8 +173,22 @@ public class MainActivity extends BridgeActivity {
 
     private final class LocalNotificationBridge {
         @JavascriptInterface public void show(String title, String body, String kind, String url) { runOnUiThread(() -> showLocalNotification(title, body, kind, url)); }
-        @JavascriptInterface public void showCall(String title, String body, String callId, String kind) { runOnUiThread(() -> CallNotificationService.start(MainActivity.this, callId, title, body, kind)); }
+        @JavascriptInterface public void showCall(String title, String body, String callId, String kind) { runOnUiThread(() -> CallNotificationService.start(MainActivity.this, callId, title, body, kind, "")); }
         @JavascriptInterface public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }
+        @JavascriptInterface public boolean showIncomingCallScreen(String callId, String title, String body, String kind, String avatarUrl) {
+            try {
+                CallNotificationService.start(MainActivity.this, callId, title, body, kind, avatarUrl == null ? "" : avatarUrl);
+                Intent incoming = new Intent(MainActivity.this, IncomingCallActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        .putExtra(CallNotificationService.EXTRA_CALL_ID, callId)
+                        .putExtra(CallNotificationService.EXTRA_TITLE, title)
+                        .putExtra(CallNotificationService.EXTRA_BODY, body)
+                        .putExtra(CallNotificationService.EXTRA_KIND, kind)
+                        .putExtra(CallNotificationService.EXTRA_AVATAR_URL, avatarUrl == null ? "" : avatarUrl);
+                startActivity(incoming);
+                return true;
+            } catch (Exception ignored) { return false; }
+        }
         @JavascriptInterface public String getPendingCallAction() { if (pendingCallAction == null || pendingCallId == null) return ""; return pendingCallAction + "|" + pendingCallId; }
         @JavascriptInterface public void clearPendingCallAction() { pendingCallAction = null; pendingCallId = null; }
     }

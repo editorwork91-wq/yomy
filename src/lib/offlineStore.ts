@@ -1,4 +1,4 @@
-type QueuedMessage = {
+export type QueuedMessage = {
   clientMessageId: string
   userId: string
   otherUserId: string
@@ -8,7 +8,7 @@ type QueuedMessage = {
 }
 
 const DB_NAME = 'yomy-offline-v4'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const KV_STORE = 'kv'
 const QUEUE_STORE = 'queue'
 
@@ -95,6 +95,7 @@ export async function queueMessage(message: QueuedMessage) {
     const existing = (await getValue<QueuedMessage[]>(`messageQueue:${message.userId}`)) || []
     if (!existing.some(item => item.clientMessageId === message.clientMessageId)) existing.push(message)
     await putValue(`messageQueue:${message.userId}`, existing)
+    try { window.dispatchEvent(new CustomEvent('yomy-message-queue-changed')) } catch {}
     return
   }
   await new Promise<void>(resolve => {
@@ -104,6 +105,7 @@ export async function queueMessage(message: QueuedMessage) {
     tx.onerror = () => resolve()
   })
   db.close()
+  try { window.dispatchEvent(new CustomEvent('yomy-message-queue-changed')) } catch {}
 }
 
 export async function readQueuedMessages(userId: string): Promise<QueuedMessage[]> {

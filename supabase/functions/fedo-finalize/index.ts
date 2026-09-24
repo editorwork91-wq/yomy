@@ -25,6 +25,11 @@ type Shard = {
 }
 
 function loadShards(): Shard[] {
+  const mode = (Deno.env.get('FEDO_MEDIA_MODE') || 'main').toLowerCase()
+  if (mode !== 'sharded') {
+    return [{ name: 'yomy-main', url: mainUrl, service_role_key: mainServiceKey, anon_key: '', bucket: 'fedos', thumbnail_bucket: 'fedo-thumbnails' }]
+  }
+
   const raw = Deno.env.get('MEDIA_SHARDS_JSON')
   if (!raw) {
     return [{ name: 'yomy-main', url: mainUrl, service_role_key: mainServiceKey, anon_key: '', bucket: 'fedos', thumbnail_bucket: 'fedo-thumbnails' }]
@@ -39,7 +44,6 @@ function loadShards(): Shard[] {
   if (!shards.length) throw new Error('MEDIA_SHARDS_JSON_NO_VALID_SHARDS')
   return shards
 }
-
 function safePath(path: unknown, userId: string) {
   return typeof path === 'string'
     && path.length > 0

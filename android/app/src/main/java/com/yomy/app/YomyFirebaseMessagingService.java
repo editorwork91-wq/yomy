@@ -23,12 +23,13 @@ public class YomyFirebaseMessagingService extends FirebaseMessagingService {
         String title = first(data, "push_title", "title");
         String body = first(data, "push_body", "body");
         String kind = first(data, "call_kind", "kind");
+        String avatarUrl = value(data, "avatar_url");
         if (title == null || title.isEmpty()) title = "Yomy";
         if (body == null || body.isEmpty()) body = "Incoming call";
         if (kind == null || kind.isEmpty()) kind = "voice";
 
         try {
-            CallNotificationService.start(this, callId, title, body, kind);
+            CallNotificationService.start(this, callId, title, body, kind, avatarUrl);
         } catch (Exception ignored) {
             // The OS may reject foreground-service startup; the persistent push
             // notification remains available as the platform fallback.
