@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff, Maximize2 } from 'lucide-react'
+import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff, Maximize2, Plus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { sendPushEvent } from '@/lib/push'
@@ -546,19 +546,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     {children}
     <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
-    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7">
-      <Avatar className="size-[clamp(6.5rem,34vw,8rem)] border-4 border-white/10 shadow-2xl">
-        <AvatarImage src={peer.avatar_url} />
-        <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
-      </Avatar>
-      <h2 className="mt-6 text-[clamp(1.5rem,6vw,2rem)] font-semibold">{peer.username}</h2>
-      <p className="mt-2 text-white/60">{outgoingStage === 'ringing' ? 'Ringing…' : 'Connecting…'}</p>
-      <p className="mt-1 text-xs text-white/35">{outgoingStage === 'ringing' ? 'The other device received the call' : 'Waiting for the other device'}</p>
-      <div className="mt-auto pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <Button variant="destructive" size="lg" className="rounded-full size-16 shadow-xl" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button>
-      </div>
-    </div>}
-
     {showActive && peer && active && !((location.pathname + location.search) === callPresentationRoute) && (
       <div className="fixed top-[max(0.55rem,env(safe-area-inset-top))] left-3 right-3 z-[120] flex justify-center">
         <div className="w-full max-w-xl overflow-hidden rounded-[1.35rem] border border-white/15 bg-background/78 backdrop-blur-2xl shadow-[0_18px_70px_rgba(0,0,0,.30)] ring-1 ring-black/5">
@@ -579,7 +566,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       </div>
     )}
 
-    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#07110e] text-white overflow-hidden">
+    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#07110e] text-white overflow-hidden yomy-call-stage">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(0,255,170,.10),transparent_28%),radial-gradient(circle_at_15%_85%,rgba(90,110,255,.13),transparent_26%),radial-gradient(circle_at_85%_70%,rgba(255,80,150,.10),transparent_25%)]" />
       <div className="absolute -top-24 -left-16 size-64 rounded-full border border-white/5 bg-white/[0.025] blur-2xl" />
       <div className="absolute top-1/3 -right-24 size-72 rounded-full border border-white/5 bg-emerald-400/[0.04] blur-3xl" />
@@ -611,7 +598,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       </div>
     </div>}
 
-    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7">
+    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7 yomy-call-stage">
       <Avatar className="size-[clamp(6.5rem,34vw,8.2rem)] border-4 border-white/10 shadow-2xl"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
       <h2 className="mt-6 text-[clamp(1.5rem,6vw,2rem)] font-semibold">{peer.username}</h2>
       <p className="mt-2 text-white/60">{outgoingStage === 'ringing' ? 'Ringing…' : 'Connecting…'}</p>
@@ -619,7 +606,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       <div className="mt-auto pb-[max(2rem,env(safe-area-inset-bottom))]"><Button variant="destructive" size="lg" className="rounded-full size-16 shadow-xl active:scale-95 transition-transform" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button></div>
     </div>}
 
-    {showActive && peer && active && (location.pathname + location.search) === callPresentationRoute && <div className="fixed inset-0 z-[99] bg-black flex flex-col text-white overflow-hidden">
+    {showActive && peer && active && (location.pathname + location.search) === callPresentationRoute && <div className="fixed inset-0 z-[99] bg-black flex flex-col text-white overflow-hidden yomy-call-stage">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,.08),transparent_28%)] pointer-events-none" />
       <div className="relative flex items-center justify-between p-4 pt-[max(1.2rem,env(safe-area-inset-top)+.5rem)]">
         <div><p className="font-semibold text-lg">{peer.username}</p><p className="text-sm opacity-70">{connected ? formatDuration(elapsedSeconds) : 'Reconnecting audio…'}</p></div>
@@ -631,7 +618,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
           <div className="absolute top-6 right-6 w-28 sm:w-36 aspect-video rounded-xl overflow-hidden border border-white/30 shadow-2xl bg-black"><MediaView stream={localStream} muted /></div>
         </> : <div className="relative"><div className="absolute inset-[-22px] rounded-full border border-white/10 animate-pulse" /><div className="size-40 rounded-full overflow-hidden ring-4 ring-white/5 shadow-[0_25px_100px_rgba(0,0,0,.45)]"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div></div>}
       </div>
-      <div className="relative flex justify-center items-center gap-4 p-6 pb-[max(1.25rem,env(safe-area-inset-bottom)+.75rem)]">
+      <div className="relative flex justify-center items-center gap-3 p-6 pb-[max(1.25rem,env(safe-area-inset-bottom)+.75rem)]"><button type="button" className="yomy-call-add" onClick={() => toast.info('Add participant UI is ready; the current WebRTC transport is still 1:1.')} aria-label="Add participant"><Plus className="size-4" /><span>Add</span></button>
         <Button variant={speakerOn ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? "Use earpiece" : "Use speaker"}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button>
         <Button variant={muted ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={toggleMic} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? <MicOff /> : <Mic />}</Button>
         {active.kind === "video" && <Button variant={cameraOff ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={toggleCamera} aria-label={cameraOff ? "Turn camera on" : "Turn camera off"}>{cameraOff ? <VideoOff /> : <Video />}</Button>}
