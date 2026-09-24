@@ -508,7 +508,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       }
     }
 
-    const processPending = () =>
+    const processPending = () => {
       const pending = bridge?.getPendingCallAction?.() || ''
       if (!pending) return
       const splitAt = pending.indexOf('|')
