@@ -148,6 +148,8 @@ export default function ChatPro() {
   const [otherUser, setOtherUser] = useState<ProfileType | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [preference, setPreference] = useState<ChatPreference | null>(null)
+  const [sharedWallpaper, setSharedWallpaper] = useState<ChatPreference['wallpaper']>('default')
+  const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({})
   const [input, setInput] = useState('')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editing, setEditing] = useState<Message | null>(null)
@@ -202,6 +204,27 @@ export default function ChatPro() {
     const next = (data as ChatPreference | null) || fallbackPreference(user.id, peerId)
     setPreference(next)
     await cacheJson(key, next)
+  }, [online, user])
+
+  const loadSharedSettings = useCallback(async (peerId: string) => {
+    if (!user) return
+    const key = 'chatShared:' + [user.id, peerId].sort().join(':')
+    const cached = await readCachedJson<{ wallpaper: ChatPreference['wallpaper'] }>(key)
+    if (cached?.wallpaper) setSharedWallpaper(cached.wallpaper)
+    if (!online) {
+      if (!cached) setSharedWallpaper('default')
+      return
+    }
+    const pair = sharedChatKey(user.id, peerId)
+    const { data } = await supabase
+      .from('chat_shared_settings')
+      .select('wallpaper')
+      .eq('user_low', pair.user_low)
+      .eq('user_high', pair.user_high)
+      .maybeSingle()
+    const wallpaper = (data?.wallpaper as ChatPreference['wallpaper'] | undefined) || 'default'
+    setSharedWallpaper(wallpaper)
+    await cacheJson(key, { wallpaper })
   }, [online, user])
 
   const scrollToBottom = useCallback((smooth = false) => {
@@ -276,9 +299,10 @@ export default function ChatPro() {
   useEffect(() => {
     if (otherUser) {
       void loadPreference(otherUser.id)
+      void loadSharedSettings(otherUser.id)
       void loadMessages()
     }
-  }, [loadMessages, loadPreference, otherUser])
+  }, [loadMessages, loadPreference, loadSharedSettings, otherUser])
   useEffect(() => { if (online) void flushQueue() }, [flushQueue, online])
 
   useEffect(() => {
