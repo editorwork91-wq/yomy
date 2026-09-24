@@ -2,6 +2,12 @@ import { StrictMode, Component, type ErrorInfo, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 
 import "./index.css"
+
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(error => console.warn("Yomy service worker unavailable:", error))
+  })
+}
 import App from "./App.tsx"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
 
