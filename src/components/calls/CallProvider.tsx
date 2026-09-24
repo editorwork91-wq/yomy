@@ -467,7 +467,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
           } else if (signal.signal_type === 'ice-candidate') {
             if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
             else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
-          } else if (signal.signal_type === 'hangup' || signal.signal_type === 'decline') {
+          } else if (signal.signal_type === 'hangup') {
             cleanup()
           }
         } catch (error) {
