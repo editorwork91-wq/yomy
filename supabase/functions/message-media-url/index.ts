@@ -104,6 +104,7 @@ Deno.serve(async req => {
     view_once: Boolean(resolved.view_once),
     view_once_limit: limit,
     view_once_open_count: count,
+    view_once_opened_at: resolved.view_once_opened_at || null,
     remaining_opens: resolved.view_once ? Math.max(0, limit - count) : null,
   })
 })
