@@ -7,12 +7,6 @@ import { cacheConversations, readCachedConversations } from '@/lib/offlineStore'
 export default function RealtimeInbox() {
   const { user } = useAuth()
   const location = useLocation()
-  const ping = () => {
-    try {
-      window.dispatchEvent(new CustomEvent('yomy-attention', { detail: { title: 'New message', body: 'You have a new message', url: '/messages', kind: 'message' } }))
-    } catch {}
-  }
-
   useEffect(() => {
     if (!user) return
 
@@ -71,7 +65,6 @@ export default function RealtimeInbox() {
           await cacheConversations(user.id, nextConversation)
 
           if (inCurrentChat) return
-          ping()
           ping()
         }
       )
