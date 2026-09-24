@@ -70,7 +70,8 @@ function callResultCopy(event: YomyEvent) {
     default: return null
   }
 }
-\nfunction emitAttention(title: string, body: string, url: string | null, kind: 'message' | 'call' = 'message') {
+
+function emitAttention(title: string, body: string, url: string | null, kind: 'message' | 'call' = 'message') {
   try {
     window.dispatchEvent(new CustomEvent('yomy-attention', { detail: { title, body, url: url || '/notifications', kind } }))
   } catch {}
