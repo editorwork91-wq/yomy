@@ -622,6 +622,9 @@ export default function ChatPro() {
       is_encrypted: true,
       view_once: false,
       view_once_opened: false,
+      view_once_limit: 0,
+      view_once_open_count: 0,
+      view_once_opened_at: null,
       deleted_at: null,
       deleted_for_everyone: false,
       reply_to_id: replyId,
@@ -694,7 +697,7 @@ export default function ChatPro() {
 
   useEffect(() => {
     if (!online || !user || !messages.length) return
-    const candidates = messages.filter(message => message.media_type && !mediaUrls[message.id]).slice(-16)
+    const candidates = messages.filter(message => message.media_type && !message.view_once && !mediaUrls[message.id]).slice(-16)
     if (!candidates.length) return
     let cancelled = false
 
@@ -808,8 +811,8 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.view_once_open_count >= (message.view_once_limit || 1) && message.sender_id !== user?.id ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× view mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
-                        {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.view_once_open_count >= (message.view_once_limit || 1) && message.sender_id !== user?.id ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× view mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
+                        {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
+                        {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
                         {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
                         {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
