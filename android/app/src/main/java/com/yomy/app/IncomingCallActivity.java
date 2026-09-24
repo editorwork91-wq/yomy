@@ -143,16 +143,29 @@ public class IncomingCallActivity extends Activity {
         SpaceView middleSpace = new SpaceView(this);
         content.addView(middleSpace, new LinearLayout.LayoutParams(1, 0, 1f));
 
-        TextView hint = text("Swipe right to answer  •  swipe left to decline", 14, MUTED, Typeface.NORMAL);
+        TextView hint = text("Choose an action", 13, Color.rgb(130, 153, 146), Typeface.NORMAL);
         hint.setGravity(Gravity.CENTER);
         content.addView(hint, new LinearLayout.LayoutParams(-1, -2));
 
-        SwipeCallControl control = new SwipeCallControl(this);
-        LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(-1, dp(82));
-        controlParams.setMargins(0, dp(12), 0, dp(6));
-        content.addView(control, controlParams);
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+        actions.setPadding(0, dp(12), 0, dp(4));
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-1, dp(92));
+        actionsParams.setMargins(0, dp(4), 0, 0);
+        content.addView(actions, actionsParams);
 
-        TextView fallback = text("Release after the slider crosses the center", 12, Color.rgb(115, 137, 130), Typeface.NORMAL);
+        TextView declineButton = callActionButton("Decline", DECLINE, Color.WHITE);
+        TextView answerButton = callActionButton("Answer", ANSWER, Color.WHITE);
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(0, dp(70), 1f);
+        actionParams.setMargins(dp(6), 0, dp(6), 0);
+        actions.addView(declineButton, actionParams);
+        actions.addView(answerButton, actionParams);
+
+        declineButton.setOnClickListener(v -> decline());
+        answerButton.setOnClickListener(v -> answer());
+
+        TextView fallback = text("Your call starts immediately after Answer", 11, Color.rgb(105, 128, 120), Typeface.NORMAL);
         fallback.setGravity(Gravity.CENTER);
         content.addView(fallback, new LinearLayout.LayoutParams(-1, -2));
 
@@ -277,6 +290,19 @@ public class IncomingCallActivity extends Activity {
     @Override protected void onDestroy() {
         finishPlayback();
         super.onDestroy();
+    }
+
+    private TextView callActionButton(String label, int backgroundColor, int textColor) {
+        TextView view = text(label, 16, textColor, Typeface.BOLD);
+        view.setGravity(Gravity.CENTER);
+        view.setAllCaps(false);
+        android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+        bg.setColor(backgroundColor);
+        bg.setCornerRadius(dp(26));
+        view.setBackground(bg);
+        view.setElevation(dp(7));
+        view.setPadding(dp(18), 0, dp(18), 0);
+        return view;
     }
 
     private TextView text(String value, float sizeSp, int color, int typefaceStyle) {
