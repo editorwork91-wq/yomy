@@ -465,20 +465,46 @@ export default function ChatPro() {
   }
 
   const react = async (messageId: string, emoji: string) => {
-    if (!user || !online || messageId.startsWith('local:')) return
+    if (!user || messageId.startsWith('local:') || !otherUser) return
     const msg = messages.find(m => m.id === messageId)
     if (!msg) return
+
     const existing = msg.message_reactions?.find(r => r.user_id === user.id)
-    let result
-    if (existing?.emoji === emoji) {
-      result = await supabase.from('message_reactions').delete().eq('id', existing.id)
-    } else if (existing) {
-      result = await supabase.from('message_reactions').update({ emoji }).eq('id', existing.id)
-    } else {
-      result = await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id, emoji })
-    }
-    if (result.error) toast.error(result.error.message)
+    const mode = existing?.emoji === emoji ? 'clear' : 'set'
+    const nextReactions = (msg.message_reactions || [])
+      .filter(r => r.user_id !== user.id)
+      .concat(mode === 'set'
+        ? [{ id: existing?.id || 'local-reaction:' + crypto.randomUUID(), message_id: messageId, user_id: user.id, emoji, created_at: new Date().toISOString() }]
+        : [])
+
+    const nextMessages = messages.map(item => item.id === messageId ? { ...item, message_reactions: nextReactions } : item)
+    setMessages(nextMessages)
     setReactionFor(null)
+    await cacheMessages(user.id, otherUser.id, nextMessages)
+
+    if (!online) {
+      await queueSyncOperation({
+        opId: crypto.randomUUID(),
+        userId: user.id,
+        kind: 'reaction_set',
+        createdAt: new Date().toISOString(),
+        payload: { messageId, mode, emoji },
+      })
+      return
+    }
+
+    const result = mode === 'clear'
+      ? await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', user.id)
+      : await supabase.from('message_reactions').upsert(
+        { message_id: messageId, user_id: user.id, emoji },
+        { onConflict: 'message_id,user_id' },
+      )
+
+    if (result.error) {
+      toast.error(result.error.message)
+      await loadMessages(false)
+      return
+    }
     await loadMessages(false)
   }
 
