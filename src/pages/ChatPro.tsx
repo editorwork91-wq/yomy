@@ -713,17 +713,18 @@ export default function ChatPro() {
   const myBubble = pref ? bubbleClasses[pref.bubble_theme] : bubbleClasses.default
 
   const wallpaperBackground = useMemo(() => {
-    if (!pref || pref.wallpaper === 'default') return ''
-    if (pref.wallpaper === 'midnight') return 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950'
-    if (pref.wallpaper === 'paper') return 'bg-[linear-gradient(rgba(127,127,127,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(127,127,127,.06)_1px,transparent_1px)] bg-[size:28px_28px]'
+    if (sharedWallpaper === 'default') return ''
+    if (sharedWallpaper === 'midnight') return 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950'
+    if (sharedWallpaper === 'paper') return 'bg-[linear-gradient(rgba(127,127,127,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(127,127,127,.06)_1px,transparent_1px)] bg-[size:28px_28px]'
+    if (sharedWallpaper === 'roses') return 'bg-rose-50/40 dark:bg-rose-950/15'
     return 'bg-muted/25'
-  }, [pref])
+  }, [sharedWallpaper])
 
   if (!otherUser) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-7" /></div>
 
   return (
     <div className="h-[100dvh] flex flex-col bg-background overflow-hidden">
-      <header className="h-14 shrink-0 border-b border-border/70 bg-background/90 backdrop-blur-xl flex items-center gap-1 px-2">
+      <header className="h-16 shrink-0 border-b border-border/60 bg-background/78 backdrop-blur-2xl flex items-center gap-1 px-2 shadow-[0_8px_30px_rgba(0,0,0,.06)]">
         <Button variant="ghost" size="icon" className="size-10 rounded-full" onClick={() => navigate(-1)}><ChevronLeft className="size-5" /></Button>
         <Link to={'/profile/' + otherUser.username} className="flex items-center gap-2 min-w-0 flex-1">
           <div className="relative">
@@ -731,29 +732,32 @@ export default function ChatPro() {
             {online && <span className="absolute right-0 bottom-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-sm truncate">{otherUser.username}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{online ? 'Online · synced' : 'Offline · saved on this device'}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="font-semibold text-sm truncate">{otherUser.username}</p>
+              {otherUser.is_verified && <ShieldCheck className="size-3.5 text-sky-500 shrink-0" />}
+            </div>
+            <p className="text-[11px] text-muted-foreground truncate">{online ? 'Online · synced' : 'Offline · device snapshot'}</p>
           </div>
         </Link>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'video')} aria-label="Video call"><Video className="size-5" /></Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9 rounded-full" aria-label="Chat options"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem onClick={() => navigate('/profile/' + otherUser.username)}>Open profile</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void savePreference({ archived: !pref?.archived })}><Archive className="size-4 mr-2" />{pref?.archived ? 'Remove from archive' : 'Move to archive'}</DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-60 rounded-2xl p-1.5">
+            <DropdownMenuItem onClick={() => navigate('/profile/' + otherUser.username)}><UserRound className="size-4 mr-2" />Open profile</DropdownMenuItem>
+            <DropdownMenuItem onClick={async () => { const nextArchived = !pref?.archived; await savePreference({ archived: nextArchived }); if (nextArchived) navigate('/messages') }}><Archive className="size-4 mr-2" />{pref?.archived ? 'Remove from archive' : 'Move to archive'}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void savePreference({ muted: !pref?.muted })}><BellOff className="size-4 mr-2" />{pref?.muted ? 'Unmute notifications' : 'Mute notifications'}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setDraftTheme(pref?.wallpaper || 'default'); setDraftBubble(pref?.bubble_theme || 'default'); setSettingsOpen(true) }}><Palette className="size-4 mr-2" />Chat theme & colors</DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => { setDraftTheme(sharedWallpaper); setDraftBubble(pref?.bubble_theme || 'default'); setSettingsOpen(true) }}><Palette className="size-4 mr-2" />Wallpaper & message colors</DropdownMenuItem>
             <DropdownMenuItem onClick={() => scrollToBottom(true)}>Jump to latest</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
 
-      {!online && <div className="shrink-0 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline mode: cached chat works. New posts, calls and live updates wait for internet.</span>{pendingCount > 0 && <span className="ml-auto font-semibold">{pendingCount} queued</span>}</div>}
+      {!online && <div className="shrink-0 px-3 py-1.5 bg-amber-500/8 border-b border-amber-500/15 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline snapshot · messages stay here until connection returns.</span>{pendingCount > 0 && <span className="ml-auto rounded-full bg-amber-500/12 px-2 py-0.5 font-semibold">{pendingCount} waiting</span>}</div>
 
       <div className={'relative flex-1 overflow-hidden ' + wallpaperBackground}>
-        <Wallpaper type={pref?.wallpaper || 'default'} />
+        <Wallpaper type={sharedWallpaper} />
         <div ref={scrollRef} className="relative h-full overflow-y-auto px-3 py-4 space-y-2">
           {loading ? <div className="h-full flex items-center justify-center"><Spinner className="size-6" /></div> : messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
@@ -776,10 +780,12 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && message.media_url && <button onClick={() => message.view_once && setViewOnceUrl(message.media_url)} className="block"><img src={message.media_url} alt="" className="rounded-xl max-h-64 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
-                        {message.media_type === 'video' && message.media_url && <video src={message.media_url} controls playsInline className="rounded-xl max-h-64 max-w-full mb-1.5" />}
-                        {message.media_type === 'audio' && message.media_url && <audio src={message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
+                        {message.media_type === 'image' && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
+                        {message.media_type === 'video' && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
+                        {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
+                        {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
                         {message.content && <p className="text-[15px] whitespace-pre-wrap break-words leading-[1.35]">{renderMessageText(message.content)}</p>}
+                        {message.content && firstUrl(message.content) && <LinkPreviewCard url={firstUrl(message.content)} />}
                         {message.view_once && message.media_type && <p className="text-[11px] mt-1 opacity-75 flex items-center gap-1"><Eye className="size-3" />View once</p>}
                       </>
                     )}
@@ -792,12 +798,12 @@ export default function ChatPro() {
                     </div>
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
-                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
+                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}><Smile className="size-4" /></Button>
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
                   </div>}
-                  {reactionFor === message.id && <div className="mt-1 rounded-full border bg-background px-2 py-1 shadow-lg flex gap-1">{['❤️','😂','👍','🔥','😮','😢','🎉','👏'].map(emoji => <button key={emoji} onClick={() => void react(message.id, emoji)} className="size-8 rounded-full hover:bg-muted active:scale-90 transition-transform">{emoji}</button>)}</div>}
+                  {reactionFor === message.id && <div className="mt-1 rounded-full border bg-background/95 backdrop-blur-xl px-2 py-1.5 shadow-[0_14px_40px_rgba(0,0,0,.18)] flex gap-1">{['❤️','😂','👍','🔥','😮','😢','🎉','👏'].map(emoji => <button key={emoji} onClick={() => void react(message.id, emoji)} className="size-8 rounded-full hover:bg-muted active:scale-90 transition-transform">{emoji}</button>)}</div>}
                 </div>
               </div>
             )
@@ -825,13 +831,13 @@ export default function ChatPro() {
 
       {settingsOpen && pref && <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-w-sm max-h-[82vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Chat theme & colors</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Wallpaper & message colors</DialogTitle></DialogHeader>
           <div className="space-y-5">
             <section>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Decorative background</p>
               <div className="grid grid-cols-2 gap-2">
                 {wallpapers.map(item => <button key={item} onClick={() => setDraftTheme(item)} className={'rounded-2xl border p-3 text-left transition-all ' + (draftTheme === item ? 'ring-2 ring-primary border-primary' : '')}>
-                  <div className={'h-14 rounded-xl mb-2 flex items-center justify-center text-lg ' + (item === 'default' ? 'bg-muted' : item === 'midnight' ? 'bg-slate-950 text-white' : item === 'paper' ? 'bg-muted/40' : 'bg-pink-100 dark:bg-pink-950/30')}>{item === 'romance' ? '♥ ✿' : item === 'hearts' ? '♥ ♡' : item === 'petals' ? '✿ ❀' : item === 'midnight' ? '✦ ⋆' : item === 'paper' ? '· •' : 'A'}</div>
+                  <div className={'h-14 rounded-xl mb-2 flex items-center justify-center text-lg ' + (item === 'default' ? 'bg-muted' : item === 'midnight' ? 'bg-slate-950 text-white' : item === 'paper' ? 'bg-muted/40' : item === 'roses' ? 'bg-rose-100 dark:bg-rose-950/30' : 'bg-pink-100 dark:bg-pink-950/30')}>{item === 'romance' ? '♥ ✿' : item === 'hearts' ? '♥ ♡' : item === 'petals' ? '✿ ❀' : item === 'roses' ? '🌹 ♡' : item === 'midnight' ? '✦ ⋆' : item === 'paper' ? '· •' : 'A'}</div>
                   <span className="text-xs font-medium">{wallpaperLabel[item]}</span>
                 </button>)}
               </div>
