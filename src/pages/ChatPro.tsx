@@ -24,6 +24,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
 import LinkPreviewCard from '@/components/posts/LinkPreviewCard'
 import ChatDoodleEditor from '@/components/chat/ChatDoodleEditor'
+import { BUILT_IN_STICKERS, stickerDataUrl, stickerFile } from '@/components/chat/ChatStickerTray'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
@@ -606,8 +607,10 @@ export default function ChatPro() {
     if (!user || !otherUser || !online || sending) return
     setSending(true)
     try {
-      const mediaPath = 'images/' + user.id + '/' + crypto.randomUUID() + '.png'
-      const { error: uploadError } = await supabase.storage.from('messages-private').upload(mediaPath, file, { upsert: false, contentType: 'image/png', cacheControl: '31536000' })
+      const mime = file.type || 'image/png'
+      const ext = mime.includes('svg') ? 'svg' : 'png'
+      const mediaPath = 'images/' + user.id + '/' + crypto.randomUUID() + '.' + ext
+      const { error: uploadError } = await supabase.storage.from('messages-private').upload(mediaPath, file, { upsert: false, contentType: mime, cacheControl: '31536000' })
       if (uploadError) throw uploadError
       const { data, error } = await supabase.from('messages').insert({
         sender_id: user.id, receiver_id: otherUser.id, content: '', media_url: '', media_type: 'image',
@@ -1373,7 +1376,13 @@ export default function ChatPro() {
       {emojiOpen && <Dialog open={emojiOpen} onOpenChange={open => { setEmojiOpen(open); if (!open) setReactionFor(null) }}>
         <DialogContent className="w-[min(96vw,430px)] max-w-[430px] rounded-[28px] border-border/70 bg-background/95 p-2 shadow-[0_30px_100px_rgba(0,0,0,.28)] backdrop-blur-2xl">
           <DialogHeader className="px-3 pt-2 pb-1"><DialogTitle className="text-base font-semibold">{reactionFor ? 'React to message' : 'Emoji'}</DialogTitle></DialogHeader>
-          <div className="px-2 pb-2 overflow-x-auto"><div className="flex gap-2">{stickersLoading && <Spinner className="size-4 my-2" />}{stickers.map(sticker => <button key={sticker.id} type="button" className="yomy-sticker-tile" onClick={async () => { try { const res = await fetch(sticker.url); const blob = await res.blob(); await sendStickerFile(new File([blob], 'sticker.png', { type: 'image/png' })); setEmojiOpen(false) } catch { toast.error('Could not send sticker') } }}><img src={sticker.url} alt={sticker.name} /></button>)}{!stickersLoading && stickers.length === 0 && <span className="text-[11px] text-muted-foreground px-2 py-2">Long-press a photo to save a private sticker.</span>}</div></div>
+          <div className="px-2 pb-2 overflow-x-auto">
+            <div className="flex gap-2 items-center">
+              {BUILT_IN_STICKERS.map(sticker => <button key={sticker.id} type="button" className="yomy-sticker-tile" title={sticker.name} onClick={async () => { await sendStickerFile(stickerFile(sticker.svg, 'yomy-' + sticker.id)); setEmojiOpen(false) }}><img src={stickerDataUrl(sticker.svg)} alt={sticker.name} /></button>)}
+              {stickersLoading && <Spinner className="size-4 my-2" />}
+              {stickers.map(sticker => <button key={sticker.id} type="button" className="yomy-sticker-tile" title={sticker.name} onClick={async () => { try { const res = await fetch(sticker.url); const blob = await res.blob(); await sendStickerFile(new File([blob], 'sticker.png', { type: 'image/png' })); setEmojiOpen(false) } catch { toast.error('Could not send sticker') } }}><img src={sticker.url} alt={sticker.name} /></button>)}
+            </div>
+          </div>
           <div className="overflow-hidden rounded-[22px] border border-border/60 shadow-inner">
             <EmojiPicker
               theme={EmojiTheme.AUTO}
