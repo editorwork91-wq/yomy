@@ -14,8 +14,8 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
   const navigate = useNavigate()
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/70 bg-background/90 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75">
-      <div className="flex items-center justify-between h-14 px-4 max-w-lg mx-auto">
+    <header className="sticky top-0 z-40 border-b border-border/55 bg-background/72 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_8px_30px_rgba(0,0,0,.045)]">
+      <div className="flex items-center justify-between h-14 px-4 max-w-lg mx-auto yomy-ios-press">
         <div className="flex items-center gap-2.5 min-w-0">
           {showBack && (
             <Button
