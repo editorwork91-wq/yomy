@@ -55,7 +55,7 @@ export default function SwipeCallSlider({
     }
   }
 
-  const onPointerUp = async (event: React.PointerEvent<HTMLDivElement>) => {
+  const onPointerUp = async (_event: PointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return
     const side = armed
     reset()
