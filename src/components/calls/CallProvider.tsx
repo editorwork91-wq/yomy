@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
 import SwipeCallSlider from '@/components/calls/SwipeCallSlider'
+import { useAvatarAccent } from '@/hooks/useAvatarAccent'
 
 type CallKind = 'voice' | 'video'
 type CallStatus = 'ringing' | 'active' | 'ended' | 'declined' | 'missed' | 'failed'
@@ -51,6 +52,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [speakerOn, setSpeakerOn] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [outgoingStage, setOutgoingStage] = useState<OutgoingStage>('connecting')
+  const callAccent = useAvatarAccent(peer?.avatar_url, peer?.username || 'yomy')
   const nativeIncomingAvailable = typeof nativeNotifications()?.showIncomingCallScreen === 'function'
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const activeRef = useRef<CallSession | null>(null)
@@ -435,8 +437,44 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         </div>
       </div>
     </div>}
-    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7"><Avatar className="size-32 border-4 border-white/10"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar><h2 className="mt-6 text-2xl font-semibold">{peer.username}</h2><p className="mt-2 text-white/60">{outgoingStage === 'ringing' ? 'Ringing…' : 'Connecting…'}</p><p className="mt-1 text-xs text-white/35">{outgoingStage === 'ringing' ? 'The other device received the call' : 'Waiting for the other device'}</p><div className="mt-auto pb-12"><Button variant="destructive" size="lg" className="rounded-full size-16" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button></div></div>}
-    {showActive && peer && <div className="fixed inset-0 z-[99] bg-black flex flex-col text-white"><div className="flex items-center justify-between p-4 pt-6"><div><p className="font-semibold text-lg">{peer.username}</p><p className="text-sm opacity-70">{connected ? formatDuration(elapsedSeconds) : 'Connecting audio…'}</p></div><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div><div className="relative flex-1 flex items-center justify-center p-4">{active?.kind === 'video' ? <><MediaView stream={remoteStream} /><div className="absolute top-6 right-6 w-28 aspect-video rounded-xl overflow-hidden border border-white/30"><MediaView stream={localStream} muted /></div></> : <div className="size-40 rounded-full overflow-hidden"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>}</div><div className="flex justify-center gap-4 p-6 pb-10"><Button variant={speakerOn ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? 'Use earpiece' : 'Use speaker'}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button><Button variant={muted ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>{active?.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="rounded-full size-12" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}<Button variant="destructive" size="icon" className="rounded-full size-14" onClick={() => void endCall()}><PhoneOff /></Button></div></div>}
+    {showOutgoing && peer && <div className="fixed inset-0 z-[99] overflow-hidden bg-[#040908] text-white">
+      <div className="absolute inset-0" style={{ background: `radial-gradient(circle at 50% 28%, ${callAccent.glow}, transparent 34%), linear-gradient(155deg,#040908,#081613 52%,#020504)` }} />
+      <div className="relative min-h-full flex flex-col items-center p-7">
+        <div className="mt-8 rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[10px] tracking-[.18em] text-white/55">YOMY CALL</div>
+        <div className="mt-16 [perspective:900px]">
+          <div className="relative size-36 rounded-full shadow-2xl transition-transform duration-700 [transform:rotateX(4deg)]" style={{ boxShadow: `0 22px 80px ${callAccent.glow}` }}>
+            <div className="absolute -inset-5 rounded-full border border-white/5 animate-pulse" />
+            <Avatar className="relative size-36 border-4 border-white/10">
+              <AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
+            </Avatar>
+          </div>
+        </div>
+        <h2 className="mt-8 text-3xl font-semibold">{peer.username}</h2>
+        <p className="mt-2 text-white/60">{outgoingStage === 'ringing' ? 'Ringing…' : 'Connecting…'}</p>
+        <p className="mt-2 text-xs text-white/35">{outgoingStage === 'ringing' ? 'The other device received your call' : 'Opening a secure connection'}</p>
+        <div className="mt-auto pb-8"><Button variant="destructive" size="icon" className="size-16 rounded-full shadow-2xl shadow-red-950/40"><PhoneOff className="size-7" /></Button></div>
+      </div>
+    </div>}
+    {showActive && peer && <div className="fixed inset-0 z-[99] overflow-hidden bg-[#020504] text-white">
+      <div className="absolute inset-0" style={{ background: active?.kind === 'video' ? `radial-gradient(circle at 50% 0%, ${callAccent.glow}, transparent 34%)` : `radial-gradient(circle at 50% 28%, ${callAccent.glow}, transparent 36%), linear-gradient(160deg,#020504,#07110f 60%,#020504)` }} />
+      <div className="relative min-h-full flex flex-col">
+        <div className="flex items-center justify-between px-5 pt-[max(18px,env(safe-area-inset-top))] pb-3">
+          <div><p className="font-semibold text-lg">{peer.username}</p><p className="text-xs text-white/55">{connected ? formatDuration(elapsedSeconds) : 'Connecting securely…'}</p></div>
+          <div className="rounded-full border border-white/10 bg-white/[0.05] p-1"><Avatar className="size-10"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>
+        </div>
+        <div className="relative flex-1 flex items-center justify-center p-5">
+          {active?.kind === 'video' ? <><div className="absolute inset-0 p-3"><MediaView stream={remoteStream} /></div><div className="absolute top-7 right-7 w-28 aspect-[3/4] rounded-2xl overflow-hidden border border-white/20 shadow-2xl"><MediaView stream={localStream} muted /></div></> : <div className="relative [perspective:900px]"><div className="absolute -inset-10 rounded-full animate-pulse" style={{ background: `radial-gradient(circle,${callAccent.glow},transparent 66%)` }} /><Avatar className="relative size-44 border-4 border-white/10 shadow-2xl [transform:rotateX(4deg)]"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-5xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div>}
+        </div>
+        <div className="mx-4 mb-[max(24px,env(safe-area-inset-bottom))] rounded-[30px] border border-white/10 bg-white/[0.07] p-3 backdrop-blur-2xl shadow-2xl">
+          <div className="flex items-center justify-center gap-3">
+            <Button variant={speakerOn ? 'secondary' : 'outline'} size="icon" className="size-12 rounded-full border-white/10 bg-white/[0.06] text-white hover:bg-white/10" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? 'Use earpiece' : 'Use speaker'}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button>
+            <Button variant={muted ? 'secondary' : 'outline'} size="icon" className="size-12 rounded-full border-white/10 bg-white/[0.06] text-white hover:bg-white/10" onClick={toggleMic}>{muted ? <MicOff /> : <Mic />}</Button>
+            {active?.kind === 'video' && <Button variant={cameraOff ? 'secondary' : 'outline'} size="icon" className="size-12 rounded-full border-white/10 bg-white/[0.06] text-white hover:bg-white/10" onClick={toggleCamera}>{cameraOff ? <VideoOff /> : <Video />}</Button>}
+            <Button variant="destructive" size="icon" className="size-14 rounded-full shadow-xl shadow-red-950/50" onClick={() => void endCall()}><PhoneOff /></Button>
+          </div>
+        </div>
+      </div>
+    </div>}
   </CallContext.Provider>
 }
 
