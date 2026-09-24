@@ -264,3 +264,71 @@ html {
 }
 .yomy-sticker-tile img { width:100%; height:100%; object-fit:contain; padding:.3rem; }
 .yomy-sticker-tile:active { transform:scale(.91); }
+
+/* YOMY soft-glass system: restrained blur keeps the mobile UI fluid. */
+.yomy-glass-bar {
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  box-shadow: 0 10px 32px rgba(0,0,0,.055), inset 0 1px 0 rgba(255,255,255,.24);
+}
+.yomy-glass-page {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--primary) 6%, transparent), transparent 28%),
+    radial-gradient(circle at 88% 18%, rgba(255,130,190,.07), transparent 24%),
+    var(--background);
+}
+.yomy-feed-card {
+  margin: .55rem .55rem 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 1.55rem;
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  box-shadow: 0 14px 42px rgba(0,0,0,.065), inset 0 1px 0 rgba(255,255,255,.22);
+  backdrop-filter: blur(16px) saturate(135%);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+}
+.yomy-compose-button {
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 6px 18px rgba(0,0,0,.055);
+}
+.yomy-attach-item {
+  display:flex; align-items:center; gap:.7rem; min-height:3.55rem; padding:.7rem .75rem;
+  border-radius:1rem; text-align:left;
+  background:color-mix(in srgb,var(--muted) 48%,transparent);
+  border:1px solid color-mix(in srgb,var(--border) 55%,transparent);
+  transition:transform 160ms ease, background-color 160ms ease;
+}
+.yomy-attach-item:hover { background:color-mix(in srgb,var(--muted) 68%,transparent); }
+.yomy-attach-item:active { transform:scale(.975); }
+.yomy-attach-item:disabled { opacity:.45; pointer-events:none; }
+.yomy-attach-item b { display:block; font-size:.78rem; font-weight:700; }
+.yomy-attach-item small { display:block; margin-top:.12rem; color:var(--muted-foreground); font-size:.62rem; }
+.yomy-attach-icon {
+  display:grid; place-items:center; width:2.55rem; height:2.55rem; flex:none; border-radius:.9rem;
+  background:color-mix(in srgb,var(--background) 74%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3), 0 5px 16px rgba(0,0,0,.045);
+}
+.yomy-chat-shell {
+  background:
+    radial-gradient(circle at 10% -5%, rgba(150,120,255,.065), transparent 26%),
+    radial-gradient(circle at 90% 12%, rgba(255,125,185,.055), transparent 25%),
+    var(--background);
+}
+.yomy-chat-scroll { overscroll-behavior:contain; }
+.yomy-call-stage { overscroll-behavior:none!important; touch-action:none!important; -webkit-user-select:none; user-select:none; }
+.yomy-call-stage * { touch-action:none; }
+.yomy-call-add {
+  display:inline-flex; align-items:center; justify-content:center; gap:.42rem;
+  height:3rem; padding:0 .95rem; border-radius:999px;
+  color:white; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 10px 28px rgba(0,0,0,.2);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  transition:transform 160ms ease,background-color 160ms ease;
+}
+.yomy-call-add:active { transform:scale(.94); }
+@media (prefers-reduced-motion: reduce) {
+  .yomy-ios-press, .yomy-attach-item, .yomy-setting-row { transition:none!important; }
+}
