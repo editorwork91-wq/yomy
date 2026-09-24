@@ -49,7 +49,6 @@ export default function Feed() {
   }, [online, user])
 
   useEffect(() => { setPage(0); void fetchPosts(0) }, [fetchPosts])
-  useEffect(() => { if (online) void fetchPosts(0) }, [online])
   useEffect(() => { const handleScroll = () => { if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 300 && hasMore && !loading) { const nextPage = page + 1; setPage(nextPage); void fetchPosts(nextPage) } }; window.addEventListener('scroll', handleScroll); return () => window.removeEventListener('scroll', handleScroll) }, [hasMore, loading, page, fetchPosts])
 
   return <div className="pb-20"><TopBar showLogo/><div className="max-w-lg mx-auto"><StoryBar/><FedoPreviewStrip/><Separator/>{loading && posts.length === 0 ? <div className="flex items-center justify-center h-40"><Spinner className="size-6"/></div> : posts.length === 0 ? <Empty className="mt-12"><EmptyHeader><EmptyMedia variant="icon"><Camera className="size-6"/></EmptyMedia><EmptyTitle>Your feed is empty</EmptyTitle><EmptyDescription>Follow people to see their posts here. <Link to="/explore" className="text-primary">Explore</Link> to find accounts.</EmptyDescription></EmptyHeader></Empty> : <>{posts.map(post => <PostCard key={post.id} post={post} onDeleted={id => setPosts(ps => ps.filter(p => p.id !== id))}/>)}{loading && <div className="flex items-center justify-center h-16"><Spinner className="size-5"/></div>}{!hasMore && posts.length > 0 && <p className="text-center text-sm text-muted-foreground py-8">You're all caught up!</p>}</>}</div></div>
