@@ -50,7 +50,6 @@ public class CallActionReceiver extends BroadcastReceiver {
         if (callId == null || callId.trim().isEmpty()) return;
 
         persistPendingAction(context, action, callId);
-        cancelCallNotification(context);
 
         if (ACTION_OPEN.equals(action)) {
             Intent launch = new Intent(context, MainActivity.class)
