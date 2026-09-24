@@ -979,7 +979,7 @@ export default function ChatPro() {
         </div>}
         <Button variant="ghost" size="icon" onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null); setViewOnceLimit(0) }}><X className="size-5" /></Button>
         <Button size="sm" disabled={!online} onClick={() => void uploadMedia(pendingMedia.file, pendingMedia.kind, pendingMedia.kind === 'image' ? viewOnceLimit : 0)}><Send className="size-4 mr-1" />Send</Button>
-      </div></div>
+      </div></div>}
 
       {replyTo && <div className="shrink-0 border-t bg-card px-4 py-2 flex items-center gap-3"><Reply className="size-4 text-primary" /><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold">Replying to {replyTo.sender_id === user?.id ? 'yourself' : otherUser.username}</p><p className="text-xs text-muted-foreground truncate">{replyTo.content || 'Attachment'}</p></div><Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(null)}><X className="size-4" /></Button></div>}
 
