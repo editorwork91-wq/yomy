@@ -15,7 +15,7 @@ import { sendPushEvent } from '@/lib/push'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import {
   cacheJson, cacheMessages, queueMessage, readCachedJson, readCachedMessages,
-  readQueuedMessages, removeQueuedMessage, queueSyncOperation, patchCachedConversation
+  queueSyncOperation, patchCachedConversation
 } from '@/lib/offlineStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -174,8 +174,7 @@ export default function ChatPro() {
   const recordingStreamRef = useRef<MediaStream | null>(null)
   const recordingChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<number | null>(null)
-  const syncingRef = useRef(false)
-
+  
   const targetUsername = username || searchParams.get('to')
 
   const loadOtherUser = useCallback(async () => {
