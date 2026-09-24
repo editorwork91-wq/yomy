@@ -1011,7 +1011,7 @@ export default function ChatPro() {
         view_once_opened: false, client_message_id: crypto.randomUUID(), reply_to_id: replyTo?.id || null,
         created_at: createdAt,
       }).select('*').single()
-      if (messageError || !message) throw messageError || new Error('Could not create poll')
+      if (messageError || !message) { if (peerSleeping) throw new Error('This chat is in sleep mode right now.'); throw messageError || new Error('Could not create poll') }
       const { data: poll, error: pollError } = await supabase.from('chat_polls').insert({ message_id: message.id, question }).select('*').single()
       if (pollError || !poll) {
         await supabase.from('messages').delete().eq('id', message.id)
