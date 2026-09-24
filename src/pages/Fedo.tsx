@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { Fedo, Profile } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import TopBar from '@/components/layout/TopBar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -87,6 +87,7 @@ async function createVideoThumbnail(file: File): Promise<Blob | null> {
 export default function Fedo() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [items, setItems] = useState<Fedo[]>([])
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -95,6 +96,7 @@ export default function Fedo() {
   const [progress, setProgress] = useState(0)
   const [caption, setCaption] = useState('')
   const [playbackUrls, setPlaybackUrls] = useState<Record<string, string>>({})
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({})
   const fileRef = useRef<HTMLInputElement>(null)
   const startRef = useRef({ x: 0, y: 0 })
 
@@ -111,13 +113,25 @@ export default function Fedo() {
     if (error) toast.error(error.message)
     setItems((data || []) as Fedo[])
     setPlaybackUrls({})
-    setIndex(0)
+    setThumbnailUrls({})
+    const requestedId = searchParams.get('item')
+    setIndex(requestedId && data ? Math.max(0, Math.max(0, data.findIndex(row => row.id === requestedId))) : 0)
     setLoading(false)
-  }, [])
+  }, [searchParams])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  const resolveThumbnail = useCallback(async (fedoId: string) => {
+    if (thumbnailUrls[fedoId]) return thumbnailUrls[fedoId]
+    const { data, error } = await supabase.functions.invoke('fedo-media-url', {
+      body: { fedo_id: fedoId, asset: 'thumbnail', expires_in: 3600 },
+    })
+    if (error || !data?.url) throw error || new Error('Thumbnail unavailable')
+    setThumbnailUrls(current => ({ ...current, [fedoId]: String(data.url) }))
+    return String(data.url)
+  }, [thumbnailUrls])
 
   const resolvePlayback = useCallback(async (fedoId: string, force = false) => {
     if (!force && playbackUrls[fedoId]) return playbackUrls[fedoId]
@@ -138,6 +152,10 @@ export default function Fedo() {
     let cancelled = false
     void Promise.all(targets.map(async item => {
       try {
+        await Promise.allSettled([
+          resolvePlayback(item.id),
+          item.thumbnail_path ? resolveThumbnail(item.id) : Promise.resolve(''),
+        ])
         const url = await resolvePlayback(item.id)
         if (cancelled) return
         setPlaybackUrls(current => ({ ...current, [item.id]: url }))
@@ -146,7 +164,7 @@ export default function Fedo() {
       }
     }))
     return () => { cancelled = true }
-  }, [index, items, resolvePlayback])
+  }, [index, items, resolvePlayback, resolveThumbnail])
 
   useEffect(() => {
     const item = items[index]
@@ -425,6 +443,7 @@ export default function Fedo() {
             <video
               key={`${current.id}:${currentUrl}`}
               src={currentUrl}
+              poster={thumbnailUrls[current.id] || undefined}
               autoPlay={!paused}
               loop
               playsInline
