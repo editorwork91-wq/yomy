@@ -156,6 +156,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   const startCall = useCallback(async (target: Peer, kind: CallKind): Promise<void> => {
     if (!user || activeRef.current || incomingRef.current) return
+    if (!navigator.onLine) { toast.error('Calls need an internet connection'); return }
     const { data, error } = await supabase.from('call_sessions').insert({ caller_id: user.id, callee_id: target.id, kind, status: 'ringing' }).select('*').single()
     if (error || !data) { toast.error(error?.message || 'Could not start call'); return }
     const call = data as CallSession
@@ -243,6 +244,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     if (!user) return
     let mounted = true
     const loadRinging = async () => {
+      if (!navigator.onLine) return
       const { data } = await supabase.from('call_sessions').select('*').eq('callee_id', user.id).eq('status', 'ringing').order('created_at', { ascending: false }).limit(5)
       if (!mounted || activeRef.current) return
       for (const row of (data || []) as CallSession[]) {
@@ -311,6 +313,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (!user) return
     const timer = window.setInterval(async () => {
+      if (!navigator.onLine) return
       const call = activeRef.current
       if (!call) return
       const { data } = await supabase.from('call_sessions').select('status,answered_at,started_at,ended_at').eq('id', call.id).maybeSingle()
