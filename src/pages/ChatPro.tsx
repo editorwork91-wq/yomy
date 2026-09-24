@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Camera, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
   Mic, MoreVertical, Palette, Phone, Reply, RotateCcw, Send, Smile, Trash2, Video, WifiOff, PenLine,
-  X, Pencil, Eye, Clock3, UserRound, ShieldCheck
+  X, Pencil, Eye, Clock3, UserRound, ShieldCheck, Plus, FileText, BarChart3
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
@@ -41,7 +41,7 @@ type ChatPreference = {
   bubble_theme: 'default' | 'ocean' | 'mint' | 'violet' | 'rose' | 'amber'
 }
 
-type PendingMedia = { file: File; kind: 'image' | 'video'; previewUrl: string }
+type PendingMedia = { file: File; kind: 'image' | 'video' | 'file'; previewUrl: string }
 
 const wallpapers: ChatPreference['wallpaper'][] = ['default', 'romance', 'hearts', 'petals', 'roses', 'midnight', 'paper']
 const bubbleThemes: ChatPreference['bubble_theme'][] = ['default', 'ocean', 'mint', 'violet', 'rose', 'amber']
@@ -163,6 +163,10 @@ export default function ChatPro() {
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [pendingViewOnceLimit, setPendingViewOnceLimit] = useState<0 | 1 | 2>(0)
   const [viewOncePickerOpen, setViewOncePickerOpen] = useState(false)
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [pollOpen, setPollOpen] = useState(false)
+  const [pollQuestion, setPollQuestion] = useState('')
+  const [pollOptions, setPollOptions] = useState(['', ''])
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo')
   const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment')
@@ -182,6 +186,7 @@ export default function ChatPro() {
   const [draftTheme, setDraftTheme] = useState<ChatPreference['wallpaper']>('default')
   const [draftBubble, setDraftBubble] = useState<ChatPreference['bubble_theme']>('default')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const cameraRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -194,6 +199,7 @@ export default function ChatPro() {
   const cameraTimerRef = useRef<number | null>(null)
   const resolvingMediaRef = useRef(new Set<string>())
   const openingViewOnceRef = useRef(new Set<string>())
+  const longPressTriggeredRef = useRef(false)
   
   const targetUsername = username || searchParams.get('to')
 
@@ -271,7 +277,7 @@ export default function ChatPro() {
     if (withLoader) setLoading(true)
     const { data, error } = await supabase
       .from('messages')
-      .select('*, message_reactions(id,user_id,emoji,created_at)')
+      .select('*, message_reactions(id,user_id,emoji,created_at), chat_polls(id,question,chat_poll_options(id,option_index,label),chat_poll_votes(user_id,option_id))')
       .or('and(sender_id.eq.' + user.id + ',receiver_id.eq.' + otherUser.id + '),and(sender_id.eq.' + otherUser.id + ',receiver_id.eq.' + user.id + ')')
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
@@ -596,13 +602,14 @@ export default function ChatPro() {
     finally { setSending(false) }
   }
 
-  const uploadMedia = async (file: File, kind: 'image' | 'video') => {
+  const uploadMedia = async (file: File, kind: 'image' | 'video' | 'file') => {
     if (!user || !otherUser) return
     if (!online) {
       toast.error('Media waits for a connection. Text messages still work offline.')
       return
     }
-    const path = (kind === 'video' ? 'videos/' : 'images/') + user.id + '/' + crypto.randomUUID() + '.' + (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg'))
+    const folder = kind === 'video' ? 'videos/' : kind === 'file' ? 'files/' : 'images/'
+    const path = folder + user.id + '/' + crypto.randomUUID() + '.' + (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : kind === 'file' ? 'bin' : 'jpg'))
     const clientMessageId = crypto.randomUUID()
     const createdAt = new Date().toISOString()
     const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
@@ -611,14 +618,14 @@ export default function ChatPro() {
     const { data, error } = await supabase.from('messages').insert({
       sender_id: user.id,
       receiver_id: otherUser.id,
-      content: input.trim(),
+      content: kind === 'file' ? (input.trim() || file.name) : input.trim(),
       media_url: '',
       media_type: kind,
       media_bucket: 'messages-private',
       media_path: path,
       is_encrypted: true,
-      view_once: pendingViewOnceLimit > 0,
-      view_once_limit: pendingViewOnceLimit,
+      view_once: kind !== 'file' && pendingViewOnceLimit > 0,
+      view_once_limit: kind === 'file' ? 0 : pendingViewOnceLimit,
       view_once_open_count: 0,
       view_once_opened: false,
       client_message_id: clientMessageId,
@@ -639,7 +646,7 @@ export default function ChatPro() {
       type: 'message',
       targetUserId: otherUser.id,
       title: user.user_metadata?.username || 'Yomy',
-      body: kind === 'video' ? '🎬 Video' : '📷 Photo',
+      body: kind === 'video' ? '🎬 Video' : kind === 'file' ? '📎 ' + file.name : '📷 Photo',
       data: { message_id: data.id, url: '/messages/' + otherUser.username },
     })
   }
@@ -943,6 +950,60 @@ export default function ChatPro() {
     setSending(false)
   }
 
+  const votePoll = async (pollId: string, optionId: string) => {
+    if (!user || !online || sending) return
+    const { error } = await supabase.from('chat_poll_votes').upsert(
+      { poll_id: pollId, user_id: user.id, option_id: optionId },
+      { onConflict: 'poll_id,user_id' }
+    )
+    if (error) return toast.error(error.message)
+    setMessages(prev => prev.map(message => {
+      const raw = message.chat_poll
+      const poll = Array.isArray(raw) ? raw[0] : raw
+      if (message.message_type !== 'poll' || !poll || poll.id !== pollId) return message
+      return {
+        ...message,
+        chat_poll: { ...poll, chat_poll_votes: [...(poll.chat_poll_votes || []).filter(v => v.user_id !== user.id), { user_id: user.id, option_id: optionId }] }
+      }
+    }))
+  }
+
+  const createPoll = async () => {
+    if (!user || !otherUser || !online || sending) return
+    const question = pollQuestion.trim()
+    const options = pollOptions.map(value => value.trim()).filter(Boolean)
+    if (!question) return toast.error('Write a question first')
+    if (options.length < 2) return toast.error('Add at least two choices')
+    if (options.length > 6) return toast.error('Up to six choices are supported')
+    setSending(true)
+    try {
+      const createdAt = new Date().toISOString()
+      const { data: message, error: messageError } = await supabase.from('messages').insert({
+        sender_id: user.id, receiver_id: otherUser.id, content: '', media_url: '', media_type: '',
+        media_bucket: 'messages-private', media_path: null, message_type: 'poll',
+        is_encrypted: true, view_once: false, view_once_limit: 0, view_once_open_count: 0,
+        view_once_opened: false, client_message_id: crypto.randomUUID(), reply_to_id: replyTo?.id || null,
+        created_at: createdAt,
+      }).select('*').single()
+      if (messageError || !message) throw messageError || new Error('Could not create poll')
+      const { data: poll, error: pollError } = await supabase.from('chat_polls').insert({ message_id: message.id, question }).select('*').single()
+      if (pollError || !poll) {
+        await supabase.from('messages').delete().eq('id', message.id)
+        throw pollError || new Error('Could not create poll')
+      }
+      const { error: optionError } = await supabase.from('chat_poll_options').insert(options.map((label, option_index) => ({ poll_id: poll.id, label, option_index })))
+      if (optionError) {
+        await supabase.from('messages').delete().eq('id', message.id)
+        throw optionError
+      }
+      setPollOpen(false); setPollQuestion(''); setPollOptions(['', '']); setReplyTo(null)
+      await loadMessages(false)
+      void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: '📊 New poll', data: { message_id: message.id, url: '/messages/' + otherUser.username } })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not send poll')
+    } finally { setSending(false) }
+  }
+
   useEffect(() => {
     if (!online || !user || !messages.length) return
     const candidates = messages
@@ -1025,8 +1086,8 @@ export default function ChatPro() {
   if (!otherUser) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-7" /></div>
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-background overflow-hidden">
-      <header className="h-16 shrink-0 border-b border-border/60 bg-background/78 backdrop-blur-2xl flex items-center gap-1 px-2 shadow-[0_8px_30px_rgba(0,0,0,.06)]">
+    <div className="yomy-chat-shell h-[100dvh] flex flex-col bg-background overflow-hidden">
+      <header className="h-16 shrink-0 border-b border-border/45 yomy-glass-bar flex items-center gap-1 px-2 shadow-[0_8px_30px_rgba(0,0,0,.06)]">
         <Button variant="ghost" size="icon" className="size-10 rounded-full" onClick={() => navigate(-1)}><ChevronLeft className="size-5" /></Button>
         <Link to={'/profile/' + otherUser.username} className="flex items-center gap-2 min-w-0 flex-1">
           <div className="relative">
@@ -1060,7 +1121,7 @@ export default function ChatPro() {
 
       <div className={'relative flex-1 overflow-hidden ' + wallpaperBackground}>
         <Wallpaper type={sharedWallpaper} />
-        <div ref={scrollRef} className="relative h-full overflow-y-auto px-3 py-4 space-y-2">
+        <div ref={scrollRef} className="relative h-full overflow-y-auto px-3 py-4 space-y-2 yomy-chat-scroll">
           {loading ? <div className="h-full flex items-center justify-center"><Spinner className="size-6" /></div> : messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
               <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center mb-3"><Heart className="size-7" /></div>
@@ -1069,6 +1130,8 @@ export default function ChatPro() {
           ) : messages.map(message => {
             const mine = message.sender_id === user?.id
             const queued = message.id.startsWith('local:')
+            const rawPoll = message.chat_poll
+            const poll = Array.isArray(rawPoll) ? rawPoll[0] : rawPoll
             const reactionSummary = message.message_reactions?.reduce<Record<string, number>>((acc, item) => { acc[item.emoji] = (acc[item.emoji] || 0) + 1; return acc }, {})
             return (
               <div key={message.id} id={'message-' + message.id} className={'flex ' + (mine ? 'justify-end' : 'justify-start') + ' group'}>
@@ -1082,11 +1145,30 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
+                        {message.message_type === 'poll' && poll && <div className="w-[min(19rem,78vw)] rounded-[1.15rem] border border-white/10 bg-background/55 p-3 shadow-inner">
+                          <div className="flex items-start gap-2.5 mb-3">
+                            <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><BarChart3 className="size-4" /></span>
+                            <div className="min-w-0 flex-1"><p className="font-semibold text-sm leading-5">{poll.question}</p><p className="text-[10px] text-muted-foreground mt-0.5">Poll</p></div>
+                          </div>
+                          <div className="space-y-2">{(poll.chat_poll_options || []).slice().sort((a,b) => a.option_index - b.option_index).map(option => {
+                            const votes = poll.chat_poll_votes || []
+                            const count = votes.filter(v => v.option_id === option.id).length
+                            const selected = votes.some(v => v.user_id === user?.id && v.option_id === option.id)
+                            const total = votes.length
+                            const width = total ? Math.max(8, Math.round((count / total) * 100)) : 0
+                            return <button key={option.id} type="button" onClick={() => void votePoll(poll.id, option.id)} className="relative w-full overflow-hidden rounded-xl border border-border/60 px-3 py-2.5 text-left transition-all active:scale-[.985] hover:border-primary/35">
+                              <span className="absolute inset-y-0 left-0 bg-primary/10" style={{ width: width + '%' }} />
+                              <span className="relative flex items-center gap-2"><span className={'grid size-4 place-items-center rounded-full border shrink-0 ' + (selected ? 'border-primary bg-primary' : 'border-muted-foreground/40')}>{selected && <span className="size-1.5 rounded-full bg-primary-foreground" />}</span><span className="flex-1 text-sm truncate">{option.label}</span><span className="text-[10px] text-muted-foreground">{count}</span></span>
+                            </button>
+                          })}</div>
+                          <p className="text-[10px] text-muted-foreground mt-2">{(poll.chat_poll_votes || []).length} vote{(poll.chat_poll_votes || []).length === 1 ? '' : 's'}</p>
+                        </div>}
                         {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-[min(18rem,76vw)] h-24 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
                         {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
-                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onPointerDown={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = window.setTimeout(() => { longPressRef.current = null; void saveImageAsSticker(message) }, 650) }} onPointerUp={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onPointerCancel={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-[1.15rem] max-h-64 max-w-[min(18rem,76vw)] object-cover aspect-[4/3] mb-1.5 shadow-[0_8px_30px_rgba(0,0,0,.10)]" loading="lazy" /></button>}
+                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onPointerDown={() => { longPressTriggeredRef.current = false; if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = window.setTimeout(() => { longPressRef.current = null; longPressTriggeredRef.current = true; void saveImageAsSticker(message) }, 650) }} onPointerUp={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onPointerCancel={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onClick={() => { if (longPressTriggeredRef.current) { longPressTriggeredRef.current = false; return }; setViewOnceUrl(mediaUrls[message.id] || message.media_url) }} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-[1.15rem] max-h-64 max-w-[min(18rem,76vw)] object-cover aspect-[4/3] mb-1.5 shadow-[0_8px_30px_rgba(0,0,0,.10)]" loading="lazy" /></button>}
                         {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-64 max-w-[min(18rem,76vw)] mb-1.5" />}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
+                        {message.media_type === 'file' && (mediaUrls[message.id] || message.media_url) && <a href={mediaUrls[message.id] || message.media_url} target="_blank" rel="noreferrer" download className="flex items-center gap-3 w-[min(20rem,80vw)] rounded-[1.05rem] border border-border/60 bg-background/45 px-3 py-3 hover:bg-background/65 transition-colors"><span className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary shrink-0"><FileText className="size-5" /></span><span className="min-w-0 flex-1"><b className="block text-sm truncate">{message.content || 'Attachment'}</b><small className="text-[10px] text-muted-foreground">Open or save file</small></span></a>}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
                         {message.content && <p className="text-[14px] whitespace-pre-wrap break-words leading-[1.45]">{renderMessageText(message.content)}</p>}
                         {message.content && firstUrl(message.content) && <LinkPreviewCard url={firstUrl(message.content)} />}
@@ -1117,9 +1199,9 @@ export default function ChatPro() {
 
       {pendingMedia && <div className="shrink-0 border-t bg-card/92 backdrop-blur-xl px-3 py-2.5">
         <div className="flex items-center gap-3">
-          {pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="size-16 rounded-2xl object-cover shadow-sm" /> : <video src={pendingMedia.previewUrl} muted playsInline className="size-16 rounded-2xl object-cover shadow-sm" />}
+          {pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="size-16 rounded-2xl object-cover shadow-sm" /> : pendingMedia.kind === 'video' ? <video src={pendingMedia.previewUrl} muted playsInline className="size-16 rounded-2xl object-cover shadow-sm" /> : <div className="grid size-16 place-items-center rounded-2xl bg-primary/10 text-primary shadow-sm"><FileText className="size-7" /></div>}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">{pendingMedia.kind === 'image' ? 'Photo ready' : 'Video ready'}</p>
+            <p className="text-sm font-semibold">{pendingMedia.kind === 'image' ? 'Photo ready' : pendingMedia.kind === 'video' ? 'Video ready' : 'File ready'}</p>
             <p className="text-xs text-muted-foreground truncate">Receiver access</p>
             <div className="mt-2 inline-flex rounded-xl border bg-muted/55 p-0.5 shadow-inner">
               {[{value:0,label:'Normal'},{value:1,label:'1×'},{value:2,label:'2×'}].map(option => <button key={option.value} type="button" onClick={() => setPendingViewOnceLimit(option.value as 0 | 1 | 2)} className={'px-3 py-1 rounded-[10px] text-[11px] font-semibold transition-all ' + (pendingViewOnceLimit === option.value ? 'bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'text-muted-foreground hover:text-foreground')}>{option.label}</button>)}
@@ -1136,32 +1218,31 @@ export default function ChatPro() {
 
       {recording && <div className="shrink-0 border-t bg-card px-4 py-3 flex items-center gap-3"><span className="size-2.5 rounded-full bg-destructive animate-pulse" /><span className="text-sm font-medium">Recording {String(Math.floor(recordingSeconds / 60)).padStart(2,'0')}:{String(recordingSeconds % 60).padStart(2,'0')}</span><div className="flex-1" /><Button size="icon" className="rounded-full" onClick={() => recorderRef.current?.stop()}><Check /></Button></div>}
 
-      {!recording && <div className="shrink-0 border-t bg-background/95 backdrop-blur-xl p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-end gap-1.5">
-        <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
-        <input ref={cameraRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => fileRef.current?.click()} aria-label="Attach photo or video" title="Gallery"><ImagePlus className="size-5" /></Button>
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0 relative overflow-visible" disabled={!online || !!pendingMedia} onClick={() => void openCamera()} aria-label="Open YOMY camera" title="Camera">
-          <Camera className="size-5" />
-          <span className="pointer-events-none absolute -right-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-primary text-primary-foreground shadow-md">
-            <span className="size-1.5 rounded-full bg-white" />
-          </span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={'size-10 rounded-full shrink-0 relative ' + (pendingViewOnceLimit > 0 ? 'bg-primary/10 text-primary ring-1 ring-primary/25' : '')}
-          onClick={() => setViewOncePickerOpen(true)}
-          aria-label="View once settings"
-          title={pendingViewOnceLimit === 0 ? 'Normal media' : pendingViewOnceLimit === 1 ? 'View once' : 'View twice'}
-        >
-          <Eye className="size-5" />
-          {pendingViewOnceLimit > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-4">{pendingViewOnceLimit}×</span>}
-        </Button>
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => setDrawingOpen(true)} aria-label="Draw"><PenLine className="size-5" /></Button>
-         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => void startVoice()}><Mic className="size-5" /></Button>
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" onClick={() => setEmojiOpen(true)} aria-label="Open emoji picker"><Smile className="size-5" /></Button>
-        <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendText()} }} placeholder={editing ? 'Edit message…' : online ? 'Message' : 'Message offline…'} className="flex-1 rounded-2xl min-h-10 bg-muted/55 border-transparent focus-visible:border-border" />
-        <Button size="icon" className="size-10 rounded-full shrink-0" disabled={!input.trim() || sending} onClick={() => void sendText()}>{editing ? <CheckCheck className="size-5" /> : <Send className="size-5" />}</Button>
+      {!recording && <div className="relative shrink-0 border-t border-border/45 yomy-glass-bar p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        {attachMenuOpen && <div className="absolute left-2 bottom-[calc(100%+.5rem)] z-40 w-[min(20rem,calc(100vw-1rem))] rounded-[1.35rem] border border-white/15 bg-background/78 p-2 shadow-[0_24px_70px_rgba(0,0,0,.2)] backdrop-blur-2xl ring-1 ring-black/5">
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" disabled={!online || !!pendingMedia} onClick={() => { setAttachMenuOpen(false); galleryRef.current?.click() }} className="yomy-attach-item"><span className="yomy-attach-icon"><ImagePlus className="size-5" /></span><span><b>Gallery</b><small>Photos & videos</small></span></button>
+            <button type="button" disabled={!online || !!pendingMedia} onClick={() => { setAttachMenuOpen(false); void openCamera() }} className="yomy-attach-item"><span className="yomy-attach-icon"><Camera className="size-5" /></span><span><b>Camera</b><small>Take now</small></span></button>
+            <button type="button" disabled={!online || !!pendingMedia} onClick={() => { setAttachMenuOpen(false); fileRef.current?.click() }} className="yomy-attach-item"><span className="yomy-attach-icon"><FileText className="size-5" /></span><span><b>Document</b><small>PDF, APK, ZIP & more</small></span></button>
+            <button type="button" disabled={!online || !!pendingMedia} onClick={() => { setAttachMenuOpen(false); setDrawingOpen(true) }} className="yomy-attach-item"><span className="yomy-attach-icon"><PenLine className="size-5" /></span><span><b>Draw</b><small>Sketch & send</small></span></button>
+            <button type="button" disabled={!online} onClick={() => { setAttachMenuOpen(false); setPollOpen(true) }} className="yomy-attach-item col-span-2"><span className="yomy-attach-icon"><BarChart3 className="size-5" /></span><span><b>Poll</b><small>Ask a question and let the chat vote</small></span></button>
+          </div>
+        </div>}
+        <input ref={galleryRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }); e.currentTarget.value='' }} />
+        <input ref={fileRef} type="file" accept="*/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) setPendingMedia({ file, kind:file.type.startsWith('video/') ? 'video' : file.type.startsWith('image/') ? 'image' : 'file', previewUrl:URL.createObjectURL(file) }); e.currentTarget.value='' }} />
+        <input ref={cameraRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }); e.currentTarget.value='' }} />
+        <div className="flex items-end gap-1.5">
+          <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0 yomy-compose-button" disabled={!online || !!pendingMedia} onClick={() => setAttachMenuOpen(v => !v)} aria-label="More attachments" title="More"><Plus className="size-5 transition-transform" style={{ transform: attachMenuOpen ? 'rotate(45deg)' : undefined }} /></Button>
+          <Button variant="ghost" size="icon" className={'size-10 rounded-full shrink-0 ' + (pendingViewOnceLimit > 0 ? 'bg-primary/10 text-primary ring-1 ring-primary/25' : '')} onClick={() => setViewOncePickerOpen(true)} aria-label="View once settings" title="View once">
+            <Eye className="size-5" />{pendingViewOnceLimit > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-4">{pendingViewOnceLimit}×</span>}
+          </Button>
+          <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => void startVoice()} aria-label="Voice message"><Mic className="size-5" /></Button>
+          <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" onClick={() => setEmojiOpen(true)} aria-label="Open emoji picker"><Smile className="size-5" /></Button>
+          <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendText()} }} placeholder={editing ? 'Edit message…' : online ? 'Message' : 'Message offline…'} className="flex-1 rounded-[1.1rem] min-h-10 bg-background/55 border-white/10 shadow-inner" />
+          <Button size="icon" className="size-10 rounded-full shrink-0 shadow-lg" disabled={!input.trim() || sending} onClick={() => void sendText()}>{editing ? <CheckCheck className="size-5" /> : <Send className="size-5" />}</Button>
+        </div>
+      </div>}
+
       </div>}
 
       {cameraOpen && <div className="fixed inset-0 z-[130] bg-black text-white flex flex-col overflow-hidden">
@@ -1190,6 +1271,23 @@ export default function ChatPro() {
           <p className="mt-4 text-center text-[11px] text-white/70">{cameraMode === 'photo' ? 'Tap to capture · Front/back camera supported' : cameraRecording ? 'Tap to stop and preview the video' : 'Tap to start recording · Audio included when permission is available'}</p>
         </div>
       </div>}
+
+      <Dialog open={pollOpen} onOpenChange={setPollOpen}>
+        <DialogContent className="max-w-sm rounded-[1.65rem] border-white/15 bg-background/82 backdrop-blur-2xl shadow-[0_30px_90px_rgba(0,0,0,.22)]">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><BarChart3 className="size-5 text-primary" />Create poll</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Input autoFocus value={pollQuestion} onChange={e => setPollQuestion(e.target.value)} placeholder="Ask a question…" className="rounded-xl bg-muted/45" />
+            <div className="space-y-2">
+              {pollOptions.map((value, index) => <div key={index} className="flex gap-2">
+                <Input value={value} onChange={e => setPollOptions(list => list.map((item, i) => i === index ? e.target.value : item))} placeholder={'Choice ' + (index + 1)} className="rounded-xl bg-muted/45" />
+                {pollOptions.length > 2 && <Button variant="ghost" size="icon" className="rounded-full shrink-0" onClick={() => setPollOptions(list => list.filter((_, i) => i !== index))}><X className="size-4" /></Button>}
+              </div>)}
+            </div>
+            <Button variant="outline" className="w-full rounded-xl" disabled={pollOptions.length >= 6} onClick={() => setPollOptions(list => [...list, ''])}><Plus className="size-4 mr-1" />Add choice</Button>
+            <div className="flex gap-2 pt-1"><Button variant="outline" className="flex-1 rounded-xl" onClick={() => setPollOpen(false)}>Cancel</Button><Button className="flex-1 rounded-xl" disabled={sending || !online} onClick={() => void createPoll()}>Send poll</Button></div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={viewOncePickerOpen} onOpenChange={setViewOncePickerOpen}>
         <DialogContent className="max-w-sm rounded-[28px] border-white/15 bg-background/90 backdrop-blur-2xl shadow-2xl">
