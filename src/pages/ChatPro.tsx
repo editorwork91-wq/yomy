@@ -282,6 +282,7 @@ export default function ChatPro() {
         setMessages(prev => prev.map(m => m.id === row.id ? { ...m, ...row } : m))
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .subscribe()
     const onOnline = () => { void flushQueue(); void loadMessages(false) }
@@ -357,10 +358,15 @@ export default function ChatPro() {
     if (!user || !online || messageId.startsWith('local:')) return
     const msg = messages.find(m => m.id === messageId)
     if (!msg) return
-    const existing = msg.message_reactions?.find(r => r.user_id === user.id && r.emoji === emoji)
-    const result = existing
-      ? await supabase.from('message_reactions').delete().eq('id', existing.id)
-      : await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id, emoji })
+    const existing = msg.message_reactions?.find(r => r.user_id === user.id)
+    let result
+    if (existing?.emoji === emoji) {
+      result = await supabase.from('message_reactions').delete().eq('id', existing.id)
+    } else if (existing) {
+      result = await supabase.from('message_reactions').update({ emoji }).eq('id', existing.id)
+    } else {
+      result = await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id, emoji })
+    }
     if (result.error) toast.error(result.error.message)
     setReactionFor(null)
     await loadMessages(false)
