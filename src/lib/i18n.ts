@@ -13,6 +13,7 @@ export function applyYomyLanguage(language: YomyLanguage) {
   root.lang = language
   root.dir = language === 'ar' ? 'rtl' : 'ltr'
   localStorage.setItem('yomy-language', language)
+  window.dispatchEvent(new CustomEvent('yomy-language-changed'))
 }
 
 export function applyYomyFontScale(scale: number) {
