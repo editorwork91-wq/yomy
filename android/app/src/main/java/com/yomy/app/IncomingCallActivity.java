@@ -169,7 +169,7 @@ public class IncomingCallActivity extends Activity {
         if (finished || callId == null || callId.isEmpty()) return;
         finished = true;
         finishPlayback();
-        stopCallService();
+        CallActionReceiver.cancelCallNotification(this);
         launchMain("accept");
     }
 
@@ -177,7 +177,7 @@ public class IncomingCallActivity extends Activity {
         if (finished || callId == null || callId.isEmpty()) return;
         finished = true;
         finishPlayback();
-        stopCallService();
+        CallActionReceiver.cancelCallNotification(this);
         Intent launch = new Intent(this, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
@@ -201,14 +201,8 @@ public class IncomingCallActivity extends Activity {
         if (finished) return;
         finished = true;
         finishPlayback();
-        stopCallService();
+        CallActionReceiver.cancelCallNotification(this);
         finish();
-    }
-
-    private void stopCallService() {
-        try {
-            startService(new Intent(this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP));
-        } catch (Exception ignored) {}
     }
 
     /*
