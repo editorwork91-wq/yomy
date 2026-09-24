@@ -845,7 +845,20 @@ export default function ChatPro() {
         </div>
       </div>
 
-      {pendingMedia && <div className="shrink-0 border-t bg-card px-3 py-2"><div className="flex items-center gap-3">{pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="size-16 rounded-xl object-cover" /> : <video src={pendingMedia.previewUrl} muted playsInline className="size-16 rounded-xl object-cover" />}<div className="min-w-0 flex-1"><p className="text-sm font-medium">{pendingMedia.kind === 'image' ? 'Photo ready' : 'Video ready'}</p><p className="text-xs text-muted-foreground truncate">Add an optional caption in the box below</p></div><Button variant="ghost" size="icon" onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null) }}><X className="size-5" /></Button><Button size="sm" disabled={!online} onClick={() => void uploadMedia(pendingMedia.file, pendingMedia.kind)}><Send className="size-4 mr-1" />Send</Button></div></div>}
+      {pendingMedia && <div className="shrink-0 border-t bg-card/92 backdrop-blur-xl px-3 py-2.5">
+        <div className="flex items-center gap-3">
+          {pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="size-16 rounded-2xl object-cover shadow-sm" /> : <video src={pendingMedia.previewUrl} muted playsInline className="size-16 rounded-2xl object-cover shadow-sm" />}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{pendingMedia.kind === 'image' ? 'Photo ready' : 'Video ready'}</p>
+            <p className="text-xs text-muted-foreground truncate">Receiver access</p>
+            <div className="mt-2 inline-flex rounded-xl border bg-muted/55 p-0.5 shadow-inner">
+              {[{value:0,label:'Normal'},{value:1,label:'1×'},{value:2,label:'2×'}].map(option => <button key={option.value} type="button" onClick={() => setPendingViewOnceLimit(option.value as 0 | 1 | 2)} className={'px-3 py-1 rounded-[10px] text-[11px] font-semibold transition-all ' + (pendingViewOnceLimit === option.value ? 'bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'text-muted-foreground hover:text-foreground')}>{option.label}</button>)}
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null); setPendingViewOnceLimit(0) }}><X className="size-5" /></Button>
+          <Button size="sm" disabled={!online} className="rounded-full px-4" onClick={() => void uploadMedia(pendingMedia.file, pendingMedia.kind)}><Send className="size-4 mr-1" />Send</Button>
+        </div>
+      </div>}
 
       {replyTo && <div className="shrink-0 border-t bg-card px-4 py-2 flex items-center gap-3"><Reply className="size-4 text-primary" /><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold">Replying to {replyTo.sender_id === user?.id ? 'yourself' : otherUser.username}</p><p className="text-xs text-muted-foreground truncate">{replyTo.content || 'Attachment'}</p></div><Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(null)}><X className="size-4" /></Button></div>}
 
@@ -889,7 +902,41 @@ export default function ChatPro() {
         </DialogContent>
       </Dialog>}
 
-      {viewOnceUrl && <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setViewOnceUrl(null)}><img src={viewOnceUrl} alt="" className="max-w-full max-h-full object-contain" /><Button variant="ghost" className="absolute top-4 right-4 text-white" size="icon"><X className="size-6" /></Button></div>}
+      {emojiOpen && <Dialog open={emojiOpen} onOpenChange={open => { setEmojiOpen(open); if (!open) setReactionFor(null) }}>
+        <DialogContent className="w-[min(96vw,430px)] max-w-[430px] rounded-[28px] border-border/70 bg-background/95 p-2 shadow-[0_30px_100px_rgba(0,0,0,.28)] backdrop-blur-2xl">
+          <DialogHeader className="px-3 pt-2 pb-1"><DialogTitle className="text-base font-semibold">{reactionFor ? 'React to message' : 'Emoji'}</DialogTitle></DialogHeader>
+          <div className="overflow-hidden rounded-[22px] border border-border/60 shadow-inner">
+            <EmojiPicker
+              theme={EmojiTheme.AUTO}
+              emojiStyle={EmojiStyle.NATIVE}
+              width="100%"
+              height={440}
+              previewConfig={{ showPreview: false }}
+              onEmojiClick={data => {
+                if (reactionFor) {
+                  void react(reactionFor, data.emoji)
+                  setEmojiOpen(false)
+                  setReactionFor(null)
+                } else {
+                  setInput(value => value + data.emoji)
+                }
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>}
+
+      {viewOnceUrl && <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4" onClick={() => { setViewOnceUrl(null); setViewOnceMessageId(null); setViewOnceRemaining(null) }}>
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 text-white/85 rounded-full bg-white/10 border border-white/10 px-4 py-2 text-xs backdrop-blur-xl" onClick={e => e.stopPropagation()}>
+          {viewOnceRemaining && viewOnceRemaining > 0 ? (viewOnceRemaining + ' view remaining') : 'This media expires after this view'}
+        </div>
+        <div className="relative max-w-full max-h-full rounded-[28px] overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,.5)] ring-1 ring-white/10">
+          {messages.find(item => item.id === viewOnceMessageId)?.media_type === 'video'
+            ? <video src={viewOnceUrl} autoPlay controls playsInline className="max-w-[94vw] max-h-[78vh] object-contain bg-black" onClick={e => e.stopPropagation()} />
+            : <img src={viewOnceUrl} alt="" className="max-w-[94vw] max-h-[78vh] object-contain" onClick={e => e.stopPropagation()} />}
+        </div>
+        <Button variant="ghost" className="absolute top-5 right-5 text-white hover:bg-white/10 rounded-full" size="icon" onClick={e => { e.stopPropagation(); setViewOnceUrl(null); setViewOnceMessageId(null); setViewOnceRemaining(null) }}><X className="size-6" /></Button>
+      </div>}
       {pref?.muted && <div className="fixed bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-background/90 border px-3 py-1.5 text-[11px] shadow-xl backdrop-blur-xl">Notifications muted for this chat</div>}
     </div>
   )
