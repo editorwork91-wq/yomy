@@ -28,6 +28,9 @@ import android.graphics.LinearGradient;
 import android.graphics.Shader;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.widget.ImageView;
 import android.animation.ValueAnimator;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -48,6 +51,7 @@ public class IncomingCallActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable timeout = this::finishIncoming;
     private String callId;
+    private ImageView avatarImage;
     private boolean finished;
     private MediaPlayer ringtonePlayer;
     private Vibrator vibrator;
@@ -108,6 +112,7 @@ public class IncomingCallActivity extends Activity {
         readIntent(getIntent());
         String title = safe(getIntent().getStringExtra(CallNotificationService.EXTRA_TITLE), "Yomy");
         String kind = safe(getIntent().getStringExtra(CallNotificationService.EXTRA_KIND), "voice");
+        String avatarUrl = safe(getIntent().getStringExtra(CallNotificationService.EXTRA_AVATAR_URL), "");
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(BG);
@@ -165,6 +170,9 @@ public class IncomingCallActivity extends Activity {
         avatarWrap.addView(ringMid, midParams);
 
         TextView avatar = text(initials(title), 44, TEXT, Typeface.BOLD);
+        avatarImage = new ImageView(this);
+        avatarImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        avatarImage.setVisibility(View.GONE);
         avatar.setGravity(Gravity.CENTER);
         GradientDrawable avatarBg = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -175,6 +183,9 @@ public class IncomingCallActivity extends Activity {
         avatar.setElevation(dp(12));
         FrameLayout.LayoutParams avatarParams = new FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER);
         avatarWrap.addView(avatar, avatarParams);
+        FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER);
+        avatarWrap.addView(avatarImage, imageParams);
+        loadAvatar(avatarUrl);
 
         TextView caller = text(title, 32, TEXT, Typeface.BOLD);
         caller.setGravity(Gravity.CENTER);
@@ -204,6 +215,32 @@ public class IncomingCallActivity extends Activity {
         content.addView(foot, new LinearLayout.LayoutParams(-1, -2));
 
         setContentView(root);
+    }
+
+    private void loadAvatar(String avatarUrl) {
+        if (avatarUrl == null || avatarUrl.isEmpty()) return
+        new Thread(() -> {
+            try {
+                java.net.URL url = new java.net.URL(avatarUrl);
+                java.net.HttpURLConnection connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(3500);
+                connection.setReadTimeout(4500);
+                connection.setInstanceFollowRedirects(true);
+                connection.connect();
+                if (connection.getResponseCode() / 100 != 2) { connection.disconnect(); return; }
+                java.io.InputStream stream = connection.getInputStream();
+                Bitmap bitmap = BitmapFactory.decodeStream(stream);
+                stream.close();
+                connection.disconnect();
+                if (bitmap == null || isFinishing()) return;
+                runOnUiThread(() -> {
+                    if (isFinishing()) return;
+                    avatarImage.setImageBitmap(bitmap);
+                    avatarImage.setVisibility(View.VISIBLE);
+                    avatar.setVisibility(View.INVISIBLE);
+                });
+            } catch (Exception ignored) {}
+        }).start();
     }
 
     private void readIntent(Intent intent) {
