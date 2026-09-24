@@ -308,7 +308,7 @@ export default function ChatPro() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .subscribe()
-    const onOnline = () => { void flushQueue(); void loadMessages(false); void loadSharedSettings(otherUser.id) }
+    const onOnline = () => { void loadMessages(false); void loadSharedSettings(otherUser.id) }
     const onVisible = () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
         void loadMessages(false)
@@ -325,7 +325,23 @@ export default function ChatPro() {
       window.removeEventListener('yomy-sync-complete', onSyncComplete)
       void supabase.removeChannel(channel)
     }
-  }, [flushQueue, loadMessages, loadSharedSettings, online, otherUser, user])
+  }, [loadMessages, loadSharedSettings, online, otherUser, user])
+
+  useEffect(() => {
+    const onSyncError = (event: Event) => {
+      const detail = (event as CustomEvent<{ clientMessageId?: string; messageId?: string; message?: string }>).detail
+      if (detail?.clientMessageId) {
+        setMessages(prev => prev.filter(message => message.client_message_id !== detail.clientMessageId && message.id !== 'local:' + detail.clientMessageId))
+        void loadMessages(false)
+        toast.error(detail.message || 'Message could not be be sent')
+      } else if (detail?.messageId) {
+        void loadMessages(false)
+        toast.error(detail.message || 'Sync failed')
+      }
+    }
+    window.addEventListener('yomy-sync-error', onSyncError)
+    return () => window.removeEventListener('yomy-sync-error', onSyncError)
+  }, [loadMessages])
 
   useEffect(() => { window.setTimeout(() => scrollToBottom(false), 0) }, [messages.length, scrollToBottom])
   useEffect(() => () => {
