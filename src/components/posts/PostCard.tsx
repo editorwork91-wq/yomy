@@ -18,7 +18,7 @@ import LinkPreviewCard from '@/components/posts/LinkPreviewCard'
 type PostCardProps = { post: Post; onDeleted?: (id: string) => void; onUpdated?: (post: Post) => void }
 
 function firstUrl(value: string) {
-  const match = value.match(/https?:\/\/[^\\s]+/i)
+  const match = value.match(/https?:\/\/[^\s]+)/i)
   return match?.[0] || ''
 }
 
