@@ -169,30 +169,21 @@ public class IncomingCallActivity extends Activity {
         if (finished || callId == null || callId.isEmpty()) return;
         finished = true;
         finishPlayback();
-        CallActionReceiver.cancelCallNotification(this);
-        launchMain("accept");
+        dispatchToCallActionReceiver(CallActionReceiver.ACTION_ACCEPT);
     }
 
     private void decline() {
         if (finished || callId == null || callId.isEmpty()) return;
         finished = true;
         finishPlayback();
-        CallActionReceiver.cancelCallNotification(this);
-        Intent launch = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
-                .putExtra(CallActionReceiver.EXTRA_ACTION, "decline");
-        startActivity(launch);
-        finish();
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        dispatchToCallActionReceiver(CallActionReceiver.ACTION_DECLINE);
     }
 
-    private void launchMain(String action) {
-        Intent launch = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId)
-                .putExtra(CallActionReceiver.EXTRA_ACTION, action);
-        startActivity(launch);
+    private void dispatchToCallActionReceiver(String action) {
+        Intent intent = new Intent(this, CallActionReceiver.class)
+                .setAction(action)
+                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
+        sendBroadcast(intent);
         finish();
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
