@@ -3,7 +3,7 @@ import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from 'emoji-picker-react
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Camera, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
-  Mic, MoreVertical, Palette, Phone, Reply, RotateCcw, Send, Smile, Trash2, Video, WifiOff,
+  Mic, MoreVertical, Palette, Phone, Reply, RotateCcw, Send, Smile, Trash2, Video, WifiOff, PenLine,
   X, Pencil, Eye, Clock3, UserRound, ShieldCheck
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
 import LinkPreviewCard from '@/components/posts/LinkPreviewCard'
+import ChatDoodleEditor from '@/components/chat/ChatDoodleEditor'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
@@ -169,6 +170,10 @@ export default function ChatPro() {
   const [cameraRecording, setCameraRecording] = useState(false)
   const [cameraSeconds, setCameraSeconds] = useState(0)
   const [cameraFlash, setCameraFlash] = useState(false)
+  const [drawingOpen, setDrawingOpen] = useState(false)
+  const [stickers, setStickers] = useState<Array<{ id: string; url: string; name: string }>>([])
+  const [stickersLoading, setStickersLoading] = useState(false)
+  const longPressRef = useRef<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -536,6 +541,59 @@ export default function ChatPro() {
       return
     }
     await loadMessages(false)
+  }
+
+  const loadStickers = useCallback(async () => {
+    if (!user || !online || stickersLoading) return
+    setStickersLoading(true)
+    try {
+      const { data } = await supabase.from('chat_stickers').select('id,name,bucket,storage_path').eq('user_id', user.id).order('created_at', { ascending: false }).limit(32)
+      const urls = await Promise.all((data || []).map(async sticker => {
+        const { data: signed } = await supabase.storage.from(String(sticker.bucket || 'chat-stickers')).createSignedUrl(String(sticker.storage_path), 3600)
+        return signed?.signedUrl ? { id: sticker.id, name: sticker.name, url: signed.signedUrl } : null
+      }))
+      setStickers(urls.filter(Boolean) as Array<{ id: string; url: string; name: string }>)
+    } finally { setStickersLoading(false) }
+  }, [online, stickersLoading, user])
+
+  const saveImageAsSticker = async (message: Message) => {
+    if (!user || !online || message.media_type !== 'image' || message.view_once) return
+    const url = mediaUrls[message.id] || message.media_url
+    if (!url) return
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('Image unavailable')
+      const blob = await response.blob()
+      const stickerPath = user.id + '/' + crypto.randomUUID() + '.png'
+      const { error: uploadError } = await supabase.storage.from('chat-stickers').upload(stickerPath, blob, { upsert: false, contentType: 'image/png', cacheControl: '31536000' })
+      if (uploadError) throw uploadError
+      const { error } = await supabase.from('chat_stickers').insert({ user_id: user.id, name: 'My sticker', bucket: 'chat-stickers', storage_path: stickerPath })
+      if (error) { await supabase.storage.from('chat-stickers').remove([stickerPath]); throw error }
+      await loadStickers()
+      toast.success('Saved as a private sticker')
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not save sticker') }
+  }
+
+  const sendStickerFile = async (file: File) => {
+    if (!user || !otherUser || !online || sending) return
+    setSending(true)
+    try {
+      const mediaPath = 'images/' + user.id + '/' + crypto.randomUUID() + '.png'
+      const { error: uploadError } = await supabase.storage.from('messages-private').upload(mediaPath, file, { upsert: false, contentType: 'image/png', cacheControl: '31536000' })
+      if (uploadError) throw uploadError
+      const { data, error } = await supabase.from('messages').insert({
+        sender_id: user.id, receiver_id: otherUser.id, content: '', media_url: '', media_type: 'image',
+        media_bucket: 'messages-private', media_path: mediaPath, is_encrypted: true,
+        view_once: false, view_once_limit: 0, view_once_open_count: 0, view_once_opened: false,
+        client_message_id: crypto.randomUUID(), reply_to_id: null, created_at: new Date().toISOString(),
+      }).select('*').single()
+      if (error) { await supabase.storage.from('messages-private').remove([mediaPath]); throw error }
+      const next = [...messages, data as Message]
+      setMessages(next)
+      await cacheMessages(user.id, otherUser.id, next)
+      void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: '✨ Sticker', data: { message_id: data.id, url: '/messages/' + otherUser.username } })
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Sticker failed') }
+    finally { setSending(false) }
   }
 
   const uploadMedia = async (file: File, kind: 'image' | 'video') => {
@@ -1014,7 +1072,7 @@ export default function ChatPro() {
                       <>
                         {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-[min(18rem,76vw)] h-24 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
                         {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
-                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-64 max-w-[min(18rem,76vw)] object-cover mb-1.5" loading="lazy" /></button>}
+                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onPointerDown={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = window.setTimeout(() => { longPressRef.current = null; void saveImageAsSticker(message) }, 650) }} onPointerUp={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onPointerCancel={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current); longPressRef.current = null }} onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-[1.15rem] max-h-64 max-w-[min(18rem,76vw)] object-cover mb-1.5 shadow-[0_8px_30px_rgba(0,0,0,.10)]" loading="lazy" /></button>}
                         {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-64 max-w-[min(18rem,76vw)] mb-1.5" />}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
@@ -1087,7 +1145,8 @@ export default function ChatPro() {
           <Eye className="size-5" />
           {pendingViewOnceLimit > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-4">{pendingViewOnceLimit}×</span>}
         </Button>
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => void startVoice()}><Mic className="size-5" /></Button>
+        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => setDrawingOpen(true)} aria-label="Draw"><PenLine className="size-5" /></Button>
+         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => void startVoice()}><Mic className="size-5" /></Button>
         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" onClick={() => setEmojiOpen(true)} aria-label="Open emoji picker"><Smile className="size-5" /></Button>
         <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendText()} }} placeholder={editing ? 'Edit message…' : online ? 'Message' : 'Message offline…'} className="flex-1 rounded-2xl min-h-10 bg-muted/55 border-transparent focus-visible:border-border" />
         <Button size="icon" className="size-10 rounded-full shrink-0" disabled={!input.trim() || sending} onClick={() => void sendText()}>{editing ? <CheckCheck className="size-5" /> : <Send className="size-5" />}</Button>
@@ -1183,6 +1242,7 @@ export default function ChatPro() {
       {emojiOpen && <Dialog open={emojiOpen} onOpenChange={open => { setEmojiOpen(open); if (!open) setReactionFor(null) }}>
         <DialogContent className="w-[min(96vw,430px)] max-w-[430px] rounded-[28px] border-border/70 bg-background/95 p-2 shadow-[0_30px_100px_rgba(0,0,0,.28)] backdrop-blur-2xl">
           <DialogHeader className="px-3 pt-2 pb-1"><DialogTitle className="text-base font-semibold">{reactionFor ? 'React to message' : 'Emoji'}</DialogTitle></DialogHeader>
+          <div className="px-2 pb-2 overflow-x-auto"><div className="flex gap-2">{stickersLoading && <Spinner className="size-4 my-2" />}{stickers.map(sticker => <button key={sticker.id} type="button" className="yomy-sticker-tile" onClick={async () => { try { const res = await fetch(sticker.url); const blob = await res.blob(); await sendStickerFile(new File([blob], 'sticker.png', { type: 'image/png' })); setEmojiOpen(false) } catch { toast.error('Could not send sticker') } }}><img src={sticker.url} alt={sticker.name} /></button>)}{!stickersLoading && stickers.length === 0 && <span className="text-[11px] text-muted-foreground px-2 py-2">Long-press a photo to save a private sticker.</span>}</div></div>
           <div className="overflow-hidden rounded-[22px] border border-border/60 shadow-inner">
             <EmojiPicker
               theme={EmojiTheme.AUTO}
@@ -1203,6 +1263,8 @@ export default function ChatPro() {
           </div>
         </DialogContent>
       </Dialog>}
+
+      {drawingOpen && <ChatDoodleEditor onCancel={() => setDrawingOpen(false)} onDone={file => { setDrawingOpen(false); setPendingMedia({ file, kind: 'image', previewUrl: URL.createObjectURL(file) }) }} />}
 
       {viewOnceUrl && <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4" onClick={() => { setViewOnceUrl(null); setViewOnceMessageId(null); setViewOnceRemaining(null) }}>
         <div className="absolute top-5 left-1/2 -translate-x-1/2 text-white/85 rounded-full bg-white/10 border border-white/10 px-4 py-2 text-xs backdrop-blur-xl" onClick={e => e.stopPropagation()}>
