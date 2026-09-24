@@ -83,7 +83,7 @@ export default function Profile() {
       const { data: savedRows } = await supabase
         .from('saved_posts')
         .select('post_id')
-        .eq('user_id', user.id)
+        .eq('user_id', prof.id)
         .order('created_at', { ascending: false })
 
       const savedIds = (savedRows || []).map(row => row.post_id as string)
@@ -99,7 +99,7 @@ export default function Profile() {
           ...p,
           _likes_count: p.likes?.length || 0,
           _comments_count: p.comments?.length || 0,
-          _liked_by_me: p.likes?.some((l: { user_id: string }) => l.user_id === user.id) || false,
+          _liked_by_me: p.likes?.some((l: { user_id: string }) => l.user_id === prof.id) || false,
           _tags: p.post_tags?.map((t: { tag: string }) => t.tag) || [],
         })) as Post[])
       } else {
