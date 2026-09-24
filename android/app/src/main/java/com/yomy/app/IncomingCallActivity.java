@@ -52,6 +52,7 @@ public class IncomingCallActivity extends Activity {
     private final Runnable timeout = this::finishIncoming;
     private String callId;
     private ImageView avatarImage;
+    private TextView avatarFallback;
     private boolean finished;
     private MediaPlayer ringtonePlayer;
     private Vibrator vibrator;
@@ -170,6 +171,7 @@ public class IncomingCallActivity extends Activity {
         avatarWrap.addView(ringMid, midParams);
 
         TextView avatar = text(initials(title), 44, TEXT, Typeface.BOLD);
+        avatarFallback = avatar;
         avatarImage = new ImageView(this);
         avatarImage.setScaleType(ImageView.ScaleType.CENTER_CROP);
         avatarImage.setVisibility(View.GONE);
@@ -234,10 +236,10 @@ public class IncomingCallActivity extends Activity {
                 connection.disconnect();
                 if (bitmap == null || isFinishing()) return;
                 runOnUiThread(() -> {
-                    if (isFinishing()) return;
+                    if (isFinishing() || avatarImage == null) return;
                     avatarImage.setImageBitmap(bitmap);
                     avatarImage.setVisibility(View.VISIBLE);
-                    avatar.setVisibility(View.INVISIBLE);
+                    if (avatarFallback != null) avatarFallback.setVisibility(View.INVISIBLE);
                 });
             } catch (Exception ignored) {}
         }).start();
