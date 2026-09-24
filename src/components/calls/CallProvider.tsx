@@ -210,6 +210,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const timeoutRef = useRef<number | null>(null)
   const handledNativeActionsRef = useRef(new Set<string>())
+  const iceRestartAttemptsRef = useRef(0)
 
   useEffect(() => { incomingRef.current = incoming }, [incoming])
   useEffect(() => { peerRef.current = peer }, [peer])
@@ -239,6 +240,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setPeer(null)
     processedSignals.current.clear()
     pendingCandidates.current = []
+    iceRestartAttemptsRef.current = 0
   }, [])
 
   const profileFor = useCallback(async (id: string) => {
@@ -273,8 +275,43 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     pc.ontrack = event => event.streams[0]?.getTracks().forEach(track => { if (!remote.getTracks().some(t => t.id === track.id)) remote.addTrack(track) })
     pc.onicecandidate = event => { if (event.candidate) void sendSignal(call, 'ice-candidate', event.candidate.toJSON() as unknown as Record<string, unknown>) }
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') setConnected(true)
+      if (pc.connectionState === 'connected') {
+        setConnected(true)
+        return
+      }
+
+      if (pc.connectionState === 'disconnected') {
+        // A short network/route interruption is recoverable. Do not end the
+        // call or label it "lost" immediately.
+        setConnected(false)
+        return
+      }
+
       if (pc.connectionState === 'failed') {
+        setConnected(false)
+        if (iceRestartAttemptsRef.current < 1) {
+          iceRestartAttemptsRef.current += 1
+          window.setTimeout(() => {
+            if (pcRef.current !== pc || activeRef.current?.id !== call.id || pc.connectionState !== 'failed') return
+            if (!caller) {
+              void sendSignal(call, 'ice-restart-needed', { requested_at: new Date().toISOString() })
+              return
+            }
+            void (async () => {
+              try {
+                const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: call.kind === 'video', iceRestart: true })
+                await pc.setLocalDescription(offer)
+                await sendSignal(call, 'offer', offer as unknown as Record<string, unknown>)
+              } catch {
+                void supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id).eq('status', 'active')
+                cleanup()
+                toast.error('Call connection failed')
+              }
+            })()
+          }, 1800)
+          return
+        }
+
         void supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id).eq('status', 'active')
         cleanup()
         toast.error('Call connection failed')
@@ -341,6 +378,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     const { data, error } = await supabase.from('call_sessions').insert({ caller_id: user.id, callee_id: target.id, kind, status: 'ringing' }).select('*').single()
     if (error || !data) { toast.error(error?.message || 'Could not start call'); return }
     const call = data as CallSession
+    iceRestartAttemptsRef.current = 0
     activeRef.current = call
     setActive(call)
     setPeer(target)
@@ -471,7 +509,11 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         processedSignals.current.add(signal.id)
         try {
           if (signal.signal_type === 'ringing_ack' && call.status === 'ringing') setOutgoingStage('ringing')
-          else if (signal.signal_type === 'answer' && call.caller_id === user.id && pc) {
+          else if (signal.signal_type === 'ice-restart-needed' && call.caller_id === user.id && pc) {
+            const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: call.kind === 'video', iceRestart: true })
+            await pc.setLocalDescription(offer)
+            await sendSignal(call, 'offer', offer as unknown as Record<string, unknown>)
+          } else if (signal.signal_type === 'answer' && call.caller_id === user.id && pc) {
             await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
             const now = new Date().toISOString()
             const activeCall = { ...call, status: 'active' as CallStatus, answered_at: call.answered_at || now, started_at: call.started_at || now }
