@@ -13,6 +13,26 @@ public class CallActionReceiver extends BroadcastReceiver {
     public static final String EXTRA_CALL_ID = "call_id";
     public static final String EXTRA_ACTION = "yomy_call_action";
     private static final int CALL_NOTIFICATION_ID = 41001;
+    private static final String PREFS = "yomy_call_action_queue";
+    private static final String KEY_ACTION = "action";
+    private static final String KEY_CALL_ID = "call_id";
+
+    private static void persistPendingAction(Context context, String action, String callId) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putString(KEY_ACTION, action).putString(KEY_CALL_ID, callId).apply();
+    }
+
+    public static String[] readPendingAction(Context context) {
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String action = prefs.getString(KEY_ACTION, "");
+        String callId = prefs.getString(KEY_CALL_ID, "");
+        if (action == null || action.isEmpty() || callId == null || callId.isEmpty()) return null;
+        return new String[]{action, callId};
+    }
+
+    public static void clearPendingAction(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply();
+    }
 
     public static void cancelCallNotification(Context context) {
         try {
@@ -29,6 +49,7 @@ public class CallActionReceiver extends BroadcastReceiver {
         String callId = intent == null ? null : intent.getStringExtra(EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
 
+        persistPendingAction(context, action, callId);
         cancelCallNotification(context);
 
         if (ACTION_OPEN.equals(action)) {
