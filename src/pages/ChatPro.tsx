@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
   Mic, MoreVertical, Palette, Phone, Reply, Send, Smile, Trash2, Video, WifiOff,
-  X, Pencil, Eye
+  X, Pencil, Eye, Clock3
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
@@ -76,6 +76,17 @@ function initials(profile?: ProfileType | null) {
   return profile?.username?.slice(0, 1)?.toUpperCase() || '?'
 }
 
+function isTransientSendError(error: unknown) {
+  const value = error as { message?: string; code?: string; status?: number } | null
+  const message = String(value?.message || '').toLowerCase()
+  const status = Number(value?.status || 0)
+  return !navigator.onLine
+    || status === 0
+    || [408, 425, 429].includes(status)
+    || status >= 500
+    || /failed to fetch|network|timeout|timed out|fetch failed|connection reset|econn|offline/.test(message)
+}
+
 function renderMessageText(content: string) {
   const parts = content.split(/(https?:\/\/[^\s]+)/gi)
   return parts.map((part, index) =>
@@ -126,7 +137,6 @@ export default function ChatPro() {
   const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null)
   const [viewOnceUrl, setViewOnceUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [recording, setRecording] = useState(false)
@@ -220,23 +230,26 @@ export default function ChatPro() {
       syncingRef.current = false
       return
     }
-    setSyncing(true)
     for (const item of queued) {
-      const { error } = await supabase.from('messages').upsert({
-        sender_id: user.id,
-        receiver_id: otherUser.id,
-        content: item.content,
-        media_url: '',
-        media_type: '',
-        is_encrypted: true,
-        view_once: false,
-        reply_to_id: item.replyToId,
-        created_at: item.createdAt,
-        client_message_id: item.clientMessageId,
-      }, { onConflict: 'sender_id,client_message_id' })
-      if (!error) await removeQueuedMessage(user.id, item.clientMessageId)
+      const { data, error } = await supabase.rpc('send_message', {
+        p_receiver_id: otherUser.id,
+        p_content: item.content,
+        p_reply_to_id: item.replyToId,
+        p_media_url: '',
+        p_media_type: '',
+        p_media_bucket: 'messages',
+        p_media_path: null,
+        p_view_once: false,
+        p_client_message_id: item.clientMessageId,
+      })
+      if (!error && data) {
+        await removeQueuedMessage(user.id, item.clientMessageId)
+      } else if (error && !isTransientSendError(error)) {
+        await removeQueuedMessage(user.id, item.clientMessageId)
+        setMessages(prev => prev.filter(message => message.client_message_id !== item.clientMessageId && message.id !== 'local:' + item.clientMessageId))
+        toast.error('Could not send a queued message: ' + error.message)
+      }
     }
-    setSyncing(false)
     syncingRef.current = false
     await loadMessages(false)
   }, [loadMessages, online, otherUser, user])
@@ -489,26 +502,28 @@ export default function ChatPro() {
     }
 
     setSending(true)
-    const { data, error } = await supabase.from('messages').upsert({
-      sender_id: user.id,
-      receiver_id: otherUser.id,
-      content,
-      media_url: '',
-      media_type: '',
-      is_encrypted: true,
-      view_once: false,
-      reply_to_id: replyId,
-      created_at: createdAt,
-      client_message_id: clientMessageId,
-    }, { onConflict: 'sender_id,client_message_id' }).select('*').single()
+    const { data, error } = await supabase.rpc('send_message', {
+      p_receiver_id: otherUser.id,
+      p_content: content,
+      p_reply_to_id: replyId,
+      p_media_url: '',
+      p_media_type: '',
+      p_media_bucket: 'messages',
+      p_media_path: null,
+      p_view_once: false,
+      p_client_message_id: clientMessageId,
+    })
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
       await cacheMessages(user.id, otherUser.id, replaced)
       void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: content, data: { message_id: data.id, url: '/messages/' + otherUser.username } })
-    } else {
+    } else if (isTransientSendError(error)) {
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
-      toast.info('Connection lost • message queued safely')
+    } else {
+      setMessages(prev => prev.filter(message => message.id !== temp.id))
+      await cacheMessages(user.id, otherUser.id, nextLocal.filter(message => message.id !== temp.id))
+      toast.error('Message was not sent: ' + (error?.message || 'Unknown server error'))
     }
     setSending(false)
   }
@@ -556,7 +571,6 @@ export default function ChatPro() {
       </header>
 
       {!online && <div className="shrink-0 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline mode: cached chat works. New posts, calls and live updates wait for internet.</span>{pendingCount > 0 && <span className="ml-auto font-semibold">{pendingCount} queued</span>}</div>}
-      {syncing && <div className="shrink-0 px-4 py-1.5 bg-primary/5 border-b text-[11px] text-muted-foreground text-center">Syncing queued messages…</div>}
 
       <div className={'relative flex-1 overflow-hidden ' + wallpaperBackground}>
         <Wallpaper type={pref?.wallpaper || 'default'} />
@@ -592,7 +606,9 @@ export default function ChatPro() {
                     <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
                       <span className={'text-[10px] ' + (mine ? 'text-white/60' : 'text-muted-foreground')}>{format(new Date(message.created_at), 'HH:mm')}</span>
                       {message.edited_at && <span className={'text-[10px] ' + (mine ? 'text-white/55' : 'text-muted-foreground')}>edited</span>}
-                      {mine && (queued ? <span className="text-white/60 text-[10px]">queued</span> : message.is_seen ? <CheckCheck className="size-3.5 text-sky-200" /> : message.delivered_at ? <CheckCheck className="size-3.5 text-white/70" /> : <Check className="size-3.5 text-white/70" />)}
+                      {mine && (queued
+                        ? <span className="text-white/65 text-[10px] inline-flex items-center gap-0.5"><Clock3 className="size-3" />{online ? 'Sending…' : 'Waiting for connection'}</span>
+                        : message.is_seen ? <CheckCheck className="size-3.5 text-sky-200" /> : message.delivered_at ? <CheckCheck className="size-3.5 text-white/70" /> : <Check className="size-3.5 text-white/70" />)}
                     </div>
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
