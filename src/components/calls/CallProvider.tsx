@@ -251,6 +251,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       }
     }
     void loadRinging()
+    const onOnline = () => { void loadRinging() }
+    window.addEventListener('online', onOnline)
     const channel = supabase.channel(`calls-${user.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_sessions', filter: `callee_id=eq.${user.id}` }, async payload => {
         const call = payload.new as CallSession
@@ -271,7 +273,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         } else if (['declined', 'missed', 'failed', 'ended'].includes(call.status)) cleanup()
       })
       .subscribe()
-    return () => { mounted = false; void supabase.removeChannel(channel) }
+    return () => { mounted = false; window.removeEventListener('online', onOnline); void supabase.removeChannel(channel) }
   }, [cleanup, loadIncomingById, user])
 
   useEffect(() => {
