@@ -177,6 +177,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }
         @JavascriptInterface public boolean showIncomingCallScreen(String callId, String title, String body, String kind, String avatarUrl) {
             try {
+                CallNotificationService.start(MainActivity.this, callId, title, body, kind, avatarUrl == null ? "" : avatarUrl);
                 Intent incoming = new Intent(MainActivity.this, IncomingCallActivity.class)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         .putExtra(CallNotificationService.EXTRA_CALL_ID, callId)
