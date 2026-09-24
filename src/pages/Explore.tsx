@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Spinner } from '@/components/ui/spinner'
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from '@/components/ui/empty'
 import { Search, Film, UserPlus, UserCheck } from 'lucide-react'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 
 export default function Explore() {
   const { user } = useAuth()
@@ -45,6 +46,9 @@ export default function Explore() {
     if (error) console.error('Suggestions failed:', error.message)
     setSuggested(suggestions || [])
   }, [user])
+
+  const refreshExplore = useCallback(async () => { await Promise.all([fetchExplore(), fetchSuggested()]) }, [fetchExplore, fetchSuggested])
+  const { pullDistance, refreshing } = usePullToRefresh(refreshExplore)
 
   useEffect(() => { void fetchExplore(); void fetchSuggested() }, [fetchExplore, fetchSuggested])
 
@@ -80,7 +84,9 @@ export default function Explore() {
   }
 
   return (
-    <div className="pb-20">
+    <div className="relative">
+    <div className="pointer-events-none fixed left-1/2 top-14 z-50 -translate-x-1/2 transition-opacity" style={{ opacity: pullDistance > 5 ? 1 : 0 }}><div className="rounded-full border bg-background/90 px-3 py-1.5 text-[10px] shadow-lg backdrop-blur-xl">{refreshing ? 'Refreshing…' : pullDistance > 58 ? 'Release to refresh' : 'Pull to refresh'}</div></div>
+      <div className="pb-20">
       <TopBar title="Explore" />
       <div className="max-w-lg mx-auto">
         <div className="px-4 py-3 sticky top-14 bg-background z-10"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder="Search users..." value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void handleSearch() }} className="pl-9" /></div></div>
@@ -88,6 +94,6 @@ export default function Explore() {
         {query.trim() ? <div className="px-4">{searching ? <div className="flex justify-center py-8"><Spinner className="size-5" /></div> : <>{users.length > 0 && <><h2 className="text-sm font-semibold text-muted-foreground mb-2">Users</h2>{users.map(u => <Link key={u.id} to={`/profile/${u.username}`} className="flex items-center gap-3 py-2 px-2 rounded-lg"><Avatar className="size-12"><AvatarImage src={u.avatar_url} /><AvatarFallback>{u.username[0]?.toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium truncate">{u.username}</p><p className="text-xs text-muted-foreground truncate">{u.full_name || u.bio}</p></div></Link>)}</>}{searchPosts.length > 0 && <><h2 className="text-sm font-semibold text-muted-foreground mb-2 mt-4">Posts</h2><div className="grid grid-cols-3 gap-0.5">{searchPosts.map(post => <Link key={post.id} to={`/profile/${post.profiles?.username}`} className="aspect-square relative"><img src={post.media_url} alt="" className="w-full h-full object-cover" loading="lazy" />{post.media_type === 'video' && <Film className="absolute top-1 right-1 size-4 text-white fill-current" />}</Link>)}</div></>}{users.length === 0 && searchPosts.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">No results found</p>}</>}</div> : <Tabs defaultValue="discover"><TabsList className="w-full justify-around rounded-none border-b bg-transparent h-12 p-0"><TabsTrigger value="discover" className="flex-1">Discover</TabsTrigger><TabsTrigger value="suggested" className="flex-1">Suggested</TabsTrigger></TabsList><TabsContent value="discover">{loading ? <div className="flex justify-center h-40 items-center"><Spinner className="size-6" /></div> : posts.length === 0 ? <Empty className="mt-12"><EmptyHeader><EmptyTitle>No posts to explore</EmptyTitle><EmptyDescription>Check back later for more content.</EmptyDescription></EmptyHeader></Empty> : <div className="grid grid-cols-3 gap-0.5">{posts.map(post => <Link key={post.id} to={`/profile/${post.profiles?.username}`} className="aspect-square relative"><img src={post.media_url} alt="" className="w-full h-full object-cover" loading="lazy" />{post.media_type === 'video' && <Film className="absolute top-1 right-1 size-4 text-white fill-current" />}</Link>)}</div>}</TabsContent><TabsContent value="suggested">{suggested.length === 0 ? <Empty className="mt-12"><EmptyHeader><EmptyTitle>No suggestions yet</EmptyTitle><EmptyDescription>Follow more people to get better suggestions.</EmptyDescription></EmptyHeader></Empty> : <div className="px-4 py-2"><h2 className="text-sm font-semibold text-muted-foreground mb-2">Suggested for you</h2>{suggested.map(u => <div key={u.id} className="flex items-center gap-3 py-3"><Link to={`/profile/${u.username}`}><Avatar className="size-12"><AvatarImage src={u.avatar_url} /><AvatarFallback>{u.username[0]?.toUpperCase()}</AvatarFallback></Avatar></Link><div className="flex-1 min-w-0"><Link to={`/profile/${u.username}`}><p className="text-sm font-medium truncate">{u.username}</p></Link><p className="text-xs text-muted-foreground truncate">{u.full_name || 'Suggested for you'}</p></div>{followStates[u.id] === 'accepted' ? <Button variant="secondary" size="sm" disabled><UserCheck className="size-4 mr-1" />Following</Button> : followStates[u.id] === 'pending' ? <Button variant="secondary" size="sm" disabled>Requested</Button> : <Button size="sm" onClick={() => void handleFollow(u.id)}><UserPlus className="size-4 mr-1" />Follow</Button>}</div>)}</div>}</TabsContent></Tabs>}
       </div>
       <BottomNav />
-    </div>
+      </div>
   )
 }
