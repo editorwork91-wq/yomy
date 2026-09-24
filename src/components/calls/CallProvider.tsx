@@ -217,6 +217,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setCallFocused(true)
     try {
       await setupPeer(call, true)
+      startNativeActiveCall(call, target)
       const callerLabel = String(user.user_metadata?.username || user.user_metadata?.full_name || 'Yomy')
       await sendPushEvent({ type: 'call', targetUserId: target.id, title: callerLabel, body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', data: { call_id: call.id, call_kind: kind, kind, event_type: 'CALL_INCOMING', push_title: callerLabel, push_body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', url: `/messages/${callerLabel}?call=${call.id}` } })
       timeoutRef.current = window.setTimeout(async () => {
