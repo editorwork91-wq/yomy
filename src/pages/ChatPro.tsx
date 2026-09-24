@@ -14,7 +14,7 @@ import { sendPushEvent } from '@/lib/push'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import {
   cacheJson, cacheMessages, queueMessage, readCachedJson, readCachedMessages,
-  readQueuedMessages, removeQueuedMessage, queueSyncOperation
+  readQueuedMessages, removeQueuedMessage, queueSyncOperation, patchCachedConversation
 } from '@/lib/offlineStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -648,13 +648,20 @@ export default function ChatPro() {
     }
     const nextLocal = [...messages, temp]
     setMessages(nextLocal)
+    await patchCachedConversation(user.id, otherUser.id, {
+      user: otherUser,
+      lastMessage: temp,
+      unreadCount: 0,
+      archived: preference?.archived || false,
+      muted: preference?.muted || false,
+    })
     setInput('')
     setReplyTo(null)
     await cacheMessages(user.id, otherUser.id, nextLocal)
 
     if (!online) {
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
-      toast.success('Message saved • will send when you reconnect')
+      toast.success('Saved offline · will send automatically')
       return
     }
 
@@ -675,6 +682,13 @@ export default function ChatPro() {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
       await cacheMessages(user.id, otherUser.id, replaced)
+      await patchCachedConversation(user.id, otherUser.id, {
+        user: otherUser,
+        lastMessage: data as Message,
+        unreadCount: 0,
+        archived: preference?.archived || false,
+        muted: preference?.muted || false,
+      })
       void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: content, data: { message_id: data.id, url: '/messages/' + otherUser.username } })
     } else if (isTransientSendError(error)) {
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
