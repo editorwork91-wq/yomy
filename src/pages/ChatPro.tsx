@@ -311,6 +311,10 @@ export default function ChatPro() {
     const low = user.id < otherUser.id ? user.id : otherUser.id
     const high = user.id < otherUser.id ? otherUser.id : user.id
     const channel = supabase.channel('chat-shared:' + low + ':' + high)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_shared_settings', filter: 'user_low=eq.' + low }, payload => {
+        const row = payload.new as { wallpaper?: ChatPreference['wallpaper'] }
+        if (row.wallpaper) setSharedWallpaper(row.wallpaper)
+      })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_shared_settings', filter: 'user_low=eq.' + low }, payload => {
         const row = payload.new as { wallpaper?: ChatPreference['wallpaper'] }
         if (row.wallpaper) setSharedWallpaper(row.wallpaper)
