@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { Clapperboard, MessageCircle, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import BrandMark from '@/components/layout/BrandMark'
@@ -12,6 +13,12 @@ type TopBarProps = {
 
 export default function TopBar({ title, showBack, showLogo = false, right }: TopBarProps) {
   const navigate = useNavigate()
+  const [language, setLanguage] = useState(document.documentElement.lang || 'en')
+  useEffect(() => {
+    const sync = () => setLanguage(document.documentElement.lang || 'en')
+    window.addEventListener('yomy-language-changed', sync)
+    return () => window.removeEventListener('yomy-language-changed', sync)
+  }, [])
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/55 bg-background/72 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_8px_30px_rgba(0,0,0,.045)]">
@@ -36,7 +43,7 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
                 <BrandMark size={28} className="scale-[1.16]" />
               </span>
               <span className="text-[1.55rem] leading-none font-semibold tracking-[-0.055em] bg-gradient-to-r from-violet-500 via-pink-500 to-orange-400 bg-clip-text text-transparent">
-                Yomy
+                {language === 'ar' ? 'يومي' : 'Yomy'}
               </span>
             </Link>
           )}
