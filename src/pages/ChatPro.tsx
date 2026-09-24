@@ -128,6 +128,7 @@ export default function ChatPro() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [sending, setSending] = useState(false)
+  const [sendingMessageIds, setSendingMessageIds] = useState<Set<string>>(() => new Set())
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [recording, setRecording] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)
@@ -489,28 +490,45 @@ export default function ChatPro() {
     }
 
     setSending(true)
-    const { data, error } = await supabase.from('messages').upsert({
-      sender_id: user.id,
-      receiver_id: otherUser.id,
-      content,
-      media_url: '',
-      media_type: '',
-      is_encrypted: true,
-      view_once: false,
-      reply_to_id: replyId,
-      created_at: createdAt,
-      client_message_id: clientMessageId,
-    }, { onConflict: 'sender_id,client_message_id' }).select('*').single()
-    if (!error && data) {
-      const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
-      setMessages(replaced)
-      await cacheMessages(user.id, otherUser.id, replaced)
-      void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: content, data: { message_id: data.id, url: '/messages/' + otherUser.username } })
-    } else {
+    setSendingMessageIds(prev => new Set(prev).add(temp.id))
+    try {
+      const { data, error } = await supabase.from('messages').upsert({
+        sender_id: user.id,
+        receiver_id: otherUser.id,
+        content,
+        media_url: '',
+        media_type: '',
+        is_encrypted: true,
+        view_once: false,
+        reply_to_id: replyId,
+        created_at: createdAt,
+        client_message_id: clientMessageId,
+      }, { onConflict: 'sender_id,client_message_id' }).select('*').single()
+
+      if (!error && data) {
+        const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
+        setMessages(replaced)
+        await cacheMessages(user.id, otherUser.id, replaced)
+        void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: content, data: { message_id: data.id, url: '/messages/' + otherUser.username } })
+        return
+      }
+
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
-      toast.info('Connection lost • message queued safely')
+      const errorMessage = error instanceof Error ? error.message : String(error || 'Unknown send error')
+      const connectivityIssue = !navigator.onLine || /network|fetch|timeout|offline|connection|internet|failed to fetch|load failed/i.test(errorMessage)
+      if (connectivityIssue) {
+        toast.info('Connection unavailable • message queued safely')
+      } else {
+        toast.error('Unable to send message: ' + errorMessage)
+      }
+    } finally {
+      setSendingMessageIds(prev => {
+        const next = new Set(prev)
+        next.delete(temp.id)
+        return next
+      })
+      setSending(false)
     }
-    setSending(false)
   }
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
@@ -592,11 +610,11 @@ export default function ChatPro() {
                     <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
                       <span className={'text-[10px] ' + (mine ? 'text-white/60' : 'text-muted-foreground')}>{format(new Date(message.created_at), 'HH:mm')}</span>
                       {message.edited_at && <span className={'text-[10px] ' + (mine ? 'text-white/55' : 'text-muted-foreground')}>edited</span>}
-                      {mine && (queued ? <span className="text-white/60 text-[10px]">queued</span> : message.is_seen ? <CheckCheck className="size-3.5 text-sky-200" /> : message.delivered_at ? <CheckCheck className="size-3.5 text-white/70" /> : <Check className="size-3.5 text-white/70" />)}
+                      {mine && (sendingMessageIds.has(message.id) ? <span className="text-white/60 text-[10px]">sending…</span> : queued ? <span className="text-white/60 text-[10px]">{online ? 'queued' : 'waiting'}</span> : message.is_seen ? <CheckCheck className="size-3.5 text-sky-200" /> : message.delivered_at ? <CheckCheck className="size-3.5 text-white/70" /> : <Check className="size-3.5 text-white/70" />)}
                     </div>
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
-                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
+                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-90 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}><Smile className="size-4" /></Button>
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
