@@ -29,6 +29,7 @@ public class CallNotificationService extends Service {
     public static final String EXTRA_TITLE = "call_title";
     public static final String EXTRA_BODY = "call_body";
     public static final String EXTRA_KIND = "call_kind";
+    public static final String EXTRA_AVATAR_URL = "call_avatar_url";
 
     private static final String CHANNEL_ID = "yomy_calls_v2";
     private static final int NOTIFICATION_ID = 41001;
@@ -41,13 +42,16 @@ public class CallNotificationService extends Service {
     private String activeCallId;
     private final Runnable timeout = this::stopRinging;
 
-    public static void start(Context context, String callId, String title, String body, String kind) {
+    public static void start(Context context, String callId, String title, String body, String kind) { start(context, callId, title, body, kind, ""); }
+
+    public static void start(Context context, String callId, String title, String body, String kind, String avatarUrl) {
         Intent i = new Intent(context, CallNotificationService.class)
                 .setAction(ACTION_START)
                 .putExtra(EXTRA_CALL_ID, callId)
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_BODY, body)
-                .putExtra(EXTRA_KIND, kind);
+                .putExtra(EXTRA_KIND, kind)
+                .putExtra(EXTRA_AVATAR_URL, avatarUrl == null ? "" : avatarUrl);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i);
         else context.startService(i);
     }
@@ -65,11 +69,12 @@ public class CallNotificationService extends Service {
         String title = safe(intent.getStringExtra(EXTRA_TITLE), "Yomy");
         String body = safe(intent.getStringExtra(EXTRA_BODY), "Incoming voice call");
         String kind = safe(intent.getStringExtra(EXTRA_KIND), "voice");
+        String avatarUrl = safe(intent.getStringExtra(EXTRA_AVATAR_URL), "");
 
         handler.removeCallbacks(timeout);
         stopPlaybackOnly();
         ensureChannel();
-        Notification notification = buildNotification(title, body, kind, activeCallId);
+        Notification notification = buildNotification(title, body, kind, activeCallId, avatarUrl);
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -87,7 +92,7 @@ public class CallNotificationService extends Service {
         return START_NOT_STICKY;
     }
 
-    private Notification buildNotification(String title, String body, String kind, String callId) {
+    private Notification buildNotification(String title, String body, String kind, String callId, String avatarUrl) {
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
 
@@ -101,7 +106,8 @@ public class CallNotificationService extends Service {
                 .putExtra(CallNotificationService.EXTRA_CALL_ID, callId)
                 .putExtra(CallNotificationService.EXTRA_TITLE, title)
                 .putExtra(CallNotificationService.EXTRA_BODY, body)
-                .putExtra(CallNotificationService.EXTRA_KIND, kind);
+                .putExtra(CallNotificationService.EXTRA_KIND, kind)
+                .putExtra(CallNotificationService.EXTRA_AVATAR_URL, avatarUrl);
         PendingIntent incomingScreen = PendingIntent.getActivity(this, 41005, incomingScreenIntent, flags);
 
         // The compact Answer action remains a direct Activity launch so the
