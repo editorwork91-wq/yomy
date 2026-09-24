@@ -104,56 +104,79 @@ public class IncomingCallActivity extends Activity {
         String kind = safe(getIntent().getStringExtra(CallNotificationService.EXTRA_KIND), "voice");
         String subtitle = "video".equalsIgnoreCase(kind) ? "Incoming video call" : "Incoming voice call";
 
+        float density = getResources().getDisplayMetrics().density;
+        int screenH = Math.round(getResources().getDisplayMetrics().heightPixels / density);
+        int screenW = Math.round(getResources().getDisplayMetrics().widthPixels / density);
+        boolean compact = screenH < 700;
+        boolean veryCompact = screenH < 620;
+
+        int horizontal = Math.max(18, Math.min(30, screenW / 12));
+        int vertical = veryCompact ? 16 : compact ? 24 : 36;
+        int avatarSize = veryCompact ? 82 : compact ? 96 : screenH < 820 ? 108 : 116;
+        int callerSize = veryCompact ? 23 : compact ? 26 : 30;
+        int controlHeight = veryCompact ? 68 : compact ? 74 : 82;
+        int controlMargin = veryCompact ? 8 : 12;
+        int bottom = veryCompact ? 10 : compact ? 14 : 18;
+
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(BG);
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER_HORIZONTAL);
-        content.setPadding(dp(24), dp(46), dp(24), dp(18));
+        content.setPadding(dp(horizontal), dp(vertical), dp(horizontal), dp(bottom));
+
         FrameLayout.LayoutParams contentParams = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
         );
         root.addView(content, contentParams);
 
-        TextView brand = text("YOMY", 13, Color.rgb(107, 193, 167), Typeface.BOLD);
-        content.addView(brand, new LinearLayout.LayoutParams(-2, -2));
+        TextView brand = text("YOMY", compact ? 12 : 13, Color.rgb(107, 193, 167), Typeface.BOLD);
+        brand.setGravity(Gravity.CENTER);
+        content.addView(brand, new LinearLayout.LayoutParams(-1, -2));
 
         SpaceView topSpace = new SpaceView(this);
-        content.addView(topSpace, new LinearLayout.LayoutParams(1, 0, 1f));
+        content.addView(topSpace, new LinearLayout.LayoutParams(1, 0, veryCompact ? 0.35f : 1f));
 
-        TextView avatar = text(initials(title), 42, TEXT, Typeface.BOLD);
+        TextView avatar = text(initials(title), veryCompact ? 30 : compact ? 35 : 42, TEXT, Typeface.BOLD);
         avatar.setGravity(Gravity.CENTER);
         avatar.setBackgroundColor(Color.rgb(34, 76, 66));
-        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(dp(116), dp(116));
+        LinearLayout.LayoutParams avatarParams = new LinearLayout.LayoutParams(dp(avatarSize), dp(avatarSize));
         avatarParams.gravity = Gravity.CENTER_HORIZONTAL;
         content.addView(avatar, avatarParams);
 
-        TextView caller = text(title, 30, TEXT, Typeface.BOLD);
+        TextView caller = text(title, callerSize, TEXT, Typeface.BOLD);
         caller.setGravity(Gravity.CENTER);
-        caller.setPadding(0, dp(18), 0, 0);
+        caller.setSingleLine(true);
+        caller.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        caller.setPadding(0, dp(compact ? 12 : 18), 0, 0);
         content.addView(caller, new LinearLayout.LayoutParams(-1, -2));
 
-        TextView type = text(subtitle, 16, MUTED, Typeface.NORMAL);
+        TextView type = text(subtitle, compact ? 14 : 16, MUTED, Typeface.NORMAL);
         type.setGravity(Gravity.CENTER);
-        type.setPadding(0, dp(6), 0, 0);
+        type.setSingleLine(true);
+        type.setPadding(0, dp(5), 0, 0);
         content.addView(type, new LinearLayout.LayoutParams(-1, -2));
 
         SpaceView middleSpace = new SpaceView(this);
-        content.addView(middleSpace, new LinearLayout.LayoutParams(1, 0, 1f));
+        content.addView(middleSpace, new LinearLayout.LayoutParams(1, 0, veryCompact ? 0.45f : 1f));
 
-        TextView hint = text("Swipe right to answer  •  swipe left to decline", 14, MUTED, Typeface.NORMAL);
+        TextView hint = text("Swipe right to answer  •  swipe left to decline", compact ? 12 : 14, MUTED, Typeface.NORMAL);
         hint.setGravity(Gravity.CENTER);
+        hint.setSingleLine(true);
+        hint.setEllipsize(android.text.TextUtils.TruncateAt.END);
         content.addView(hint, new LinearLayout.LayoutParams(-1, -2));
 
         SwipeCallControl control = new SwipeCallControl(this);
-        LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(-1, dp(82));
-        controlParams.setMargins(0, dp(12), 0, dp(6));
+        LinearLayout.LayoutParams controlParams = new LinearLayout.LayoutParams(-1, dp(controlHeight));
+        controlParams.setMargins(0, dp(controlMargin), 0, dp(veryCompact ? 4 : 6));
         content.addView(control, controlParams);
 
-        TextView fallback = text("Release after the slider crosses the center", 12, Color.rgb(115, 137, 130), Typeface.NORMAL);
+        TextView fallback = text("Release after the slider crosses the center", compact ? 11 : 12, Color.rgb(115, 137, 130), Typeface.NORMAL);
         fallback.setGravity(Gravity.CENTER);
+        fallback.setSingleLine(true);
+        fallback.setEllipsize(android.text.TextUtils.TruncateAt.END);
         content.addView(fallback, new LinearLayout.LayoutParams(-1, -2));
 
         setContentView(root);
