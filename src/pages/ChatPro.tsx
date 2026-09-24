@@ -992,6 +992,7 @@ export default function ChatPro() {
 
   const createPoll = async () => {
     if (!user || !otherUser || !online || sending) return
+    if (peerSleeping) { toast.error('This chat is in sleep mode right now'); return }
     const question = pollQuestion.trim()
     const options = pollOptions.map(value => value.trim()).filter(Boolean)
     if (!question) return toast.error('Write a question first')
@@ -1002,7 +1003,7 @@ export default function ChatPro() {
       const createdAt = new Date().toISOString()
       const { data: message, error: messageError } = await supabase.from('messages').insert({
         sender_id: user.id, receiver_id: otherUser.id, content: '', media_url: '', media_type: '',
-        media_bucket: 'messages-private', media_path: null, message_type: 'poll',
+        media_bucket: 'messages', media_path: null, message_type: 'poll',
         is_encrypted: true, view_once: false, view_once_limit: 0, view_once_open_count: 0,
         view_once_opened: false, client_message_id: crypto.randomUUID(), reply_to_id: replyTo?.id || null,
         created_at: createdAt,
