@@ -306,7 +306,8 @@ export default function ChatPro() {
   useEffect(() => { if (online) void flushQueue() }, [flushQueue, online])
 
   useEffect(() => {
-    if (!user || !otherUser) return
+    if (!user || !otherUser || !online) return
+    const pair = sharedChatKey(user.id, otherUser.id)
     const channel = supabase.channel('chat-pro:' + user.id + ':' + otherUser.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'receiver_id=eq.' + user.id }, payload => {
         const row = payload.new as Message
@@ -323,20 +324,42 @@ export default function ChatPro() {
         const row = payload.new as Message
         setMessages(prev => prev.map(m => m.id === row.id ? { ...m, ...row } : m))
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_shared_settings' }, payload => {
+        const row = payload.new as { user_low?: string; user_high?: string; wallpaper?: string }
+        if (row.user_low !== pair.user_low || row.user_high !== pair.user_high) return
+        const wallpaper = (row.wallpaper || 'default') as ChatPreference['wallpaper']
+        setSharedWallpaper(wallpaper)
+        void cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_shared_settings' }, payload => {
+        const row = payload.new as { user_low?: string; user_high?: string; wallpaper?: string }
+        if (row.user_low !== pair.user_low || row.user_high !== pair.user_high) return
+        const wallpaper = (row.wallpaper || 'default') as ChatPreference['wallpaper']
+        setSharedWallpaper(wallpaper)
+        void cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper })
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .subscribe()
-    const onOnline = () => { void flushQueue(); void loadMessages(false) }
-    const onVisible = () => { if (document.visibilityState === 'visible' && navigator.onLine) void loadMessages(false) }
+    const onOnline = () => { void flushQueue(); void loadMessages(false); void loadSharedSettings(otherUser.id) }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        void loadMessages(false)
+        void loadSharedSettings(otherUser.id)
+      }
+    }
+    const onSyncComplete = () => { void loadMessages(false); void loadSharedSettings(otherUser.id) }
     window.addEventListener('online', onOnline)
     document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('yomy-sync-complete', onSyncComplete)
     return () => {
       window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('yomy-sync-complete', onSyncComplete)
       void supabase.removeChannel(channel)
     }
-  }, [flushQueue, loadMessages, otherUser, user])
+  }, [flushQueue, loadMessages, loadSharedSettings, online, otherUser, user])
 
   useEffect(() => { window.setTimeout(() => scrollToBottom(false), 0) }, [messages.length, scrollToBottom])
   useEffect(() => () => {
@@ -351,19 +374,64 @@ export default function ChatPro() {
     const next = { ...base, ...patch }
     setPreference(next)
     await cacheJson('chatPref:' + user.id + ':' + otherUser.id, next)
+
+    if ('wallpaper' in patch && patch.wallpaper) {
+      setSharedWallpaper(patch.wallpaper)
+      await cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper: patch.wallpaper })
+    }
+
+    const personalPatch: { archived?: boolean; muted?: boolean; bubble_theme?: string } = {}
+    if (typeof patch.archived === 'boolean') personalPatch.archived = patch.archived
+    if (typeof patch.muted === 'boolean') personalPatch.muted = patch.muted
+    if (patch.bubble_theme) personalPatch.bubble_theme = patch.bubble_theme
+
     if (!online) {
-      toast.success('Saved on this device • will sync when online')
+      if (Object.keys(personalPatch).length) {
+        await queueSyncOperation({
+          opId: crypto.randomUUID(),
+          userId: user.id,
+          kind: 'chat_personal',
+          createdAt: new Date().toISOString(),
+          payload: { otherUserId: otherUser.id, patch: personalPatch },
+        })
+      }
+      if ('wallpaper' in patch && patch.wallpaper) {
+        await queueSyncOperation({
+          opId: crypto.randomUUID(),
+          userId: user.id,
+          kind: 'chat_shared',
+          createdAt: new Date().toISOString(),
+          payload: { otherUserId: otherUser.id, wallpaper: patch.wallpaper },
+        })
+      }
+      window.dispatchEvent(new CustomEvent('yomy-chat-settings-changed', { detail: { otherUserId: otherUser.id, patch } }))
+      toast.success('Saved on this device • will sync when you reconnect')
       return
     }
-    const { error } = await supabase.from('chat_preferences').upsert(next, { onConflict: 'user_id,other_user_id' })
-    if (error) toast.error(error.message)
-    if ('muted' in patch) {
-      if (next.muted) {
-        await supabase.from('muted_chats').upsert({ user_id: user.id, muted_user_id: otherUser.id })
-      } else {
-        await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', otherUser.id)
-      }
+
+    if (Object.keys(personalPatch).length) {
+      const { error } = await supabase.from('chat_preferences').upsert(
+        { user_id: user.id, other_user_id: otherUser.id, ...personalPatch },
+        { onConflict: 'user_id,other_user_id' },
+      )
+      if (error) toast.error(error.message)
     }
+
+    if ('muted' in personalPatch) {
+      if (next.muted) await supabase.from('muted_chats').upsert({ user_id: user.id, muted_user_id: otherUser.id })
+      else await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', otherUser.id)
+    }
+
+    if ('wallpaper' in patch && patch.wallpaper) {
+      const pair = sharedChatKey(user.id, otherUser.id)
+      const { error } = await supabase.from('chat_shared_settings').upsert(
+        { ...pair, wallpaper: patch.wallpaper, updated_by: user.id },
+        { onConflict: 'user_low,user_high' },
+      )
+      if (error) toast.error(error.message)
+    }
+
+    window.dispatchEvent(new CustomEvent('yomy-chat-settings-changed', { detail: { otherUserId: otherUser.id, patch } }))
   }
 
   const copyMessage = async (message: Message) => {
