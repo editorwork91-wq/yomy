@@ -1,9 +1,12 @@
 import { StrictMode, Component, type ErrorInfo, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
+import { Capacitor } from "@capacitor/core"
 
 import "./index.css"
 
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
+// Native Capacitor builds use the packaged WebView shell directly. Avoid registering
+// the web service worker there so a stale cached shell cannot blank the native UI.
+if ("serviceWorker" in navigator && import.meta.env.PROD && !Capacitor.isNativePlatform()) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/sw.js").catch(error => console.warn("Yomy service worker unavailable:", error))
   })
