@@ -104,12 +104,11 @@ export default function NewChat() {
             {visiblePeople.length === 0 && !loading ? (
               <div className="py-16 text-center text-sm text-muted-foreground">{copy.empty}</div>
             ) : (
-              visiblePeople.map((person, index) => (
+              visiblePeople.map(person => (
                 <button key={person.id} type="button" onClick={() => openChat(person)} className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-muted/45 active:scale-[.995] transition-all">
                   <Avatar className="size-12 ring-1 ring-border/50 shadow-sm"><AvatarImage src={person.avatar_url} /><AvatarFallback>{person.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar>
                   <span className="min-w-0 flex-1"><b className="block text-sm truncate">{person.username}</b><small className="block text-xs text-muted-foreground truncate">{person.full_name}</small></span>
                   <span className="grid size-9 place-items-center rounded-full bg-primary/8 text-primary"><ChevronLeft className="size-4 rtl:rotate-180" /></span>
-                  {index < visiblePeople.length - 1 && <span className="absolute" />}
                 </button>
               ))
             )}
