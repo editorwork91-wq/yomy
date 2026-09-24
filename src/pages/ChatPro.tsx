@@ -412,26 +412,42 @@ export default function ChatPro() {
   }
 
   const editMessage = async () => {
-    if (!editing || !user || !input.trim() || !online) return
+    if (!editing || !user || !input.trim()) return
     const content = input.trim()
     const editedAt = new Date().toISOString()
-    const { error } = await supabase.from('messages').update({ content, edited_at: editedAt }).eq('id', editing.id).eq('sender_id', user.id)
-    if (error) return toast.error(error.message)
-    setMessages(prev => prev.map(m => m.id === editing.id ? { ...m, content, edited_at: editedAt } : m))
+    const nextMessages = messages.map(m => m.id === editing.id ? { ...m, content, edited_at: editedAt } : m)
+    setMessages(nextMessages)
+    if (otherUser) await cacheMessages(user.id, otherUser.id, nextMessages)
     setEditing(null)
     setInput('')
+    const operation = { opId: crypto.randomUUID(), userId: user.id, kind: 'message_edit' as const, createdAt: new Date().toISOString(), payload: { messageId: editing.id, content, editedAt } }
+    if (!online) {
+      await queueSyncOperation(operation)
+      return
+    }
+    const { error } = await supabase.from('messages').update({ content, edited_at: editedAt }).eq('id', editing.id).eq('sender_id', user.id)
+    if (error) {
+      if (isTransientSendError(error)) await queueSyncOperation(operation)
+      else { await loadMessages(false); toast.error(error.message) }
+    }
   }
 
   const deleteForEveryone = async (message: Message) => {
-    if (!user || !online || message.sender_id !== user.id) return
-    const { error } = await supabase.from('messages').update({
-      deleted_for_everyone: true,
-      content: '',
-      media_url: '',
-      media_type: '',
-    }).eq('id', message.id).eq('sender_id', user.id)
-    if (error) toast.error(error.message)
-    else setMessages(prev => prev.map(m => m.id === message.id ? { ...m, deleted_for_everyone: true, content: '', media_url: '', media_type: '' } : m))
+    if (!user || message.sender_id !== user.id) return
+    const deletedPatch = { deleted_for_everyone: true, content: '', media_url: '', media_type: '' as const }
+    const nextMessages = messages.map(m => m.id === message.id ? { ...m, ...deletedPatch } : m)
+    setMessages(nextMessages)
+    if (otherUser) await cacheMessages(user.id, otherUser.id, nextMessages)
+    const operation = { opId: crypto.randomUUID(), userId: user.id, kind: 'message_delete' as const, createdAt: new Date().toISOString(), payload: { messageId: message.id } }
+    if (!online) {
+      await queueSyncOperation(operation)
+      return
+    }
+    const { error } = await supabase.from('messages').update(deletedPatch).eq('id', message.id).eq('sender_id', user.id)
+    if (error) {
+      if (isTransientSendError(error)) await queueSyncOperation(operation)
+      else { await loadMessages(false); toast.error(error.message) }
+    }
   }
 
   const react = async (messageId: string, emoji: string) => {
@@ -471,8 +487,12 @@ export default function ChatPro() {
       )
 
     if (result.error) {
-      toast.error(result.error.message)
-      await loadMessages(false)
+      if (isTransientSendError(result.error)) {
+        await queueSyncOperation({ opId: crypto.randomUUID(), userId: user.id, kind: 'reaction_set', createdAt: new Date().toISOString(), payload: { messageId, mode, emoji } })
+      } else {
+        toast.error(result.error.message)
+        await loadMessages(false)
+      }
       return
     }
     await loadMessages(false)
