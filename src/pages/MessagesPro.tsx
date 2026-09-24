@@ -106,17 +106,32 @@ export default function MessagesPro() {
 
   useEffect(() => {
     if (!user) return
+    if (!online) return
     const channel = supabase.channel('inbox-pro:' + user.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'receiver_id=eq.' + user.id }, () => void fetchInbox())
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: 'receiver_id=eq.' + user.id }, () => void fetchInbox())
       .subscribe()
     const onOnline = () => void fetchInbox()
+    const onSync = () => void fetchInbox()
+    const onChatSettings = (event: Event) => {
+      const detail = (event as CustomEvent<{ otherUserId?: string; patch?: { archived?: boolean; muted?: boolean } }>).detail
+      if (!detail?.otherUserId || !detail.patch) return
+      setConversations(prev => prev.map(item => item.user.id === detail.otherUserId ? {
+        ...item,
+        archived: typeof detail.patch?.archived === 'boolean' ? detail.patch.archived : item.archived,
+        muted: typeof detail.patch?.muted === 'boolean' ? detail.patch.muted : item.muted,
+      } : item))
+    }
     window.addEventListener('online', onOnline)
+    window.addEventListener('yomy-sync-complete', onSync)
+    window.addEventListener('yomy-chat-settings-changed', onChatSettings)
     return () => {
       window.removeEventListener('online', onOnline)
+      window.removeEventListener('yomy-sync-complete', onSync)
+      window.removeEventListener('yomy-chat-settings-changed', onChatSettings)
       void supabase.removeChannel(channel)
     }
-  }, [fetchInbox, user])
+  }, [fetchInbox, online, user])
 
   const searchPeople = async () => {
     const value = search.trim()

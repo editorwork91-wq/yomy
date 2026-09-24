@@ -490,7 +490,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   }, [loadIncomingById, location.search, user])
 
   useEffect(() => {
-    if (!active || active.status !== 'active') { setElapsedSeconds(0); setCallExpanded(false); return }
+    if (!active || active.status !== 'active') { setElapsedSeconds(0); return }
     const startAt = new Date(active.started_at || active.answered_at || active.created_at).getTime()
     const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startAt) / 1000)))
     tick()
@@ -513,9 +513,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const showOutgoing = !!active && active.status === 'ringing'
   const showActive = !!active && active.status === 'active'
 
-  const openActiveChat = () => {
-    if (peer && active) openCallRoute(peer, active.id)
-  }
 
   return <CallContext.Provider value={value}>
     {children}

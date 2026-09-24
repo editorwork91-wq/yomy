@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
   Mic, MoreVertical, Palette, Phone, Reply, Send, Smile, Trash2, Video, WifiOff,
-  X, Pencil, Eye, Clock3
+  X, Pencil, Eye, Clock3, UserRound, ShieldCheck
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
@@ -14,13 +14,14 @@ import { sendPushEvent } from '@/lib/push'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import {
   cacheJson, cacheMessages, queueMessage, readCachedJson, readCachedMessages,
-  readQueuedMessages, removeQueuedMessage
+  readQueuedMessages, removeQueuedMessage, queueSyncOperation, patchCachedConversation
 } from '@/lib/offlineStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
+import LinkPreviewCard from '@/components/posts/LinkPreviewCard'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
@@ -34,13 +35,13 @@ type ChatPreference = {
   other_user_id: string
   archived: boolean
   muted: boolean
-  wallpaper: 'default' | 'romance' | 'hearts' | 'petals' | 'midnight' | 'paper'
+  wallpaper: 'default' | 'romance' | 'hearts' | 'petals' | 'midnight' | 'paper' | 'roses'
   bubble_theme: 'default' | 'ocean' | 'mint' | 'violet' | 'rose' | 'amber'
 }
 
 type PendingMedia = { file: File; kind: 'image' | 'video'; previewUrl: string }
 
-const wallpapers: ChatPreference['wallpaper'][] = ['default', 'romance', 'hearts', 'petals', 'midnight', 'paper']
+const wallpapers: ChatPreference['wallpaper'][] = ['default', 'romance', 'hearts', 'petals', 'roses', 'midnight', 'paper']
 const bubbleThemes: ChatPreference['bubble_theme'][] = ['default', 'ocean', 'mint', 'violet', 'rose', 'amber']
 
 const bubbleClasses: Record<ChatPreference['bubble_theme'], string> = {
@@ -59,6 +60,7 @@ const wallpaperLabel: Record<ChatPreference['wallpaper'], string> = {
   petals: 'Flowers & petals',
   midnight: 'Midnight',
   paper: 'Paper',
+  roses: 'Rose garden',
 }
 
 function fallbackPreference(userId: string, otherUserId: string): ChatPreference {
@@ -74,6 +76,16 @@ function fallbackPreference(userId: string, otherUserId: string): ChatPreference
 
 function initials(profile?: ProfileType | null) {
   return profile?.username?.slice(0, 1)?.toUpperCase() || '?'
+}
+
+function firstUrl(value: string) {
+  return value.match(/https?:\/\/[^\s]+/i)?.[0] || ''
+}
+
+function sharedChatKey(userId: string, otherUserId: string) {
+  return userId < otherUserId
+    ? { user_low: userId, user_high: otherUserId }
+    : { user_low: otherUserId, user_high: userId }
 }
 
 function isTransientSendError(error: unknown) {
@@ -101,20 +113,26 @@ function Wallpaper({ type }: { type: ChatPreference['wallpaper'] }) {
   const symbols = type === 'romance'
     ? ['♥', '♡', '✿', '❀', '♥', '❁']
     : type === 'hearts'
-      ? ['♥', '♡', '❤', '❥']
+      ? ['♥', '♡', '❤', '❥', '💗']
       : type === 'petals'
-        ? ['✿', '❀', '❁', '✾']
-        : type === 'midnight'
-          ? ['✦', '✧', '⋆', '✩']
-          : ['·', '•', '⊹', '◦']
+        ? ['✿', '❀', '❁', '✾', '🌸']
+        : type === 'roses'
+          ? ['🌹', '♡', '✿', '❀', '🌹']
+          : type === 'midnight'
+            ? ['✦', '✧', '⋆', '✩']
+            : ['·', '•', '⊹', '◦']
+
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden select-none opacity-[0.075]">
-      <div className="grid grid-cols-6 gap-x-7 gap-y-8 p-5 text-3xl leading-none text-foreground">
-        {Array.from({ length: 54 }, (_, i) => (
-          <span key={i} className="text-center" style={{ transform: 'rotate(' + ((i % 5 - 2) * 7) + 'deg)' }}>
-            {symbols[i % symbols.length]}
-          </span>
-        ))}
+    <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
+      <div className="absolute inset-0 opacity-70" style={{
+        backgroundImage: type === 'midnight'
+          ? 'radial-gradient(circle at 20% 20%, rgba(120,140,255,.12), transparent 30%), radial-gradient(circle at 80% 70%, rgba(190,120,255,.10), transparent 28%)'
+          : type === 'roses'
+            ? 'radial-gradient(circle at 18% 24%, rgba(255,90,130,.11), transparent 22%), radial-gradient(circle at 82% 72%, rgba(255,160,180,.10), transparent 26%)'
+            : 'radial-gradient(circle at 20% 20%, rgba(255,120,160,.08), transparent 25%), radial-gradient(circle at 85% 75%, rgba(120,180,255,.07), transparent 24%)'
+      }} />
+      <div className="relative grid grid-cols-6 gap-x-7 gap-y-8 p-5 text-2xl leading-none text-foreground/80 opacity-[0.085]">
+        {Array.from({ length: 60 }, (_, i) => <span key={i} className="text-center" style={{ transform: 'rotate(' + ((i % 5 - 2) * 7) + 'deg) scale(' + (0.88 + ((i % 3) * .08)) + ')' }}>{symbols[i % symbols.length]}</span>)}
       </div>
     </div>
   )
@@ -130,6 +148,8 @@ export default function ChatPro() {
   const [otherUser, setOtherUser] = useState<ProfileType | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [preference, setPreference] = useState<ChatPreference | null>(null)
+  const [sharedWallpaper, setSharedWallpaper] = useState<ChatPreference['wallpaper']>('default')
+  const [mediaUrls, setMediaUrls] = useState<Record<string, string>>({})
   const [input, setInput] = useState('')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editing, setEditing] = useState<Message | null>(null)
@@ -186,6 +206,27 @@ export default function ChatPro() {
     await cacheJson(key, next)
   }, [online, user])
 
+  const loadSharedSettings = useCallback(async (peerId: string) => {
+    if (!user) return
+    const key = 'chatShared:' + [user.id, peerId].sort().join(':')
+    const cached = await readCachedJson<{ wallpaper: ChatPreference['wallpaper'] }>(key)
+    if (cached?.wallpaper) setSharedWallpaper(cached.wallpaper)
+    if (!online) {
+      if (!cached) setSharedWallpaper('default')
+      return
+    }
+    const pair = sharedChatKey(user.id, peerId)
+    const { data } = await supabase
+      .from('chat_shared_settings')
+      .select('wallpaper')
+      .eq('user_low', pair.user_low)
+      .eq('user_high', pair.user_high)
+      .maybeSingle()
+    const wallpaper = (data?.wallpaper as ChatPreference['wallpaper'] | undefined) || 'default'
+    setSharedWallpaper(wallpaper)
+    await cacheJson(key, { wallpaper })
+  }, [online, user])
+
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current
     if (!el) return
@@ -231,16 +272,17 @@ export default function ChatPro() {
       return
     }
     for (const item of queued) {
-      const { data, error } = await supabase.rpc('send_message', {
+      const { data, error } = await supabase.rpc('send_message_v2', {
         p_receiver_id: otherUser.id,
         p_content: item.content,
         p_reply_to_id: item.replyToId,
         p_media_url: '',
         p_media_type: '',
-        p_media_bucket: 'messages',
+        p_media_bucket: 'messages-private',
         p_media_path: null,
         p_view_once: false,
         p_client_message_id: item.clientMessageId,
+        p_created_at: item.createdAt,
       })
       if (!error && data) {
         await removeQueuedMessage(user.id, item.clientMessageId)
@@ -258,13 +300,15 @@ export default function ChatPro() {
   useEffect(() => {
     if (otherUser) {
       void loadPreference(otherUser.id)
+      void loadSharedSettings(otherUser.id)
       void loadMessages()
     }
-  }, [loadMessages, loadPreference, otherUser])
+  }, [loadMessages, loadPreference, loadSharedSettings, otherUser])
   useEffect(() => { if (online) void flushQueue() }, [flushQueue, online])
 
   useEffect(() => {
-    if (!user || !otherUser) return
+    if (!user || !otherUser || !online) return
+    const pair = sharedChatKey(user.id, otherUser.id)
     const channel = supabase.channel('chat-pro:' + user.id + ':' + otherUser.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'receiver_id=eq.' + user.id }, payload => {
         const row = payload.new as Message
@@ -281,20 +325,42 @@ export default function ChatPro() {
         const row = payload.new as Message
         setMessages(prev => prev.map(m => m.id === row.id ? { ...m, ...row } : m))
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_shared_settings' }, payload => {
+        const row = payload.new as { user_low?: string; user_high?: string; wallpaper?: string }
+        if (row.user_low !== pair.user_low || row.user_high !== pair.user_high) return
+        const wallpaper = (row.wallpaper || 'default') as ChatPreference['wallpaper']
+        setSharedWallpaper(wallpaper)
+        void cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_shared_settings' }, payload => {
+        const row = payload.new as { user_low?: string; user_high?: string; wallpaper?: string }
+        if (row.user_low !== pair.user_low || row.user_high !== pair.user_high) return
+        const wallpaper = (row.wallpaper || 'default') as ChatPreference['wallpaper']
+        setSharedWallpaper(wallpaper)
+        void cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper })
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .subscribe()
-    const onOnline = () => { void flushQueue(); void loadMessages(false) }
-    const onVisible = () => { if (document.visibilityState === 'visible' && navigator.onLine) void loadMessages(false) }
+    const onOnline = () => { void flushQueue(); void loadMessages(false); void loadSharedSettings(otherUser.id) }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        void loadMessages(false)
+        void loadSharedSettings(otherUser.id)
+      }
+    }
+    const onSyncComplete = () => { void loadMessages(false); void loadSharedSettings(otherUser.id) }
     window.addEventListener('online', onOnline)
     document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('yomy-sync-complete', onSyncComplete)
     return () => {
       window.removeEventListener('online', onOnline)
       document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('yomy-sync-complete', onSyncComplete)
       void supabase.removeChannel(channel)
     }
-  }, [flushQueue, loadMessages, otherUser, user])
+  }, [flushQueue, loadMessages, loadSharedSettings, online, otherUser, user])
 
   useEffect(() => { window.setTimeout(() => scrollToBottom(false), 0) }, [messages.length, scrollToBottom])
   useEffect(() => () => {
@@ -309,19 +375,68 @@ export default function ChatPro() {
     const next = { ...base, ...patch }
     setPreference(next)
     await cacheJson('chatPref:' + user.id + ':' + otherUser.id, next)
+    await patchCachedConversation(user.id, otherUser.id, {
+      archived: next.archived,
+      muted: next.muted,
+    })
+
+    if ('wallpaper' in patch && patch.wallpaper) {
+      setSharedWallpaper(patch.wallpaper)
+      await cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper: patch.wallpaper })
+    }
+
+    const personalPatch: { archived?: boolean; muted?: boolean; bubble_theme?: string } = {}
+    if (typeof patch.archived === 'boolean') personalPatch.archived = patch.archived
+    if (typeof patch.muted === 'boolean') personalPatch.muted = patch.muted
+    if (patch.bubble_theme) personalPatch.bubble_theme = patch.bubble_theme
+
     if (!online) {
-      toast.success('Saved on this device • will sync when online')
+      if (Object.keys(personalPatch).length) {
+        await queueSyncOperation({
+          opId: crypto.randomUUID(),
+          userId: user.id,
+          kind: 'chat_personal',
+          createdAt: new Date().toISOString(),
+          payload: { otherUserId: otherUser.id, patch: personalPatch },
+        })
+      }
+      if ('wallpaper' in patch && patch.wallpaper) {
+        await queueSyncOperation({
+          opId: crypto.randomUUID(),
+          userId: user.id,
+          kind: 'chat_shared',
+          createdAt: new Date().toISOString(),
+          payload: { otherUserId: otherUser.id, wallpaper: patch.wallpaper },
+        })
+      }
+      window.dispatchEvent(new CustomEvent('yomy-chat-settings-changed', { detail: { otherUserId: otherUser.id, patch } }))
+      toast.success('Saved on this device • will sync when you reconnect')
       return
     }
-    const { error } = await supabase.from('chat_preferences').upsert(next, { onConflict: 'user_id,other_user_id' })
-    if (error) toast.error(error.message)
-    if ('muted' in patch) {
-      if (next.muted) {
-        await supabase.from('muted_chats').upsert({ user_id: user.id, muted_user_id: otherUser.id })
-      } else {
-        await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', otherUser.id)
-      }
+
+    if (Object.keys(personalPatch).length) {
+      const { error } = await supabase.from('chat_preferences').upsert(
+        { user_id: user.id, other_user_id: otherUser.id, ...personalPatch },
+        { onConflict: 'user_id,other_user_id' },
+      )
+      if (error) toast.error(error.message)
     }
+
+    if ('muted' in personalPatch) {
+      if (next.muted) await supabase.from('muted_chats').upsert({ user_id: user.id, muted_user_id: otherUser.id })
+      else await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', otherUser.id)
+    }
+
+    if ('wallpaper' in patch && patch.wallpaper) {
+      const pair = sharedChatKey(user.id, otherUser.id)
+      const { error } = await supabase.from('chat_shared_settings').upsert(
+        { ...pair, wallpaper: patch.wallpaper, updated_by: user.id },
+        { onConflict: 'user_low,user_high' },
+      )
+      if (error) toast.error(error.message)
+    }
+
+    window.dispatchEvent(new CustomEvent('yomy-chat-settings-changed', { detail: { otherUserId: otherUser.id, patch } }))
   }
 
   const copyMessage = async (message: Message) => {
@@ -355,20 +470,46 @@ export default function ChatPro() {
   }
 
   const react = async (messageId: string, emoji: string) => {
-    if (!user || !online || messageId.startsWith('local:')) return
+    if (!user || messageId.startsWith('local:') || !otherUser) return
     const msg = messages.find(m => m.id === messageId)
     if (!msg) return
+
     const existing = msg.message_reactions?.find(r => r.user_id === user.id)
-    let result
-    if (existing?.emoji === emoji) {
-      result = await supabase.from('message_reactions').delete().eq('id', existing.id)
-    } else if (existing) {
-      result = await supabase.from('message_reactions').update({ emoji }).eq('id', existing.id)
-    } else {
-      result = await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id, emoji })
-    }
-    if (result.error) toast.error(result.error.message)
+    const mode = existing?.emoji === emoji ? 'clear' : 'set'
+    const nextReactions = (msg.message_reactions || [])
+      .filter(r => r.user_id !== user.id)
+      .concat(mode === 'set'
+        ? [{ id: existing?.id || 'local-reaction:' + crypto.randomUUID(), message_id: messageId, user_id: user.id, emoji, created_at: new Date().toISOString() }]
+        : [])
+
+    const nextMessages = messages.map(item => item.id === messageId ? { ...item, message_reactions: nextReactions } : item)
+    setMessages(nextMessages)
     setReactionFor(null)
+    await cacheMessages(user.id, otherUser.id, nextMessages)
+
+    if (!online) {
+      await queueSyncOperation({
+        opId: crypto.randomUUID(),
+        userId: user.id,
+        kind: 'reaction_set',
+        createdAt: new Date().toISOString(),
+        payload: { messageId, mode, emoji },
+      })
+      return
+    }
+
+    const result = mode === 'clear'
+      ? await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', user.id)
+      : await supabase.from('message_reactions').upsert(
+        { message_id: messageId, user_id: user.id, emoji },
+        { onConflict: 'message_id,user_id' },
+      )
+
+    if (result.error) {
+      toast.error(result.error.message)
+      await loadMessages(false)
+      return
+    }
     await loadMessages(false)
   }
 
@@ -379,22 +520,27 @@ export default function ChatPro() {
       return
     }
     const path = (kind === 'video' ? 'videos/' : 'images/') + user.id + '/' + crypto.randomUUID() + '.' + (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg'))
-    const { error: uploadError } = await supabase.storage.from('messages').upload(path, file, { upsert: false, contentType: file.type || undefined })
+    const clientMessageId = crypto.randomUUID()
+    const createdAt = new Date().toISOString()
+    const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
-    const { data: publicData } = supabase.storage.from('messages').getPublicUrl(path)
-    const { data, error } = await supabase.from('messages').insert({
-      sender_id: user.id,
-      receiver_id: otherUser.id,
-      content: input.trim(),
-      media_url: publicData.publicUrl,
-      media_type: kind,
-      media_bucket: 'messages',
-      media_path: path,
-      is_encrypted: true,
-      view_once: false,
-      reply_to_id: replyTo?.id || null,
-    }).select('*').single()
-    if (error) return toast.error(error.message)
+
+    const { data, error } = await supabase.rpc('send_message_v2', {
+      p_receiver_id: otherUser.id,
+      p_content: input.trim(),
+      p_reply_to_id: replyTo?.id || null,
+      p_media_url: '',
+      p_media_type: kind,
+      p_media_bucket: 'messages-private',
+      p_media_path: path,
+      p_view_once: false,
+      p_client_message_id: clientMessageId,
+      p_created_at: createdAt,
+    })
+    if (error) {
+      await supabase.storage.from('messages-private').remove([path])
+      return toast.error(error.message)
+    }
     setMessages(prev => [...prev, data as Message])
     setInput('')
     setReplyTo(null)
@@ -412,22 +558,27 @@ export default function ChatPro() {
   const uploadVoice = async (file: File) => {
     if (!user || !otherUser || !online) return
     const path = 'audio/' + user.id + '/' + crypto.randomUUID() + '.' + (file.name.split('.').pop() || 'webm')
-    const { error: uploadError } = await supabase.storage.from('messages').upload(path, file, { upsert: false, contentType: file.type || undefined })
+    const clientMessageId = crypto.randomUUID()
+    const createdAt = new Date().toISOString()
+    const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
-    const { data: pub } = supabase.storage.from('messages').getPublicUrl(path)
-    const { data, error } = await supabase.from('messages').insert({
-      sender_id: user.id,
-      receiver_id: otherUser.id,
-      content: '',
-      media_url: pub.publicUrl,
-      media_type: 'audio',
-      media_bucket: 'messages',
-      media_path: path,
-      is_encrypted: true,
-      view_once: false,
-      reply_to_id: replyTo?.id || null,
-    }).select('*').single()
-    if (error) return toast.error(error.message)
+
+    const { data, error } = await supabase.rpc('send_message_v2', {
+      p_receiver_id: otherUser.id,
+      p_content: '',
+      p_reply_to_id: replyTo?.id || null,
+      p_media_url: '',
+      p_media_type: 'audio',
+      p_media_bucket: 'messages-private',
+      p_media_path: path,
+      p_view_once: false,
+      p_client_message_id: clientMessageId,
+      p_created_at: createdAt,
+    })
+    if (error) {
+      await supabase.storage.from('messages-private').remove([path])
+      return toast.error(error.message)
+    }
     setMessages(prev => [...prev, data as Message])
     setReplyTo(null)
   }
@@ -501,32 +652,47 @@ export default function ChatPro() {
     }
     const nextLocal = [...messages, temp]
     setMessages(nextLocal)
+    await patchCachedConversation(user.id, otherUser.id, {
+      user: otherUser,
+      lastMessage: temp,
+      unreadCount: 0,
+      archived: preference?.archived || false,
+      muted: preference?.muted || false,
+    })
     setInput('')
     setReplyTo(null)
     await cacheMessages(user.id, otherUser.id, nextLocal)
 
     if (!online) {
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
-      toast.success('Message saved • will send when you reconnect')
+      toast.success('Saved offline · will send automatically')
       return
     }
 
     setSending(true)
-    const { data, error } = await supabase.rpc('send_message', {
+    const { data, error } = await supabase.rpc('send_message_v2', {
       p_receiver_id: otherUser.id,
       p_content: content,
       p_reply_to_id: replyId,
       p_media_url: '',
       p_media_type: '',
-      p_media_bucket: 'messages',
+      p_media_bucket: 'messages-private',
       p_media_path: null,
       p_view_once: false,
       p_client_message_id: clientMessageId,
+      p_created_at: createdAt,
     })
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
       await cacheMessages(user.id, otherUser.id, replaced)
+      await patchCachedConversation(user.id, otherUser.id, {
+        user: otherUser,
+        lastMessage: data as Message,
+        unreadCount: 0,
+        archived: preference?.archived || false,
+        muted: preference?.muted || false,
+      })
       void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: content, data: { message_id: data.id, url: '/messages/' + otherUser.username } })
     } else if (isTransientSendError(error)) {
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
@@ -538,22 +704,45 @@ export default function ChatPro() {
     setSending(false)
   }
 
+  useEffect(() => {
+    if (!online || !user || !messages.length) return
+    const candidates = messages.filter(message => message.media_type && !mediaUrls[message.id]).slice(-16)
+    if (!candidates.length) return
+    let cancelled = false
+
+    void Promise.all(candidates.map(async message => {
+      if (message.media_url && message.media_bucket !== 'messages-private') {
+        setMediaUrls(current => ({ ...current, [message.id]: message.media_url }))
+        return
+      }
+      const { data, error } = await supabase.functions.invoke('message-media-url', {
+        body: { message_id: message.id, expires_in: 3600 },
+      })
+      if (!cancelled && !error && data?.url) {
+        setMediaUrls(current => ({ ...current, [message.id]: String(data.url) }))
+      }
+    }))
+
+    return () => { cancelled = true }
+  }, [mediaUrls, messages, online, user])
+
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
   const pref = preference || (user && otherUser ? fallbackPreference(user.id, otherUser.id) : null)
   const myBubble = pref ? bubbleClasses[pref.bubble_theme] : bubbleClasses.default
 
   const wallpaperBackground = useMemo(() => {
-    if (!pref || pref.wallpaper === 'default') return ''
-    if (pref.wallpaper === 'midnight') return 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950'
-    if (pref.wallpaper === 'paper') return 'bg-[linear-gradient(rgba(127,127,127,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(127,127,127,.06)_1px,transparent_1px)] bg-[size:28px_28px]'
+    if (sharedWallpaper === 'default') return ''
+    if (sharedWallpaper === 'midnight') return 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950'
+    if (sharedWallpaper === 'paper') return 'bg-[linear-gradient(rgba(127,127,127,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(127,127,127,.06)_1px,transparent_1px)] bg-[size:28px_28px]'
+    if (sharedWallpaper === 'roses') return 'bg-rose-50/40 dark:bg-rose-950/15'
     return 'bg-muted/25'
-  }, [pref])
+  }, [sharedWallpaper])
 
   if (!otherUser) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-7" /></div>
 
   return (
     <div className="h-[100dvh] flex flex-col bg-background overflow-hidden">
-      <header className="h-14 shrink-0 border-b border-border/70 bg-background/90 backdrop-blur-xl flex items-center gap-1 px-2">
+      <header className="h-16 shrink-0 border-b border-border/60 bg-background/78 backdrop-blur-2xl flex items-center gap-1 px-2 shadow-[0_8px_30px_rgba(0,0,0,.06)]">
         <Button variant="ghost" size="icon" className="size-10 rounded-full" onClick={() => navigate(-1)}><ChevronLeft className="size-5" /></Button>
         <Link to={'/profile/' + otherUser.username} className="flex items-center gap-2 min-w-0 flex-1">
           <div className="relative">
@@ -561,29 +750,32 @@ export default function ChatPro() {
             {online && <span className="absolute right-0 bottom-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-sm truncate">{otherUser.username}</p>
-            <p className="text-[11px] text-muted-foreground truncate">{online ? 'Online · synced' : 'Offline · saved on this device'}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="font-semibold text-sm truncate">{otherUser.username}</p>
+              {otherUser.is_verified && <ShieldCheck className="size-3.5 text-sky-500 shrink-0" />}
+            </div>
+            <p className="text-[11px] text-muted-foreground truncate">{online ? 'Online · synced' : 'Offline · device snapshot'}</p>
           </div>
         </Link>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'video')} aria-label="Video call"><Video className="size-5" /></Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9 rounded-full" aria-label="Chat options"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem onClick={() => navigate('/profile/' + otherUser.username)}>Open profile</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void savePreference({ archived: !pref?.archived })}><Archive className="size-4 mr-2" />{pref?.archived ? 'Remove from archive' : 'Move to archive'}</DropdownMenuItem>
+          <DropdownMenuContent align="end" className="w-60 rounded-2xl p-1.5">
+            <DropdownMenuItem onClick={() => navigate('/profile/' + otherUser.username)}><UserRound className="size-4 mr-2" />Open profile</DropdownMenuItem>
+            <DropdownMenuItem onClick={async () => { const nextArchived = !pref?.archived; await savePreference({ archived: nextArchived }); if (nextArchived) navigate('/messages') }}><Archive className="size-4 mr-2" />{pref?.archived ? 'Remove from archive' : 'Move to archive'}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void savePreference({ muted: !pref?.muted })}><BellOff className="size-4 mr-2" />{pref?.muted ? 'Unmute notifications' : 'Mute notifications'}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setDraftTheme(pref?.wallpaper || 'default'); setDraftBubble(pref?.bubble_theme || 'default'); setSettingsOpen(true) }}><Palette className="size-4 mr-2" />Chat theme & colors</DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => { setDraftTheme(sharedWallpaper); setDraftBubble(pref?.bubble_theme || 'default'); setSettingsOpen(true) }}><Palette className="size-4 mr-2" />Wallpaper & message colors</DropdownMenuItem>
             <DropdownMenuItem onClick={() => scrollToBottom(true)}>Jump to latest</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
 
-      {!online && <div className="shrink-0 px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline mode: cached chat works. New posts, calls and live updates wait for internet.</span>{pendingCount > 0 && <span className="ml-auto font-semibold">{pendingCount} queued</span>}</div>}
+{!online && <div className="shrink-0 px-3 py-1.5 bg-amber-500/8 border-b border-amber-500/15 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline snapshot · messages stay here until connection returns.</span>{pendingCount > 0 && <span className="ml-auto rounded-full bg-amber-500/12 px-2 py-0.5 font-semibold">{pendingCount} waiting</span>}</div>}
 
       <div className={'relative flex-1 overflow-hidden ' + wallpaperBackground}>
-        <Wallpaper type={pref?.wallpaper || 'default'} />
+        <Wallpaper type={sharedWallpaper} />
         <div ref={scrollRef} className="relative h-full overflow-y-auto px-3 py-4 space-y-2">
           {loading ? <div className="h-full flex items-center justify-center"><Spinner className="size-6" /></div> : messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
@@ -606,10 +798,12 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && message.media_url && <button onClick={() => message.view_once && setViewOnceUrl(message.media_url)} className="block"><img src={message.media_url} alt="" className="rounded-xl max-h-64 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
-                        {message.media_type === 'video' && message.media_url && <video src={message.media_url} controls playsInline className="rounded-xl max-h-64 max-w-full mb-1.5" />}
-                        {message.media_type === 'audio' && message.media_url && <audio src={message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
+                        {message.media_type === 'image' && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
+                        {message.media_type === 'video' && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
+                        {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
+                        {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
                         {message.content && <p className="text-[15px] whitespace-pre-wrap break-words leading-[1.35]">{renderMessageText(message.content)}</p>}
+                        {message.content && firstUrl(message.content) && <LinkPreviewCard url={firstUrl(message.content)} />}
                         {message.view_once && message.media_type && <p className="text-[11px] mt-1 opacity-75 flex items-center gap-1"><Eye className="size-3" />View once</p>}
                       </>
                     )}
@@ -622,12 +816,12 @@ export default function ChatPro() {
                     </div>
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
-                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
+                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}><Smile className="size-4" /></Button>
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
                   </div>}
-                  {reactionFor === message.id && <div className="mt-1 rounded-full border bg-background px-2 py-1 shadow-lg flex gap-1">{['❤️','😂','👍','🔥','😮','😢','🎉','👏'].map(emoji => <button key={emoji} onClick={() => void react(message.id, emoji)} className="size-8 rounded-full hover:bg-muted active:scale-90 transition-transform">{emoji}</button>)}</div>}
+                  {reactionFor === message.id && <div className="mt-1 rounded-full border bg-background/95 backdrop-blur-xl px-2 py-1.5 shadow-[0_14px_40px_rgba(0,0,0,.18)] flex gap-1">{['❤️','😂','👍','🔥','😮','😢','🎉','👏'].map(emoji => <button key={emoji} onClick={() => void react(message.id, emoji)} className="size-8 rounded-full hover:bg-muted active:scale-90 transition-transform">{emoji}</button>)}</div>}
                 </div>
               </div>
             )
@@ -655,13 +849,13 @@ export default function ChatPro() {
 
       {settingsOpen && pref && <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-w-sm max-h-[82vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Chat theme & colors</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Wallpaper & message colors</DialogTitle></DialogHeader>
           <div className="space-y-5">
             <section>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Decorative background</p>
               <div className="grid grid-cols-2 gap-2">
                 {wallpapers.map(item => <button key={item} onClick={() => setDraftTheme(item)} className={'rounded-2xl border p-3 text-left transition-all ' + (draftTheme === item ? 'ring-2 ring-primary border-primary' : '')}>
-                  <div className={'h-14 rounded-xl mb-2 flex items-center justify-center text-lg ' + (item === 'default' ? 'bg-muted' : item === 'midnight' ? 'bg-slate-950 text-white' : item === 'paper' ? 'bg-muted/40' : 'bg-pink-100 dark:bg-pink-950/30')}>{item === 'romance' ? '♥ ✿' : item === 'hearts' ? '♥ ♡' : item === 'petals' ? '✿ ❀' : item === 'midnight' ? '✦ ⋆' : item === 'paper' ? '· •' : 'A'}</div>
+                  <div className={'h-14 rounded-xl mb-2 flex items-center justify-center text-lg ' + (item === 'default' ? 'bg-muted' : item === 'midnight' ? 'bg-slate-950 text-white' : item === 'paper' ? 'bg-muted/40' : item === 'roses' ? 'bg-rose-100 dark:bg-rose-950/30' : 'bg-pink-100 dark:bg-pink-950/30')}>{item === 'romance' ? '♥ ✿' : item === 'hearts' ? '♥ ♡' : item === 'petals' ? '✿ ❀' : item === 'roses' ? '🌹 ♡' : item === 'midnight' ? '✦ ⋆' : item === 'paper' ? '· •' : 'A'}</div>
                   <span className="text-xs font-medium">{wallpaperLabel[item]}</span>
                 </button>)}
               </div>
