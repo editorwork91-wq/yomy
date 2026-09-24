@@ -528,8 +528,8 @@ export default function ChatPro() {
             <p className="text-[11px] text-muted-foreground truncate">{online ? 'Online · synced' : 'Offline · saved on this device'}</p>
           </div>
         </Link>
-        <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url, is_verified: otherUser.is_verified }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
-        <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url, is_verified: otherUser.is_verified }, 'video')} aria-label="Video call"><Video className="size-5" /></Button>
+        <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
+        <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'video')} aria-label="Video call"><Video className="size-5" /></Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9 rounded-full" aria-label="Chat options"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
