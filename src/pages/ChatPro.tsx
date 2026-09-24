@@ -375,6 +375,10 @@ export default function ChatPro() {
     const next = { ...base, ...patch }
     setPreference(next)
     await cacheJson('chatPref:' + user.id + ':' + otherUser.id, next)
+    await patchCachedConversation(user.id, otherUser.id, {
+      archived: next.archived,
+      muted: next.muted,
+    })
 
     if ('wallpaper' in patch && patch.wallpaper) {
       setSharedWallpaper(patch.wallpaper)
