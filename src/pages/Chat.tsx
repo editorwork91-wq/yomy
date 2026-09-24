@@ -1,9 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import type { Message, Profile as ProfileType } from '@/lib/supabase'
+import type { Message, Profile as ProfileType, ChatPreference } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCall } from '@/components/calls/CallProvider'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
+import { cacheMessages, readCachedMessages, queueMessage, readQueuedMessages, removeQueuedMessage } from '@/lib/offlineStore'
+import ChatAppearanceDialog from '@/components/chat/ChatAppearanceDialog'
+import { wallpaperClass, bubbleClass } from '@/lib/chatThemes'
 import { sendPushEvent } from '@/lib/push'
 import TopBar from '@/components/layout/TopBar'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -32,6 +36,7 @@ export default function Chat() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const { startCall } = useCall()
+  const online = useNetworkStatus()
   const [otherUser, setOtherUser] = useState<ProfileType | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState('')
@@ -48,6 +53,8 @@ export default function Chat() {
   const [recording, setRecording] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)
   const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null)
+  const [chatPreference, setChatPreference] = useState<ChatPreference>({ user_id: '', other_user_id: '', archived: false, muted: false, wallpaper: 'default', bubble_theme: 'default' })
+  const [appearanceOpen, setAppearanceOpen] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const recordingStreamRef = useRef<MediaStream | null>(null)
   const recordingChunksRef = useRef<Blob[]>([])
@@ -57,6 +64,7 @@ export default function Chat() {
   const lastTapRef = useRef<Record<string, number>>({})
   const messagesRef = useRef<Message[]>([])
   const reconciliationTimerRef = useRef<number | null>(null)
+  const syncingQueueRef = useRef(false)
 
   const targetUsername = username || searchParams.get('to')
 
@@ -83,6 +91,22 @@ export default function Chat() {
   const fetchMessages = useCallback(async (showLoader = true) => {
     if (!user || !otherUser) return
     if (showLoader) setLoading(true)
+
+    const { data: preference } = online
+      ? await supabase.from('chat_preferences').select('*').eq('user_id', user.id).eq('other_user_id', otherUser.id).maybeSingle()
+      : { data: null }
+    if (preference) {
+      setChatPreference(preference as ChatPreference)
+      setIsMuted(Boolean(preference.muted))
+    }
+
+    if (!online) {
+      const cached = await readCachedMessages<Message>(user.id, otherUser.id)
+      if (cached?.length) setMessages(hydrateReplyPreviews(cached))
+      if (showLoader) setLoading(false)
+      return
+    }
+
     const { data, error } = await supabase
       .from('messages')
       .select('*, message_reactions(id, user_id, emoji)')
@@ -90,22 +114,27 @@ export default function Chat() {
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(200)
+
     if (error) {
-      if (showLoader) setMessages([])
+      const cached = await readCachedMessages<Message>(user.id, otherUser.id)
+      if (cached?.length) setMessages(hydrateReplyPreviews(cached))
       if (showLoader) setLoading(false)
-      return toast.error(`تعذر تحميل الرسائل: ${error.message}`)
+      return
     }
+
     const hydrated = hydrateReplyPreviews((data || []) as Message[])
     setMessages(hydrated)
+    await cacheMessages(user.id, otherUser.id, hydrated)
     if (showLoader) setLoading(false)
+
     const unseen = hydrated.filter(m => m.receiver_id === user.id && !m.is_seen && !m.deleted_for_everyone)
     if (unseen.length) {
       const { error: seenError } = await supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })
       if (seenError) console.error('mark_messages_seen failed:', seenError.message)
     }
     const { data: muted } = await supabase.from('muted_chats').select('id').eq('user_id', user.id).eq('muted_user_id', otherUser.id).maybeSingle()
-    setIsMuted(!!muted)
-  }, [user, otherUser, hydrateReplyPreviews])
+    if (muted) setIsMuted(true)
+  }, [user, otherUser, hydrateReplyPreviews, online])
 
   const reconcileMissingMessages = useCallback(async () => {
     if (!user || !otherUser) return
@@ -138,6 +167,42 @@ export default function Chat() {
 
   useEffect(() => { void fetchOtherUser() }, [fetchOtherUser])
   useEffect(() => { if (otherUser) void fetchMessages() }, [otherUser, fetchMessages])
+
+  const syncQueuedMessages = useCallback(async () => {
+    if (!user || !online || syncingQueueRef.current) return
+    syncingQueueRef.current = true
+    try {
+      const queued = await readQueuedMessages(user.id)
+      for (const item of queued) {
+        const { data, error } = await supabase.from('messages').insert({
+          sender_id: user.id,
+          receiver_id: item.otherUserId,
+          content: item.content,
+          media_url: '',
+          media_type: '',
+          is_encrypted: true,
+          view_once: false,
+          reply_to_id: item.replyToId,
+          client_message_id: item.clientMessageId,
+        }).select('*, message_reactions(id, user_id, emoji)').single()
+        if (error) {
+          if (error.code === '23505') await removeQueuedMessage(user.id, item.clientMessageId)
+          continue
+        }
+        await removeQueuedMessage(user.id, item.clientMessageId)
+        if (item.otherUserId === otherUser?.id && data) {
+          setMessages(prev => {
+            const withoutOptimistic = prev.filter(m => m.client_message_id !== item.clientMessageId)
+            return hydrateReplyPreviews([...withoutOptimistic, data as Message])
+          })
+        }
+        void sendPushEvent({ type: 'message', targetUserId: item.otherUserId, title: `Message from ${user.user_metadata?.username || 'Yomy'}`, body: item.content, data: { message_id: data?.id || '', url: '/messages' } })
+      }
+      if (otherUser) await fetchMessages(false)
+    } finally { syncingQueueRef.current = false }
+  }, [user, online, otherUser, fetchMessages, hydrateReplyPreviews])
+
+  useEffect(() => { if (online) void syncQueuedMessages() }, [online, syncQueuedMessages])
   useEffect(() => { messagesRef.current = messages }, [messages])
   useEffect(() => () => {
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current)
@@ -148,7 +213,7 @@ export default function Chat() {
   }, [pendingMedia])
 
   useEffect(() => {
-    if (!user || !otherUser) return
+    if (!user || !otherUser || !online) return
     const channel = supabase.channel(`chat-${user.id}-${otherUser.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `sender_id=eq.${otherUser.id}` }, async payload => {
         if (payload.new.receiver_id !== user.id) return
@@ -181,7 +246,7 @@ export default function Chat() {
       document.removeEventListener('visibilitychange', onVisibility)
       void supabase.removeChannel(channel)
     }
-  }, [user, otherUser, fetchMessages, reconcileMissingMessages])
+  }, [user, otherUser, fetchMessages, reconcileMissingMessages, online])
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight }, [messages])
 
@@ -253,6 +318,7 @@ export default function Chat() {
   }
 
   const uploadAndSendPendingMedia = async () => {
+    if (!online) { toast.info('Media messages need a connection; your text messages can still queue offline'); return }
     if (!user || !otherUser || !pendingMedia) return
     const { file, kind } = pendingMedia
     setUploadingMedia(true)
@@ -295,21 +361,58 @@ export default function Chat() {
 
   const sendTextMessage = async () => {
     if (!user || !otherUser || !newMessage.trim() || sending || recording) return
+    const content = newMessage.trim()
+    const clientMessageId = crypto.randomUUID()
+    const createdAt = new Date().toISOString()
+    const optimistic = {
+      id: `client:${clientMessageId}`,
+      sender_id: user.id,
+      receiver_id: otherUser.id,
+      content,
+      media_url: '',
+      media_type: '',
+      is_seen: false,
+      delivered_at: null,
+      is_encrypted: true,
+      view_once: false,
+      view_once_opened: false,
+      deleted_at: null,
+      deleted_for_everyone: false,
+      reply_to_id: replyTo?.id || null,
+      edited_at: null,
+      is_request: false,
+      request_accepted: false,
+      created_at: createdAt,
+      client_message_id: clientMessageId,
+      reply_to: replyTo || undefined,
+    } as Message
+
+    setMessages(prev => [...prev, optimistic])
+    setNewMessage('')
+    setReplyTo(null)
     setSending(true)
+
+    if (!online) {
+      await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: optimistic.reply_to_id, createdAt })
+      await cacheMessages(user.id, otherUser.id, [...messagesRef.current, optimistic])
+      setSending(false)
+      return
+    }
+
     try {
-      const { data: insertedMessage, error } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: otherUser.id, content: newMessage.trim(), media_url: '', media_type: '', is_encrypted: true, view_once: false, reply_to_id: replyTo?.id || null }).select('id, created_at').single()
+      const { data: insertedMessage, error } = await supabase.from('messages').insert({
+        sender_id: user.id, receiver_id: otherUser.id, content, media_url: '', media_type: '',
+        is_encrypted: true, view_once: false, reply_to_id: optimistic.reply_to_id, client_message_id: clientMessageId,
+      }).select('*, message_reactions(id, user_id, emoji)').single()
       if (error) throw error
       if (insertedMessage) {
-        setMessages(prev => prev.some(m => m.id === insertedMessage.id) ? prev : [...prev, {
-          id: insertedMessage.id, sender_id: user.id, receiver_id: otherUser.id, content: newMessage.trim(), media_url: '', media_type: '', is_seen: false, is_encrypted: true,
-          view_once: false, view_once_opened: false, deleted_at: null, deleted_for_everyone: false, reply_to_id: replyTo?.id || null, edited_at: null, is_request: false, request_accepted: false, created_at: insertedMessage.created_at, reply_to: replyTo || undefined,
-        } as Message])
-        void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: `Message from ${user.user_metadata?.username || 'Yomy'}`, body: newMessage.trim(), data: { message_id: insertedMessage.id, url: `/messages/${otherUser.username}` } })
+        setMessages(prev => hydrateReplyPreviews([...prev.filter(m => m.client_message_id !== clientMessageId), insertedMessage as Message]))
+        await cacheMessages(user.id, otherUser.id, [...messagesRef.current.filter(m => m.client_message_id !== clientMessageId), insertedMessage])
+        void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: `Message from ${user.user_metadata?.username || 'Yomy'}`, body: content, data: { message_id: insertedMessage.id, url: `/messages/${otherUser.username}` } })
       }
-      setNewMessage('')
-      setReplyTo(null)
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send')
+      await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: optimistic.reply_to_id, createdAt })
+      toast.info('Saved offline — will send automatically when connection returns')
     } finally {
       setSending(false)
     }
@@ -361,16 +464,34 @@ export default function Chat() {
     lastTapRef.current[msg.id] = now
   }
 
+  const updateChatPreference = async (patch: Partial<ChatPreference>) => {
+    if (!user || !otherUser) return
+    const next = { ...chatPreference, ...patch, user_id: user.id, other_user_id: otherUser.id }
+    setChatPreference(next)
+    setIsMuted(Boolean(next.muted))
+    if (!online) { toast.info('Saved on this device; it will sync when you reconnect'); return }
+    const { error } = await supabase.from('chat_preferences').upsert(next, { onConflict: 'user_id,other_user_id' })
+    if (error) { toast.error(error.message); return }
+  }
+
+  const archiveChat = async () => {
+    await updateChatPreference({ archived: true })
+    toast.success('Chat archived')
+    navigate('/messages')
+  }
+
   const toggleMute = async () => {
     if (!user || !otherUser) return
     if (isMuted) {
       const { error } = await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', otherUser.id)
       if (error) return toast.error(error.message)
       setIsMuted(false)
+      setChatPreference(current => ({ ...current, muted: false }))
     } else {
       const { error } = await supabase.from('muted_chats').insert({ user_id: user.id, muted_user_id: otherUser.id })
       if (error) return toast.error(error.message)
       setIsMuted(true)
+      setChatPreference(current => ({ ...current, muted: true }))
     }
   }
 
@@ -406,18 +527,20 @@ export default function Chat() {
   if (loading || !otherUser) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-8" /></div>
 
   return (
-    <div className="flex flex-col h-screen">
-      <TopBar title="" showBack right={<div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="size-9" onClick={() => void startCall(otherUser, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button><Button variant="ghost" size="icon" className="size-9" onClick={() => void startCall(otherUser, 'video')} aria-label="Video call"><Video className="size-5" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void toggleMute()}><Volume2 className="size-4 mr-2" />{isMuted ? 'Unmute' : 'Mute'} notifications</DropdownMenuItem><DropdownMenuItem onClick={() => void clearChat()}><Trash2 className="size-4 mr-2" />Clear chat</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => void blockUser()} className="text-destructive focus:text-destructive"><Ban className="size-4 mr-2" />Block user</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>} />
+    <div className="flex flex-col h-[100dvh] min-h-0">
+      <TopBar title="" showBack right={<div className="flex items-center gap-1"><Button variant="ghost" size="icon" className="size-9" onClick={() => void startCall(otherUser, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button><Button variant="ghost" size="icon" className="size-9" onClick={() => void startCall(otherUser, 'video')} aria-label="Video call"><Video className="size-5" /></Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="w-56"><DropdownMenuItem onClick={() => void toggleMute()}><Volume2 className="size-4 mr-2" />{isMuted ? 'Unmute' : 'Mute'} notifications</DropdownMenuItem><DropdownMenuItem onClick={() => setAppearanceOpen(true)}>🎨 Chat appearance</DropdownMenuItem><DropdownMenuItem onClick={() => void archiveChat()}>📥 Archive chat</DropdownMenuItem><DropdownMenuItem onClick={() => void clearChat()}><Trash2 className="size-4 mr-2" />Clear chat</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem onClick={() => void blockUser()} className="text-destructive focus:text-destructive"><Ban className="size-4 mr-2" />Block user</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div>} />
+
+      {!online && <div className="px-4 py-1.5 bg-amber-500/10 border-b border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-300">Offline • showing saved chat. New messages will sync automatically.</div>}
 
       <Link to={`/profile/${otherUser.username}`} className="flex items-center gap-3 px-4 py-2 border-b hover:bg-accent/30"><Avatar className="size-10"><AvatarImage src={otherUser.avatar_url} /><AvatarFallback>{otherUser.username[0]?.toUpperCase()}</AvatarFallback></Avatar><div className="flex-1 min-w-0"><div className="flex items-center gap-1"><p className="text-sm font-semibold">{otherUser.username}</p>{otherUser.is_verified && <svg className="size-3 text-blue-500 fill-current" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>}</div><p className="text-xs text-muted-foreground">{otherUser.full_name || 'Active now'}</p></div><div className="flex items-center gap-1 text-xs text-muted-foreground"><Lock className="size-3" /><span>Encrypted</span></div></Link>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
+      <div ref={scrollRef} className={cn("flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2 transition-colors", wallpaperClass(chatPreference.wallpaper))}>
         {messages.length === 0 ? <div className="flex flex-col items-center justify-center h-full gap-3 text-center"><Avatar className="size-20"><AvatarImage src={otherUser.avatar_url} /><AvatarFallback className="text-2xl">{otherUser.username[0]?.toUpperCase()}</AvatarFallback></Avatar><div><p className="font-semibold">{otherUser.username}</p><p className="text-sm text-muted-foreground">{otherUser.full_name || ''}</p></div><Button size="sm" onClick={() => setNewMessage('Hi! 👋')}>Say hello</Button></div> : messages.map((msg, idx) => {
           const isMe = msg.sender_id === user?.id
           const prevMsg = messages[idx - 1]
           const showDate = !prevMsg || new Date(prevMsg.created_at).toDateString() !== new Date(msg.created_at).toDateString()
           const reactions = msg.message_reactions || []
-          return <div key={msg.id}>{showDate && <div className="flex justify-center my-3"><span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">{format(new Date(msg.created_at), 'MMM d, yyyy')}</span></div>}<div className={cn('flex', isMe ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[78%] rounded-2xl px-3 py-2 relative', isMe ? 'bg-primary text-primary-foreground' : 'bg-muted', msg.deleted_for_everyone && 'opacity-60')} onClick={() => handleMessageTap(msg)} onContextMenu={e => { e.preventDefault(); setShowLongPressMenu(msg.id) }}>
+          return <div key={msg.id}>{showDate && <div className="flex justify-center my-3"><span className="text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">{format(new Date(msg.created_at), 'MMM d, yyyy')}</span></div>}<div className={cn('flex', isMe ? 'justify-end' : 'justify-start')}><div className={cn('max-w-[78%] rounded-2xl px-3 py-2 relative', isMe ? bubbleClass(chatPreference.bubble_theme) : 'bg-muted/90 backdrop-blur-sm', msg.deleted_for_everyone && 'opacity-60')} onClick={() => handleMessageTap(msg)} onContextMenu={e => { e.preventDefault(); setShowLongPressMenu(msg.id) }}>
             {msg.deleted_for_everyone ? <p className="text-sm italic opacity-60">Message deleted</p> : msg.view_once && msg.media_url && !msg.view_once_opened ? <button onClick={() => void openViewOnce(msg)} className="flex items-center gap-2"><Eye className="size-4" /><span className="text-sm">View-once media</span></button> : msg.view_once && msg.view_once_opened ? <div className="flex items-center gap-2 text-muted-foreground"><EyeOff className="size-4" /><span className="text-sm italic">Media expired</span></div> : <>{msg.reply_to && <div className={cn('mb-1 px-2 py-1 rounded text-xs opacity-70', isMe ? 'bg-primary-foreground/10' : 'bg-black/10')}><Reply className="size-3 inline mr-1" />{msg.reply_to.content || (msg.reply_to.media_type === 'image' ? '📷 Photo' : msg.reply_to.media_type === 'video' ? '🎬 Video' : msg.reply_to.media_type === 'audio' ? '🎙️ Voice' : '📎 Media')}</div>}{msg.media_url && msg.media_type === 'image' && <button onClick={() => msg.view_once ? void openViewOnce(msg) : setShowViewOnce(msg.media_url)} className="block"><img src={msg.media_url} alt="" className="rounded-xl max-w-64 max-h-80 object-cover mb-1" loading="lazy" /></button>}{msg.media_url && msg.media_type === 'video' && <video src={msg.media_url} controls playsInline className="rounded-xl max-w-64 max-h-80 mb-1" />}{msg.media_url && msg.media_type === 'audio' && <div className="flex items-center gap-2 py-1 min-w-[190px]"><Mic className="size-4 shrink-0" /><audio src={msg.media_url} controls className="h-9 w-full" /></div>}{editingMessage?.id === msg.id ? <div className="flex flex-col gap-1"><textarea autoFocus defaultValue={msg.content} className="bg-transparent border rounded px-2 py-1 text-sm outline-none resize-none" rows={2}/><div className="flex gap-1 justify-end"><Button size="xs" variant="ghost" onClick={() => setEditingMessage(null)}>Cancel</Button><Button size="xs" onClick={e => saveEdit(msg.id, (e.currentTarget.parentElement?.previousElementSibling as HTMLTextAreaElement).value)}>Save</Button></div></div> : msg.content && <p className="text-sm break-words whitespace-pre-wrap">{msg.content}</p>}{msg.edited_at && !msg.deleted_for_everyone && <span className="text-[10px] opacity-50 ml-1">edited</span>}</>}
             {!msg.deleted_for_everyone && <div className={cn('flex items-center gap-1 mt-0.5', isMe ? 'justify-end' : 'justify-start')}><span className="text-[10px] opacity-60">{format(new Date(msg.created_at), 'h:mm a')}</span>{isMe && !msg.view_once && <span className="text-[10px] opacity-60">{msg.is_seen ? '✓✓' : '✓'}</span>}</div>}{reactions.length > 0 && !msg.deleted_for_everyone && <div className="flex gap-1 mt-1 flex-wrap">{reactions.map(r => <span key={r.id} className={cn('text-sm rounded-full px-1.5 py-0.5 cursor-pointer', r.user_id === user?.id ? 'bg-primary-foreground/20' : 'bg-black/10')} onClick={e => { e.stopPropagation(); void addReaction(msg.id, r.emoji) }}>{r.emoji}</span>)}</div>}{showReactionPicker === msg.id && <div className="absolute -top-10 left-0 right-0 flex justify-center gap-1 bg-card rounded-full px-2 py-1 shadow-lg z-10">{QUICK_EMOJIS.map(emoji => <button key={emoji} className="text-lg hover:scale-125 transition-transform" onClick={e => { e.stopPropagation(); void addReaction(msg.id, emoji) }}>{emoji}</button>)}</div>}{showLongPressMenu === msg.id && !msg.deleted_for_everyone && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowLongPressMenu(null)}><div className="bg-card rounded-lg p-2 shadow-xl min-w-[210px]" onClick={e => e.stopPropagation()}><button className="flex items-center gap-2 px-3 py-2 hover:bg-accent rounded w-full text-sm" onClick={() => { setShowReactionPicker(msg.id); setShowLongPressMenu(null) }}>😀 React</button><button className="flex items-center gap-2 px-3 py-2 hover:bg-accent rounded w-full text-sm" onClick={() => { setReplyTo(msg); setShowLongPressMenu(null) }}><Reply className="size-4" />Reply</button>{msg.content && <button className="flex items-center gap-2 px-3 py-2 hover:bg-accent rounded w-full text-sm" onClick={() => void copyMessage(msg.content)}><Copy className="size-4" />Copy</button>}{isMe && msg.content && <button className="flex items-center gap-2 px-3 py-2 hover:bg-accent rounded w-full text-sm" onClick={() => { setEditingMessage(msg); setShowLongPressMenu(null) }}><Pencil className="size-4" />Edit</button>}<button className="flex items-center gap-2 px-3 py-2 hover:bg-accent rounded w-full text-sm" onClick={() => void deleteForMe(msg.id)}><Trash2 className="size-4" />Delete for me</button>{isMe && <button className="flex items-center gap-2 px-3 py-2 hover:bg-accent rounded w-full text-sm text-destructive" onClick={() => void deleteForEveryone(msg.id)}><Trash2 className="size-4" />Delete for everyone</button>}</div></div>}
           </div></div></div>
@@ -433,6 +556,8 @@ export default function Chat() {
       <div className="border-t p-3 pb-safe flex items-center gap-2"><input ref={fileRef} type="file" accept="image/*,video/*,audio/*" className="hidden" onChange={e => { const file = e.target.files?.[0]; if (file) selectMedia(file); e.currentTarget.value = '' }} /><Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => fileRef.current?.click()} disabled={uploadingMedia || recording || !!pendingMedia}><ImagePlus className="size-5" /></Button><Button variant="ghost" size="icon" className="size-9 shrink-0" onClick={() => void startRecording()} disabled={uploadingMedia || recording || !!pendingMedia} aria-label="Record voice"><Mic className="size-5" /></Button><Button variant="ghost" size="icon" className={cn('size-9 shrink-0', viewOnceMode && 'text-primary')} onClick={() => setViewOnceMode(value => !value)} disabled={recording || !!pendingMedia}>{viewOnceMode ? <Eye className="size-5" /> : <EyeOff className="size-5" />}</Button><Input placeholder="Message..." value={newMessage} onChange={e => setNewMessage(e.target.value)} disabled={recording || !!pendingMedia} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void sendTextMessage() } }} className="flex-1" /><Button size="icon" className="size-9 shrink-0" disabled={!newMessage.trim() || sending || recording || !!pendingMedia} onClick={() => void sendTextMessage()}>{sending ? <Spinner className="size-4" /> : <Send className="size-4" />}</Button></div>
 
       {showViewOnce && <div className="fixed inset-0 z-50 bg-black flex items-center justify-center" onClick={() => setShowViewOnce(null)}><img src={showViewOnce} alt="" className="max-w-full max-h-full object-contain" /><Button variant="ghost" className="absolute top-4 right-4 text-white" size="icon" onClick={() => setShowViewOnce(null)}><X className="size-6" /></Button></div>}
+      <ChatAppearanceDialog open={appearanceOpen} preference={chatPreference} onOpenChange={setAppearanceOpen} onSave={async next => { await updateChatPreference(next) }} />
+
     </div>
   )
 }
