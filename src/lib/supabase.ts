@@ -6,7 +6,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undef
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 export const supabase = createClient(supabaseUrl || 'https://preview-missing-supabase.invalid', supabaseAnonKey || 'preview-missing-key', { realtime: { params: { eventsPerSecond: 10 } } })
 
-export type Profile = { id: string; username: string; full_name: string; avatar_url: string; bio: string; is_private: boolean; is_verified: boolean; show_followers_to: 'everyone' | 'followers' | 'nobody'; show_seen_receipts: boolean; who_can_message: 'everyone' | 'followers' | 'nobody'; created_at: string }
+export type Profile = { id: string; username: string; full_name: string; avatar_url: string; bio: string; is_private: boolean; is_verified: boolean; show_followers_to: 'everyone' | 'followers' | 'nobody'; show_seen_receipts: boolean; who_can_message: 'everyone' | 'followers' | 'nobody'; created_at: string; language?: 'en' | 'ar' | 'de' | 'fr' | 'es'; font_scale?: number; sleep_mode_enabled?: boolean; sleep_start?: string; sleep_end?: string; timezone_name?: string }
 export type PostVisibility = 'public' | 'friends' | 'private'
 export type PostStatus = 'draft' | 'uploading' | 'processing' | 'moderation' | 'pending_moderation' | 'ready' | 'published' | 'rejected' | 'archived' | 'deleted'
 export type ModerationStatus = 'pending' | 'safe' | 'review' | 'rejected'
