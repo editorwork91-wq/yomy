@@ -95,6 +95,7 @@ export async function queueMessage(message: QueuedMessage) {
     const existing = (await getValue<QueuedMessage[]>(`messageQueue:${message.userId}`)) || []
     if (!existing.some(item => item.clientMessageId === message.clientMessageId)) existing.push(message)
     await putValue(`messageQueue:${message.userId}`, existing)
+    try { window.dispatchEvent(new CustomEvent('yomy-message-queue-changed')) } catch {}
     return
   }
   await new Promise<void>(resolve => {
