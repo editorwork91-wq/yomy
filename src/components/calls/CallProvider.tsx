@@ -51,6 +51,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [speakerOn, setSpeakerOn] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [outgoingStage, setOutgoingStage] = useState<OutgoingStage>('connecting')
+  const nativeIncomingAvailable = typeof nativeNotifications()?.showIncomingCallScreen === 'function'
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const activeRef = useRef<CallSession | null>(null)
   const incomingRef = useRef<CallSession | null>(null)
@@ -398,7 +399,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const toggleCamera = () => { const track = localStream?.getVideoTracks()[0]; if (!track) return; track.enabled = !track.enabled; setCameraOff(!track.enabled) }
   const applySpeakerRoute = (enabled: boolean) => { setNativeSpeaker(enabled); setSpeakerOn(enabled) }
   const value = useMemo(() => ({ startCall }), [startCall])
-  const nativeIncomingAvailable = typeof nativeNotifications()?.showIncomingCallScreen === 'function'
   const showIncoming = !!incoming && !active && !nativeIncomingAvailable
   const showOutgoing = !!active && active.status === 'ringing'
   const showActive = !!active && active.status === 'active'
