@@ -924,7 +924,7 @@ export default function ChatPro() {
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}><Smile className="size-4" /></Button>
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
-                  </div>}
+                  </div>
                   {reactionFor === message.id && <div className="mt-1 rounded-full border bg-background/95 backdrop-blur-xl px-2 py-1.5 shadow-[0_14px_40px_rgba(0,0,0,.18)] flex gap-1">{['❤️','😂','👍','🔥','😮','😢','🎉','👏'].map(emoji => <button key={emoji} onClick={() => void react(message.id, emoji)} className="size-8 rounded-full hover:bg-muted active:scale-90 transition-transform">{emoji}</button>)}</div>}
                 </div>
               </div>
