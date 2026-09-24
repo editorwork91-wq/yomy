@@ -17,7 +17,7 @@ export default function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-[max(0.45rem,env(safe-area-inset-bottom))] pointer-events-none">
-      <div className="pointer-events-auto flex items-center justify-around max-w-lg mx-auto h-[3.7rem] px-2 rounded-2xl border border-border/70 bg-background/88 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/72">
+      <div className="pointer-events-auto flex items-center justify-around max-w-lg mx-auto h-[3.75rem] px-2 rounded-[1.55rem] border border-border/55 bg-background/76 shadow-[0_-12px_36px_rgba(0,0,0,.09),inset_0_1px_0_rgba(255,255,255,.16)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
