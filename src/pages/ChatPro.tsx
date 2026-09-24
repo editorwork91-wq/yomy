@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import EmojiPicker, { Theme as EmojiTheme } from 'emoji-picker-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
@@ -156,6 +157,10 @@ export default function ChatPro() {
   const [reactionFor, setReactionFor] = useState<string | null>(null)
   const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null)
   const [viewOnceUrl, setViewOnceUrl] = useState<string | null>(null)
+  const [viewOnceMessageId, setViewOnceMessageId] = useState<string | null>(null)
+  const [viewOnceRemaining, setViewOnceRemaining] = useState<number | null>(null)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [pendingViewOnceLimit, setPendingViewOnceLimit] = useState<0 | 1 | 2>(0)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -263,38 +268,6 @@ export default function ChatPro() {
     setLoading(false)
   }, [online, otherUser, user])
 
-  const flushQueue = useCallback(async () => {
-    if (!user || !otherUser || !online || syncingRef.current) return
-    syncingRef.current = true
-    const queued = (await readQueuedMessages(user.id)).filter(item => item.otherUserId === otherUser.id)
-    if (!queued.length) {
-      syncingRef.current = false
-      return
-    }
-    for (const item of queued) {
-      const { data, error } = await supabase.rpc('send_message_v2', {
-        p_receiver_id: otherUser.id,
-        p_content: item.content,
-        p_reply_to_id: item.replyToId,
-        p_media_url: '',
-        p_media_type: '',
-        p_media_bucket: 'messages-private',
-        p_media_path: null,
-        p_view_once: false,
-        p_client_message_id: item.clientMessageId,
-        p_created_at: item.createdAt,
-      })
-      if (!error && data) {
-        await removeQueuedMessage(user.id, item.clientMessageId)
-      } else if (error && !isTransientSendError(error)) {
-        await removeQueuedMessage(user.id, item.clientMessageId)
-        setMessages(prev => prev.filter(message => message.client_message_id !== item.clientMessageId && message.id !== 'local:' + item.clientMessageId))
-        toast.error('Could not send a queued message: ' + error.message)
-      }
-    }
-    syncingRef.current = false
-    await loadMessages(false)
-  }, [loadMessages, online, otherUser, user])
 
   useEffect(() => { void loadOtherUser() }, [loadOtherUser])
   useEffect(() => {
@@ -304,7 +277,6 @@ export default function ChatPro() {
       void loadMessages()
     }
   }, [loadMessages, loadPreference, loadSharedSettings, otherUser])
-  useEffect(() => { if (online) void flushQueue() }, [flushQueue, online])
 
   useEffect(() => {
     if (!user || !otherUser || !online) return
@@ -360,7 +332,7 @@ export default function ChatPro() {
       window.removeEventListener('yomy-sync-complete', onSyncComplete)
       void supabase.removeChannel(channel)
     }
-  }, [flushQueue, loadMessages, loadSharedSettings, online, otherUser, user])
+  }, [loadMessages, loadSharedSettings, online, otherUser, user])
 
   useEffect(() => { window.setTimeout(() => scrollToBottom(false), 0) }, [messages.length, scrollToBottom])
   useEffect(() => () => {
@@ -525,18 +497,23 @@ export default function ChatPro() {
     const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
 
-    const { data, error } = await supabase.rpc('send_message_v2', {
-      p_receiver_id: otherUser.id,
-      p_content: input.trim(),
-      p_reply_to_id: replyTo?.id || null,
-      p_media_url: '',
-      p_media_type: kind,
-      p_media_bucket: 'messages-private',
-      p_media_path: path,
-      p_view_once: false,
-      p_client_message_id: clientMessageId,
-      p_created_at: createdAt,
-    })
+    const { data, error } = await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: otherUser.id,
+      content: input.trim(),
+      media_url: '',
+      media_type: kind,
+      media_bucket: 'messages-private',
+      media_path: path,
+      is_encrypted: true,
+      view_once: pendingViewOnceLimit > 0,
+      view_once_limit: pendingViewOnceLimit,
+      view_once_open_count: 0,
+      view_once_opened: false,
+      client_message_id: clientMessageId,
+      reply_to_id: replyTo?.id || null,
+      created_at: createdAt,
+    }).select('*').single()
     if (error) {
       await supabase.storage.from('messages-private').remove([path])
       return toast.error(error.message)
@@ -544,6 +521,7 @@ export default function ChatPro() {
     setMessages(prev => [...prev, data as Message])
     setInput('')
     setReplyTo(null)
+    setPendingViewOnceLimit(0)
     if (pendingMedia) URL.revokeObjectURL(pendingMedia.previewUrl)
     setPendingMedia(null)
     void sendPushEvent({
@@ -563,18 +541,23 @@ export default function ChatPro() {
     const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
 
-    const { data, error } = await supabase.rpc('send_message_v2', {
-      p_receiver_id: otherUser.id,
-      p_content: '',
-      p_reply_to_id: replyTo?.id || null,
-      p_media_url: '',
-      p_media_type: 'audio',
-      p_media_bucket: 'messages-private',
-      p_media_path: path,
-      p_view_once: false,
-      p_client_message_id: clientMessageId,
-      p_created_at: createdAt,
-    })
+    const { data, error } = await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: otherUser.id,
+      content: '',
+      media_url: '',
+      media_type: 'audio',
+      media_bucket: 'messages-private',
+      media_path: path,
+      is_encrypted: true,
+      view_once: false,
+      view_once_limit: 0,
+      view_once_open_count: 0,
+      view_once_opened: false,
+      client_message_id: clientMessageId,
+      reply_to_id: replyTo?.id || null,
+      created_at: createdAt,
+    }).select('*').single()
     if (error) {
       await supabase.storage.from('messages-private').remove([path])
       return toast.error(error.message)
@@ -670,18 +653,23 @@ export default function ChatPro() {
     }
 
     setSending(true)
-    const { data, error } = await supabase.rpc('send_message_v2', {
-      p_receiver_id: otherUser.id,
-      p_content: content,
-      p_reply_to_id: replyId,
-      p_media_url: '',
-      p_media_type: '',
-      p_media_bucket: 'messages-private',
-      p_media_path: null,
-      p_view_once: false,
-      p_client_message_id: clientMessageId,
-      p_created_at: createdAt,
-    })
+    const { data, error } = await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: otherUser.id,
+      content,
+      media_url: '',
+      media_type: '',
+      media_bucket: 'messages-private',
+      media_path: null,
+      is_encrypted: true,
+      view_once: false,
+      view_once_limit: 0,
+      view_once_open_count: 0,
+      view_once_opened: false,
+      client_message_id: clientMessageId,
+      reply_to_id: replyId,
+      created_at: createdAt,
+    }).select('*').single()
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
@@ -696,6 +684,7 @@ export default function ChatPro() {
       void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: content, data: { message_id: data.id, url: '/messages/' + otherUser.username } })
     } else if (isTransientSendError(error)) {
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
+      window.dispatchEvent(new CustomEvent('yomy-sync-queued'))
     } else {
       setMessages(prev => prev.filter(message => message.id !== temp.id))
       await cacheMessages(user.id, otherUser.id, nextLocal.filter(message => message.id !== temp.id))
@@ -725,6 +714,25 @@ export default function ChatPro() {
 
     return () => { cancelled = true }
   }, [mediaUrls, messages, online, user])
+
+  const openViewOnce = async (message: Message) => {
+    if (!message.media_path || !user || !online) {
+      if (!online) toast.error('Connect to the internet to open protected media')
+      return
+    }
+    const { data, error } = await supabase.functions.invoke('message-media-url', {
+      body: { message_id: message.id, expires_in: 90 },
+    })
+    if (error || !data?.url) {
+      toast.error(String(data?.error || error?.message || 'Media is no longer available'))
+      return
+    }
+    setViewOnceMessageId(message.id)
+    const limit = Number(data.view_once_limit || message.view_once_limit || 1)
+    const used = Number(data.view_once_open_count || message.view_once_open_count || 0)
+    setViewOnceRemaining(Math.max(0, limit - used))
+    setViewOnceUrl(String(data.url))
+  }
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
   const pref = preference || (user && otherUser ? fallbackPreference(user.id, otherUser.id) : null)
@@ -798,8 +806,10 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
-                        {message.media_type === 'video' && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
+                        {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.view_once_open_count >= (message.view_once_limit || 1) && message.sender_id !== user?.id ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× view mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
+                        {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.view_once_open_count >= (message.view_once_limit || 1) && message.sender_id !== user?.id ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× view mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
+                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
+                        {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
                         {message.content && <p className="text-[15px] whitespace-pre-wrap break-words leading-[1.35]">{renderMessageText(message.content)}</p>}
