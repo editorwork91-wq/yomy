@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff } from 'lucide-react'
+import { Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { sendPushEvent } from '@/lib/push'
