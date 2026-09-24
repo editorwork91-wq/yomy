@@ -10,7 +10,9 @@ export function showYomyLocalNotification(
   kind: 'message' | 'call' = 'message',
   url?: string,
 ): boolean {
-  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false
+  // Foreground UX is handled by Yomy's in-app AttentionCenter. Native/browser
+  // notifications are reserved for when the app is actually backgrounded.
+  if (typeof document !== 'undefined' && document.visibilityState === 'visible') return false
 
   try {
     if (Capacitor.isNativePlatform()) {
