@@ -254,7 +254,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       cleanup()
       toast.error(err instanceof Error ? err.message : 'Could not start call')
     }
-  }, [cleanup, sendPushEvent, setupPeer, user])
+  }, [cleanup, location.pathname, location.search, sendPushEvent, setupPeer, user])
 
   const handleOffer = useCallback(async (call: CallSession, signal: Signal, pc: RTCPeerConnection) => {
     if (call.caller_id === user?.id || signal.signal_type !== 'offer') return
