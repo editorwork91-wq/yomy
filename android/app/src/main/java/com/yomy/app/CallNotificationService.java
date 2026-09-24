@@ -169,24 +169,21 @@ public class CallNotificationService extends Service {
 
         PendingIntent decline = PendingIntent.getBroadcast(this, 41003, actionIntent(CallActionReceiver.ACTION_DECLINE, callId), flags);
 
-        // Tapping the notification must feel like a real incoming phone call:
-        // bring up the dedicated native call screen immediately, even when the
-        // WebView is cold or the app is already on another screen.
-        Intent incomingScreenIntent = new Intent(this, IncomingCallActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra(CallNotificationService.EXTRA_CALL_ID, callId)
-                .putExtra(CallNotificationService.EXTRA_TITLE, title)
-                .putExtra(CallNotificationService.EXTRA_BODY, body)
-                .putExtra(CallNotificationService.EXTRA_KIND, kind);
+        // The app's real incoming-call experience is rendered by CallProvider.
+        // The notification itself only transports the intent into MainActivity.
+        Intent incomingScreenIntent = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(CallActionReceiver.EXTRA_ACTION, "open")
+                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
         PendingIntent incomingScreen = PendingIntent.getActivity(this, 41005, incomingScreenIntent, flags);
 
-        // The compact Answer action remains a direct Activity launch so the
-        // WebView receives the action without a broadcast timing race.
-        Intent answerIntent = new Intent(this, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                .putExtra(CallActionReceiver.EXTRA_ACTION, "accept")
-                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
-        PendingIntent answer = PendingIntent.getActivity(this, 41004, answerIntent, flags);
+        // Answer is a true notification action: Android invokes the receiver,
+        // which hands the action to the running/cold WebView until it is consumed.
+        PendingIntent answer = PendingIntent.getBroadcast(
+                this, 41004,
+                actionIntent(CallActionReceiver.ACTION_ACCEPT, callId),
+                flags
+        );
 
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(this, CHANNEL_ID)
