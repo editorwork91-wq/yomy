@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink, Globe, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 
 type Preview = { url: string; title: string; description: string; image: string; site_name: string }
 
@@ -14,6 +15,7 @@ function validUrl(value: string) {
 export default function LinkPreviewCard({ url }: { url: string }) {
   const [preview, setPreview] = useState<Preview | null>(null)
   const [loading, setLoading] = useState(true)
+  const online = useNetworkStatus()
 
   useEffect(() => {
     let cancelled = false
@@ -27,7 +29,7 @@ export default function LinkPreviewCard({ url }: { url: string }) {
       }
     } catch {}
 
-    if (!validUrl(url)) {
+    if (!validUrl(url) || !online) {
       setLoading(false)
       return
     }
@@ -43,7 +45,7 @@ export default function LinkPreviewCard({ url }: { url: string }) {
     })
 
     return () => { cancelled = true }
-  }, [url])
+  }, [online, url])
 
   if (loading) return <div className="mt-2 rounded-2xl border bg-muted/40 p-3 text-xs text-muted-foreground flex items-center gap-2"><Loader2 className="size-4 animate-spin" />Loading link preview…</div>
   if (!preview) return null
