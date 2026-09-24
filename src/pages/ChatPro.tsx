@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from 'emoji-picker-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
+  Archive, BellOff, Camera, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
   Mic, MoreVertical, Palette, Phone, Reply, Send, Smile, Trash2, Video, WifiOff,
   X, Pencil, Eye, Clock3, UserRound, ShieldCheck
 } from 'lucide-react'
@@ -171,6 +171,7 @@ export default function ChatPro() {
   const [draftBubble, setDraftBubble] = useState<ChatPreference['bubble_theme']>('default')
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const cameraRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const recordingStreamRef = useRef<MediaStream | null>(null)
   const recordingChunksRef = useRef<Blob[]>([])
@@ -875,7 +876,14 @@ export default function ChatPro() {
 
       {!recording && <div className="shrink-0 border-t bg-background/95 backdrop-blur-xl p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-end gap-1.5">
         <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => fileRef.current?.click()} aria-label="Attach photo or video"><ImagePlus className="size-5" /></Button>
+        <input ref={cameraRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
+        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => fileRef.current?.click()} aria-label="Attach photo or video" title="Gallery"><ImagePlus className="size-5" /></Button>
+        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0 relative overflow-visible" disabled={!online || !!pendingMedia} onClick={() => cameraRef.current?.click()} aria-label="Open camera" title="Camera">
+          <Camera className="size-5" />
+          <span className="pointer-events-none absolute -right-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-primary text-primary-foreground shadow-md">
+            <span className="size-1.5 rounded-full bg-white" />
+          </span>
+        </Button>
         <Button
           variant="ghost"
           size="icon"
