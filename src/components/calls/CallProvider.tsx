@@ -306,6 +306,35 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     return { call, callerProfile }
   }, [profileFor, sendSignal, user])
 
+  const loadCallForAction = useCallback(async (callId: string) => {
+    const incomingResult = await loadIncomingById(callId)
+    if (incomingResult) return incomingResult
+    if (!user || !callId) return null
+
+    const { data, error } = await supabase
+      .from('call_sessions')
+      .select('*')
+      .eq('id', callId)
+      .or('caller_id.eq.' + user.id + ',callee_id.eq.' + user.id)
+      .maybeSingle()
+    if (error || !data) return null
+
+    const call = data as CallSession
+    const otherId = call.caller_id === user.id ? call.callee_id : call.caller_id
+    const otherProfile = await profileFor(otherId)
+    if (!otherProfile) return null
+
+    if (call.status === 'active' || call.status === 'ringing') {
+      if (activeRef.current?.id !== call.id) {
+        activeRef.current = call
+        setActive(call)
+        setPeer(otherProfile)
+      }
+    }
+
+    return { call, callerProfile: otherProfile }
+  }, [loadIncomingById, profileFor, user])
+
   const startCall = useCallback(async (target: Peer, kind: CallKind): Promise<void> => {
     if (!user || activeRef.current || incomingRef.current) return
     if (!navigator.onLine) { toast.error('Calls need an internet connection'); return }
@@ -493,7 +522,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       const key = `${action}:${callId}`
       if (handledNativeActionsRef.current.has(key)) return
       handledNativeActionsRef.current.add(key)
-      const loaded = await loadIncomingById(callId)
+      const loaded = await loadCallForAction(callId)
       if (loaded) {
         if (action === 'open') openCallRoute(loaded.callerProfile, callId)
         else if (action === 'accept') await acceptCall(loaded.call, loaded.callerProfile)
@@ -511,7 +540,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       if (handledNativeActionsRef.current.has(key)) return
       handledNativeActionsRef.current.add(key)
       void (async () => {
-        const loaded = await loadIncomingById(detail.callId as string)
+        const loaded = await loadCallForAction(detail.callId as string)
         if (loaded) {
           if (detail.action === 'open') openCallRoute(loaded.callerProfile, loaded.call.id)
           else if (detail.action === 'accept') await acceptCall(loaded.call, loaded.callerProfile)
@@ -524,7 +553,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     }
     window.addEventListener('yomy-call-action', onAction)
     return () => window.removeEventListener('yomy-call-action', onAction)
-  }, [acceptCall, declineCall, endCall, loadIncomingById, openCallRoute])
+  }, [acceptCall, declineCall, endCall, loadCallForAction, openCallRoute])
 
   useEffect(() => {
     const callId = new URLSearchParams(location.search).get('call')
