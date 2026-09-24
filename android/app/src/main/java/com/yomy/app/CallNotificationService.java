@@ -24,6 +24,7 @@ import android.content.pm.ServiceInfo;
 
 public class CallNotificationService extends Service {
     public static final String ACTION_START = "com.yomy.app.CALL_RING_START";
+    public static final String ACTION_ACTIVE = "com.yomy.app.CALL_ACTIVE";
     public static final String ACTION_STOP = "com.yomy.app.CALL_RING_STOP";
     public static final String EXTRA_CALL_ID = "call_id";
     public static final String EXTRA_TITLE = "call_title";
@@ -52,6 +53,16 @@ public class CallNotificationService extends Service {
         else context.startService(i);
     }
 
+    public static void startActive(Context context, String callId, String title, String kind) {
+        Intent i = new Intent(context, CallNotificationService.class)
+                .setAction(ACTION_ACTIVE)
+                .putExtra(EXTRA_CALL_ID, callId)
+                .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_KIND, kind);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(i);
+        else context.startService(i);
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
         String action = intent.getAction();
@@ -59,6 +70,29 @@ public class CallNotificationService extends Service {
             stopRinging();
             return START_NOT_STICKY;
         }
+
+        if (ACTION_ACTIVE.equals(action)) {
+            activeCallId = intent.getStringExtra(EXTRA_CALL_ID);
+            String title = safe(intent.getStringExtra(EXTRA_TITLE), "Yomy");
+            String kind = safe(intent.getStringExtra(EXTRA_KIND), "voice");
+            handler.removeCallbacks(timeout);
+            stopPlaybackOnly();
+            ensureChannel();
+
+            Notification notification = buildOngoingNotification(title, kind, activeCallId);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                } else {
+                    startForeground(NOTIFICATION_ID, notification);
+                }
+            } catch (Exception ignored) {
+                stopSelf();
+                return START_NOT_STICKY;
+            }
+            return START_NOT_STICKY;
+        }
+
         if (!ACTION_START.equals(action)) return START_NOT_STICKY;
 
         activeCallId = intent.getStringExtra(EXTRA_CALL_ID);
@@ -85,6 +119,48 @@ public class CallNotificationService extends Service {
         startPlaybackRespectingSystemMode();
         handler.postDelayed(timeout, RING_DURATION_MS);
         return START_NOT_STICKY;
+    }
+
+    private Notification buildOngoingNotification(String title, String kind, String callId) {
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+
+        Intent openIntent = new Intent(this, MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(CallActionReceiver.EXTRA_ACTION, "open")
+                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
+        PendingIntent open = PendingIntent.getActivity(this, 41006, openIntent, flags);
+        PendingIntent hangup = PendingIntent.getBroadcast(this, 41007, actionIntent(CallActionReceiver.ACTION_HANGUP, callId), flags);
+
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Notification.Builder(this, CHANNEL_ID)
+                : new Notification.Builder(this).setPriority(Notification.PRIORITY_LOW);
+
+        builder.setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText("Yomy • " + ("video".equalsIgnoreCase(kind) ? "Video call" : "Voice call"))
+                .setCategory(Notification.CATEGORY_CALL)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setOnlyAlertOnce(true)
+                .setShowWhen(true)
+                .setUsesChronometer(true)
+                .setWhen(System.currentTimeMillis())
+                .setContentIntent(open);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Person caller = new Person.Builder()
+                    .setName(title)
+                    .setImportant(true)
+                    .build();
+            builder.setStyle(Notification.CallStyle.forOngoingCall(caller, hangup));
+            builder.addPerson(caller);
+        } else {
+            builder.addAction(new Notification.Action.Builder(null, "End", hangup).build());
+        }
+
+        return builder.build();
     }
 
     private Notification buildNotification(String title, String body, String kind, String callId) {
