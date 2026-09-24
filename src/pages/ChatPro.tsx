@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
+  Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus, Maximize2,
   Mic, MoreVertical, Palette, Phone, Reply, Send, Smile, Trash2, Video, WifiOff,
   X, Pencil, Eye, Clock3, UserRound, ShieldCheck
 } from 'lucide-react'
@@ -156,6 +156,7 @@ export default function ChatPro() {
   const [reactionFor, setReactionFor] = useState<string | null>(null)
   const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null)
   const [viewOnceUrl, setViewOnceUrl] = useState<string | null>(null)
+  const [mediaViewer, setMediaViewer] = useState<{ url: string; kind: 'image' | 'video' } | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -252,7 +253,12 @@ export default function ChatPro() {
       .order('created_at', { ascending: true })
       .limit(250)
     if (!error && data) {
-      const next = data as Message[]
+      const serverMessages = data as Message[]
+      const localPending = (cached || []).filter(message =>
+        message.id.startsWith('local:') &&
+        !serverMessages.some(server => server.client_message_id && server.client_message_id === message.client_message_id)
+      )
+      const next = [...serverMessages, ...localPending].sort((a, b) => a.created_at.localeCompare(b.created_at))
       setMessages(next)
       await cacheMessages(user.id, otherUser.id, next)
       if (next.some(m => m.receiver_id === user.id && !m.is_seen && !m.deleted_for_everyone)) {
@@ -809,8 +815,8 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
-                        {message.media_type === 'video' && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
+                        {message.media_type === 'image' && (mediaUrls[message.id] || message.media_url) && <button type="button" onClick={() => setMediaViewer({ url: mediaUrls[message.id] || message.media_url, kind: 'image' })} className="group/media relative block overflow-hidden rounded-xl"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5 transition-transform duration-200 group-hover/media:scale-[1.015]" loading="lazy" /><span className="absolute right-2 top-2 size-8 rounded-full bg-black/55 text-white flex items-center justify-center opacity-0 group-hover/media:opacity-100 transition-opacity"><Maximize2 className="size-4" /></span></button>}
+                        {message.media_type === 'video' && (mediaUrls[message.id] || message.media_url) && <div className="relative overflow-hidden rounded-xl mb-1.5"><video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full" /><button type="button" onClick={() => setMediaViewer({ url: mediaUrls[message.id] || message.media_url, kind: 'video' })} aria-label="Open video" className="absolute right-2 top-2 size-8 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md"><Maximize2 className="size-4" /></button></div>}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
                         {message.content && <p className="text-[15px] whitespace-pre-wrap break-words leading-[1.35]">{renderMessageText(message.content)}</p>}
@@ -841,7 +847,7 @@ export default function ChatPro() {
         </div>
       </div>
 
-      {pendingMedia && <div className="shrink-0 border-t bg-card px-3 py-2"><div className="flex items-center gap-3">{pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="size-16 rounded-xl object-cover" /> : <video src={pendingMedia.previewUrl} muted playsInline className="size-16 rounded-xl object-cover" />}<div className="min-w-0 flex-1"><p className="text-sm font-medium">{pendingMedia.kind === 'image' ? 'Photo ready' : 'Video ready'}</p><p className="text-xs text-muted-foreground truncate">Add an optional caption in the box below</p></div><Button variant="ghost" size="icon" onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null) }}><X className="size-5" /></Button><Button size="sm" disabled={!online} onClick={() => void uploadMedia(pendingMedia.file, pendingMedia.kind)}><Send className="size-4 mr-1" />Send</Button></div></div>}
+      {pendingMedia && <div className="shrink-0 border-t bg-card/95 backdrop-blur-xl px-3 py-2.5"><div className="flex items-center gap-3">{<button type="button" onClick={() => setMediaViewer({ url: pendingMedia.previewUrl, kind: pendingMedia.kind })} className="relative size-16 sm:size-20 shrink-0 overflow-hidden rounded-2xl border bg-black/5 dark:bg-white/5 shadow-sm">{pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="h-full w-full object-cover" /> : <video src={pendingMedia.previewUrl} muted playsInline controls className="h-full w-full object-cover" />}<span className="absolute right-1.5 top-1.5 size-6 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md"><Maximize2 className="size-3.5" /></span></button>}<div className="min-w-0 flex-1"><p className="text-sm font-semibold">{pendingMedia.kind === 'image' ? 'Photo preview' : 'Video preview'}</p><p className="text-xs text-muted-foreground truncate">Tap the preview to open it full screen.</p></div><Button variant="ghost" size="icon" onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null) }}><X className="size-5" /></Button><Button size="sm" disabled={!online} onClick={() => void uploadMedia(pendingMedia.file, pendingMedia.kind)}><Send className="size-4 mr-1" />Send</Button></div></div>}
 
       {replyTo && <div className="shrink-0 border-t bg-card px-4 py-2 flex items-center gap-3"><Reply className="size-4 text-primary" /><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold">Replying to {replyTo.sender_id === user?.id ? 'yourself' : otherUser.username}</p><p className="text-xs text-muted-foreground truncate">{replyTo.content || 'Attachment'}</p></div><Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(null)}><X className="size-4" /></Button></div>}
 
@@ -885,7 +891,15 @@ export default function ChatPro() {
         </DialogContent>
       </Dialog>}
 
-      {viewOnceUrl && <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setViewOnceUrl(null)}><img src={viewOnceUrl} alt="" className="max-w-full max-h-full object-contain" /><Button variant="ghost" className="absolute top-4 right-4 text-white" size="icon"><X className="size-6" /></Button></div>}
+      {viewOnceUrl && !mediaViewer && <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setViewOnceUrl(null)}><img src={viewOnceUrl} alt="" className="max-w-full max-h-full object-contain" /><Button variant="ghost" className="absolute top-4 right-4 text-white" size="icon" onClick={() => setViewOnceUrl(null)}><X className="size-6" /></Button></div>}
+      {mediaViewer && <div className="fixed inset-0 z-[140] bg-black/95 backdrop-blur-xl flex items-center justify-center p-3 sm:p-6" onClick={() => setMediaViewer(null)}>
+        <div className="relative w-full max-w-5xl max-h-full flex items-center justify-center" onClick={event => event.stopPropagation()}>
+          {mediaViewer.kind === 'image'
+            ? <img src={mediaViewer.url} alt="" className="max-h-[88dvh] max-w-full object-contain rounded-2xl shadow-2xl" />
+            : <video src={mediaViewer.url} controls autoPlay playsInline className="max-h-[88dvh] max-w-full rounded-2xl shadow-2xl" />}
+          <Button variant="ghost" className="absolute top-2 right-2 text-white bg-black/35 hover:bg-black/55 rounded-full" size="icon" onClick={() => setMediaViewer(null)}><X className="size-6" /></Button>
+        </div>
+      </div>}
       {pref?.muted && <div className="fixed bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-background/90 border px-3 py-1.5 text-[11px] shadow-xl backdrop-blur-xl">Notifications muted for this chat</div>}
     </div>
   )
