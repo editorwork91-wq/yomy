@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
-import { LogOut, ChevronRight, Shield, Bell, Eye, MessageSquare, Moon, Sun, Type, Languages, Ban, UserRound, Smartphone } from 'lucide-react'
+import { LogOut, ChevronRight, Shield, Bell,  MessageSquare, Moon, Sun, Type, Languages, Ban, UserRound, Smartphone } from 'lucide-react'
 
 type BlockedUser = { blocked_id: string; profiles?: { id: string; username: string; full_name: string; avatar_url: string } | null }
 
