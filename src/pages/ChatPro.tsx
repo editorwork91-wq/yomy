@@ -271,7 +271,11 @@ export default function ChatPro() {
         if (row.sender_id !== otherUser.id) return
         setMessages(prev => prev.some(m => m.id === row.id) ? prev : [...prev, row])
         void supabase.rpc('mark_message_delivered', { p_message_id: row.id })
-        void supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })
+        // "Delivered" and "Read" are different states. Do not mark a
+        // message as read while the app is backgrounded.
+        if (document.visibilityState === 'visible') {
+          void supabase.rpc('mark_messages_seen', { p_other_user_id: otherUser.id })
+        }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, payload => {
         const row = payload.new as Message
