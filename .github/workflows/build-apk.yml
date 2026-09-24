@@ -186,3 +186,5 @@ jobs:
         with:
           name: yomy-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+# v6 final verification trigger: keep the production build path observable.
