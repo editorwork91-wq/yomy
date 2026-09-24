@@ -40,151 +40,6 @@ function MediaView({ stream, muted }: { stream: MediaStream | null; muted?: bool
   return <video ref={ref} autoPlay playsInline muted={muted} className="w-full h-full object-cover rounded-2xl" />
 }
 
-type CallDockProps = {
-  peer: Peer
-  active: CallSession
-  connected: boolean
-  elapsedSeconds: number
-  localStream: MediaStream | null
-  remoteStream: MediaStream | null
-  muted: boolean
-  cameraOff: boolean
-  speakerOn: boolean
-  expanded: boolean
-  onToggleMic: () => void
-  onToggleCamera: () => void
-  onToggleSpeaker: () => void
-  onEnd: () => void
-  onOpenChat: () => void
-  onExpand: () => void
-}
-
-function CallDock({
-  peer,
-  active,
-  connected,
-  elapsedSeconds,
-  localStream,
-  remoteStream,
-  muted,
-  cameraOff,
-  speakerOn,
-  expanded,
-  onToggleMic,
-  onToggleCamera,
-  onToggleSpeaker,
-  onEnd,
-  onOpenChat,
-  onExpand,
-}: CallDockProps) {
-  const video = active.kind === 'video'
-  const status = connected ? formatDuration(elapsedSeconds) : 'Connecting…'
-
-  const controls = (
-    <div className="flex items-center justify-end gap-1.5 shrink-0" onClick={event => event.stopPropagation()}>
-      <Button variant={speakerOn ? 'secondary' : 'ghost'} size="icon" className="size-9 rounded-full" onClick={onToggleSpeaker} aria-label={speakerOn ? 'Use earpiece' : 'Use speaker'}>
-        {speakerOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
-      </Button>
-      <Button variant={muted ? 'secondary' : 'ghost'} size="icon" className="size-9 rounded-full" onClick={onToggleMic} aria-label={muted ? 'Unmute microphone' : 'Mute microphone'}>
-        {muted ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-      </Button>
-      {video && (
-        <Button variant={cameraOff ? 'secondary' : 'ghost'} size="icon" className="size-9 rounded-full" onClick={onToggleCamera} aria-label={cameraOff ? 'Turn camera on' : 'Turn camera off'}>
-          {cameraOff ? <VideoOff className="size-4" /> : <Video className="size-4" />}
-        </Button>
-      )}
-      <Button variant="destructive" size="icon" className="size-9 rounded-full shadow-lg" onClick={onEnd} aria-label="End call">
-        <PhoneOff className="size-4" />
-      </Button>
-    </div>
-  )
-
-  if (expanded) {
-    return (
-      <div className="fixed left-3 right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[110] flex justify-center pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-2xl overflow-hidden rounded-[1.6rem] border border-white/15 bg-background/92 backdrop-blur-2xl shadow-[0_24px_90px_rgba(0,0,0,.32)]">
-          <div className="flex items-center gap-3 px-4 py-3 border-b border-border/60">
-            <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={onOpenChat}>
-              <Avatar className="size-10 shrink-0 border border-white/10 shadow-md">
-                <AvatarImage src={peer.avatar_url} />
-                <AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0">
-                <p className="font-semibold text-sm truncate">{peer.username}</p>
-                <p className="text-[11px] text-muted-foreground">{video ? 'Video call' : 'Voice call'} · {status}</p>
-              </div>
-              <MessageCircle className="size-4 shrink-0 text-muted-foreground" />
-            </button>
-            <Button variant="ghost" size="icon" className="size-9 rounded-full" onClick={onExpand} aria-label="Minimize call">
-              <Minimize2 className="size-4" />
-            </Button>
-          </div>
-
-          {video && (
-            <div className="relative aspect-video max-h-[48dvh] bg-black">
-              {remoteStream ? <MediaView stream={remoteStream} /> : (
-                <div className="h-full flex items-center justify-center text-white/60 text-sm">Waiting for video…</div>
-              )}
-              <div className="absolute right-3 top-3 w-28 sm:w-36 aspect-video rounded-xl overflow-hidden border border-white/30 shadow-xl">
-                <MediaView stream={localStream} muted />
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <Button variant="ghost" className="rounded-full px-3" onClick={onOpenChat}>
-              <MessageCircle className="size-4 mr-2" />Open chat
-            </Button>
-            {controls}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <>
-      {video && remoteStream && (
-        <button
-          className="fixed right-3 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+4.75rem)] z-[108] w-[min(34vw,150px)] aspect-[3/4] max-h-[28dvh] overflow-hidden rounded-[1.35rem] border border-white/20 bg-black shadow-[0_18px_60px_rgba(0,0,0,.30)] active:scale-95 transition-transform"
-          onClick={onOpenChat}
-          aria-label="Return to call chat"
-        >
-          <MediaView stream={remoteStream} />
-          <div className="absolute left-2 right-2 bottom-2 rounded-xl bg-black/55 px-2 py-1 text-left backdrop-blur-md">
-            <p className="text-[10px] font-medium text-white truncate">{peer.username}</p>
-            <p className="text-[9px] text-white/65">{status}</p>
-          </div>
-        </button>
-      )}
-      <div className="fixed left-3 right-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[109] flex justify-center pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-xl rounded-[1.35rem] border border-white/15 bg-background/86 backdrop-blur-2xl shadow-[0_18px_70px_rgba(0,0,0,.28)] ring-1 ring-black/5">
-          <div className="flex items-center gap-2.5 p-2.5">
-            <button className="min-w-0 flex-1 flex items-center gap-2.5 text-left rounded-xl px-1.5 py-1 active:scale-[.99] transition-transform" onClick={onOpenChat}>
-              <Avatar className="size-10 shrink-0 border border-white/10 shadow-md">
-                <AvatarImage src={peer.avatar_url} />
-                <AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-sm truncate">{peer.username}</span>
-                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                </div>
-                <p className="text-[11px] text-muted-foreground truncate">{video ? 'Video call' : 'Voice call'} · {status}</p>
-              </div>
-              <MessageCircle className="size-4 text-primary shrink-0" />
-            </button>
-            {controls}
-            <Button variant="ghost" size="icon" className="size-9 rounded-full shrink-0" onClick={event => { event.stopPropagation(); onExpand() }} aria-label="Expand call">
-              <Maximize2 className="size-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}
-
 export default function CallProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   const location = useLocation()
@@ -200,7 +55,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [speakerOn, setSpeakerOn] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [outgoingStage, setOutgoingStage] = useState<OutgoingStage>('connecting')
-  const [callExpanded, setCallExpanded] = useState(false)
   const [callPresentationRoute, setCallPresentationRoute] = useState<string | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const activeRef = useRef<CallSession | null>(null)
@@ -232,7 +86,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setSpeakerOn(false)
     setElapsedSeconds(0)
     setOutgoingStage('connecting')
-    setCallExpanded(false)
     setCallPresentationRoute(null)
     activeRef.current = null
     incomingRef.current = null
