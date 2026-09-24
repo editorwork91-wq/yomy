@@ -21,6 +21,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
+import EmojiReactionPicker from '@/components/messages/EmojiReactionPicker'
+import { useAvatarAccent } from '@/hooks/useAvatarAccent'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
@@ -119,6 +122,9 @@ export default function ChatPro() {
   const [otherUser, setOtherUser] = useState<ProfileType | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [preference, setPreference] = useState<ChatPreference | null>(null)
+  const [sharedWallpaper, setSharedWallpaper] = useState<ChatPreference['wallpaper']>('default')
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false)
+  const [reactionTarget, setReactionTarget] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [editing, setEditing] = useState<Message | null>(null)
@@ -142,6 +148,7 @@ export default function ChatPro() {
   const syncingRef = useRef(false)
 
   const targetUsername = username || searchParams.get('to')
+  const avatarAccent = useAvatarAccent(otherUser?.avatar_url, otherUser?.username || targetUsername || 'yomy')
 
   const loadOtherUser = useCallback(async () => {
     if (!targetUsername) return
@@ -175,6 +182,37 @@ export default function ChatPro() {
     setPreference(next)
     await cacheJson(key, next)
   }, [online, user])
+
+  const loadSharedWallpaper = useCallback(async (peerId: string) => {
+    if (!user) return
+    const low = user.id < peerId ? user.id : peerId
+    const high = user.id < peerId ? peerId : user.id
+    const key = 'chatShared:' + low + ':' + high
+    const cached = await readCachedJson<{ wallpaper?: ChatPreference['wallpaper'] }>(key)
+    if (cached?.wallpaper) setSharedWallpaper(cached.wallpaper)
+    if (!online) return
+    const { data } = await supabase.from('chat_shared_settings').select('wallpaper').eq('user_low', low).eq('user_high', high).maybeSingle()
+    const wallpaper = (data?.wallpaper as ChatPreference['wallpaper'] | undefined) || cached?.wallpaper || 'default'
+    setSharedWallpaper(wallpaper)
+    await cacheJson(key, { wallpaper })
+  }, [online, user])
+
+  const saveSharedWallpaper = useCallback(async (wallpaper: ChatPreference['wallpaper']) => {
+    if (!user || !otherUser) return
+    const low = user.id < otherUser.id ? user.id : otherUser.id
+    const high = user.id < otherUser.id ? otherUser.id : user.id
+    const key = 'chatShared:' + low + ':' + high
+    setSharedWallpaper(wallpaper)
+    await cacheJson(key, { wallpaper })
+    if (!online) return
+    const { error } = await supabase.from('chat_shared_settings').upsert({
+      user_low: low,
+      user_high: high,
+      wallpaper,
+      updated_by: user.id,
+    }, { onConflict: 'user_low,user_high' })
+    if (error) toast.error(error.message)
+  }, [online, otherUser, user])
 
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollRef.current
@@ -212,46 +250,26 @@ export default function ChatPro() {
     setLoading(false)
   }, [online, otherUser, user])
 
-  const flushQueue = useCallback(async () => {
-    if (!user || !otherUser || !online || syncingRef.current) return
-    syncingRef.current = true
-    const queued = (await readQueuedMessages(user.id)).filter(item => item.otherUserId === otherUser.id)
-    if (!queued.length) {
-      syncingRef.current = false
-      return
-    }
-    setSyncing(true)
-    for (const item of queued) {
-      const { error } = await supabase.from('messages').upsert({
-        sender_id: user.id,
-        receiver_id: otherUser.id,
-        content: item.content,
-        media_url: '',
-        media_type: '',
-        is_encrypted: true,
-        view_once: false,
-        reply_to_id: item.replyToId,
-        created_at: item.createdAt,
-        client_message_id: item.clientMessageId,
-      }, { onConflict: 'sender_id,client_message_id' })
-      if (!error) await removeQueuedMessage(user.id, item.clientMessageId)
-    }
-    setSyncing(false)
-    syncingRef.current = false
-    await loadMessages(false)
-  }, [loadMessages, online, otherUser, user])
-
   useEffect(() => { void loadOtherUser() }, [loadOtherUser])
   useEffect(() => {
     if (otherUser) {
       void loadPreference(otherUser.id)
+      void loadSharedWallpaper(otherUser.id)
       void loadMessages()
     }
-  }, [loadMessages, loadPreference, otherUser])
-  useEffect(() => { if (online) void flushQueue() }, [flushQueue, online])
-
+  }, [loadMessages, loadPreference, loadSharedWallpaper, otherUser])
   useEffect(() => {
     if (!user || !otherUser) return
+    const onSynced = (event: Event) => {
+      const detail = (event as CustomEvent<{ otherUserId?: string }>).detail
+      if (!detail?.otherUserId || detail.otherUserId === otherUser.id) void loadMessages(false)
+    }
+    window.addEventListener('yomy-message-synced', onSynced)
+    return () => window.removeEventListener('yomy-message-synced', onSynced)
+  }, [loadMessages, otherUser, user])
+
+  useEffect(() => {
+    if (!user || !otherUser || !online) return
     const channel = supabase.channel('chat-pro:' + user.id + ':' + otherUser.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'receiver_id=eq.' + user.id }, payload => {
         const row = payload.new as Message
@@ -276,7 +294,20 @@ export default function ChatPro() {
       document.removeEventListener('visibilitychange', onVisible)
       void supabase.removeChannel(channel)
     }
-  }, [flushQueue, loadMessages, otherUser, user])
+  }, [loadMessages, online, otherUser, user])
+
+  useEffect(() => {
+    if (!user || !otherUser || !online) return
+    const low = user.id < otherUser.id ? user.id : otherUser.id
+    const high = user.id < otherUser.id ? otherUser.id : user.id
+    const channel = supabase.channel('chat-shared:' + low + ':' + high)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_shared_settings', filter: 'user_low=eq.' + low }, payload => {
+        const row = payload.new as { wallpaper?: ChatPreference['wallpaper'] }
+        if (row.wallpaper) setSharedWallpaper(row.wallpaper)
+      })
+      .subscribe()
+    return () => { void supabase.removeChannel(channel) }
+  }, [online, otherUser, user])
 
   useEffect(() => { window.setTimeout(() => scrollToBottom(false), 0) }, [messages.length, scrollToBottom])
   useEffect(() => () => {
@@ -514,23 +545,27 @@ export default function ChatPro() {
   }
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
+  const refreshChat = useCallback(async () => { await loadMessages(false) }, [loadMessages])
+  const { pullDistance, refreshing } = usePullToRefresh(refreshChat)
   const pref = preference || (user && otherUser ? fallbackPreference(user.id, otherUser.id) : null)
   const myBubble = pref ? bubbleClasses[pref.bubble_theme] : bubbleClasses.default
 
   const wallpaperBackground = useMemo(() => {
-    if (!pref || pref.wallpaper === 'default') return ''
-    if (pref.wallpaper === 'midnight') return 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950'
-    if (pref.wallpaper === 'paper') return 'bg-[linear-gradient(rgba(127,127,127,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(127,127,127,.06)_1px,transparent_1px)] bg-[size:28px_28px]'
-    return 'bg-muted/25'
-  }, [pref])
+    if (sharedWallpaper === 'midnight') return 'bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950'
+    if (sharedWallpaper === 'paper') return 'bg-[linear-gradient(rgba(127,127,127,.06)_1px,transparent_1px),linear-gradient(90deg,rgba(127,127,127,.06)_1px,transparent_1px)] bg-[size:28px_28px]'
+    if (sharedWallpaper === 'romance') return 'bg-[radial-gradient(circle_at_18%_20%,rgba(244,114,182,.13),transparent_22%),radial-gradient(circle_at_80%_75%,rgba(251,146,60,.10),transparent_22%),linear-gradient(135deg,rgba(251,207,232,.16),rgba(254,215,170,.10))]'
+    if (sharedWallpaper === 'hearts') return 'bg-[radial-gradient(circle_at_25%_25%,rgba(244,63,94,.12),transparent_19%),radial-gradient(circle_at_75%_65%,rgba(236,72,153,.10),transparent_21%)]'
+    if (sharedWallpaper === 'petals') return 'bg-[radial-gradient(ellipse_at_15%_20%,rgba(251,113,133,.11),transparent_20%),radial-gradient(ellipse_at_80%_75%,rgba(250,204,21,.10),transparent_18%)]'
+    return ''
+  }, [sharedWallpaper])
 
   if (!otherUser) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-7" /></div>
 
   return (
     <div className="h-[100dvh] flex flex-col bg-background overflow-hidden">
-      <header className="h-14 shrink-0 border-b border-border/70 bg-background/90 backdrop-blur-xl flex items-center gap-1 px-2">
-        <Button variant="ghost" size="icon" className="size-10 rounded-full" onClick={() => navigate(-1)}><ChevronLeft className="size-5" /></Button>
-        <Link to={'/profile/' + otherUser.username} className="flex items-center gap-2 min-w-0 flex-1">
+      <header className="relative h-16 shrink-0 border-b border-border/70 bg-background/85 backdrop-blur-xl flex items-center gap-1 px-2 overflow-hidden" style={{ background: `linear-gradient(105deg, color-mix(in srgb, ${avatarAccent.a} 10%, var(--background)) 0%, color-mix(in srgb, ${avatarAccent.b} 7%, var(--background)) 55%, var(--background) 100%)` }}><div className="absolute inset-0 pointer-events-none" style={{ background: `radial-gradient(circle at 20% 0%, ${avatarAccent.glow}, transparent 38%)` }} />
+        <Button variant="ghost" size="icon" className="relative z-10 size-10 rounded-full" onClick={() => navigate(-1)}><ChevronLeft className="size-5" /></Button>
+        <Link to={'/profile/' + otherUser.username} className="relative z-10 flex items-center gap-2 min-w-0 flex-1">
           <div className="relative">
             <Avatar className="size-10"><AvatarImage src={otherUser.avatar_url} /><AvatarFallback>{initials(otherUser)}</AvatarFallback></Avatar>
             {online && <span className="absolute right-0 bottom-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
@@ -540,10 +575,10 @@ export default function ChatPro() {
             <p className="text-[11px] text-muted-foreground truncate">{online ? 'Online · synced' : 'Offline · saved on this device'}</p>
           </div>
         </Link>
-        <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
+        <Button variant="ghost" size="icon" className="relative z-10 size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'video')} aria-label="Video call"><Video className="size-5" /></Button>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9 rounded-full" aria-label="Chat options"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="relative z-10 size-9 rounded-full" aria-label="Chat options"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuItem onClick={() => navigate('/profile/' + otherUser.username)}>Open profile</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void savePreference({ archived: !pref?.archived })}><Archive className="size-4 mr-2" />{pref?.archived ? 'Remove from archive' : 'Move to archive'}</DropdownMenuItem>
@@ -559,7 +594,7 @@ export default function ChatPro() {
       {syncing && <div className="shrink-0 px-4 py-1.5 bg-primary/5 border-b text-[11px] text-muted-foreground text-center">Syncing queued messages…</div>}
 
       <div className={'relative flex-1 overflow-hidden ' + wallpaperBackground}>
-        <Wallpaper type={pref?.wallpaper || 'default'} />
+        <Wallpaper type={sharedWallpaper} />
         <div ref={scrollRef} className="relative h-full overflow-y-auto px-3 py-4 space-y-2">
           {loading ? <div className="h-full flex items-center justify-center"><Spinner className="size-6" /></div> : messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
@@ -573,7 +608,7 @@ export default function ChatPro() {
             return (
               <div key={message.id} id={'message-' + message.id} className={'flex ' + (mine ? 'justify-end' : 'justify-start') + ' group'}>
                 <div className="max-w-[84%] sm:max-w-[72%] flex flex-col">
-                  <div className={'rounded-[1.15rem] px-3.5 py-2 shadow-sm border border-black/5 ' + (mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
+                  <div onDoubleClick={() => void react(message.id, '❤️')} onContextMenu={event => { event.preventDefault(); setReactionTarget(message.id); setReactionPickerOpen(true) }} className={'relative rounded-[1.15rem] px-3.5 py-2 shadow-sm border border-black/5 ' + (mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
                     {message.reply_to && !message.deleted_for_everyone && (
                       <button onClick={() => document.getElementById('message-' + message.reply_to_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className={'w-full text-left mb-2 rounded-lg px-2.5 py-1.5 text-[11px] ' + (mine ? 'bg-white/15' : 'bg-muted')}>
                         <span className="font-semibold block">{message.reply_to.sender_id === user?.id ? 'You' : otherUser.username}</span>
@@ -597,7 +632,7 @@ export default function ChatPro() {
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
                   {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
-                    <Button variant="ghost" size="icon" className="size-7" onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}><Smile className="size-4" /></Button>
+                    <Button variant="ghost" size="icon" className="size-8 rounded-full" onClick={() => { setReactionTarget(message.id); setReactionPickerOpen(true) }} aria-label="React"><Smile className="size-4" /></Button>
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
                   </div>}
@@ -649,10 +684,12 @@ export default function ChatPro() {
                 </button>)}
               </div>
             </section>
-            <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => setSettingsOpen(false)}>Cancel</Button><Button className="flex-1" onClick={async () => { await savePreference({ wallpaper:draftTheme, bubble_theme:draftBubble }); setSettingsOpen(false) }}>Apply</Button></div>
+            <div className="flex gap-2"><Button variant="outline" className="flex-1" onClick={() => setSettingsOpen(false)}>Cancel</Button><Button className="flex-1" onClick={async () => { await savePreference({ bubble_theme:draftBubble }); await saveSharedWallpaper(draftTheme); setSettingsOpen(false) }}>Apply</Button></div>
           </div>
         </DialogContent>
       </Dialog>}
+
+      <EmojiReactionPicker open={reactionPickerOpen} onOpenChange={setReactionPickerOpen} onPick={async emoji => { if (reactionTarget) await react(reactionTarget, emoji) }} />
 
       {viewOnceUrl && <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setViewOnceUrl(null)}><img src={viewOnceUrl} alt="" className="max-w-full max-h-full object-contain" /><Button variant="ghost" className="absolute top-4 right-4 text-white" size="icon"><X className="size-6" /></Button></div>}
       {pref?.muted && <div className="fixed bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-background/90 border px-3 py-1.5 text-[11px] shadow-xl backdrop-blur-xl">Notifications muted for this chat</div>}
