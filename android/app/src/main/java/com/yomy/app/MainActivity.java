@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        restoreQueuedCallAction();
         captureCallAction(getIntent());
         captureDeepLink(getIntent());
         requestYomyPermissions();
@@ -51,6 +52,13 @@ public class MainActivity extends BridgeActivity {
     @Override public void onResume() {
         super.onResume();
         dispatchPendingCallActionWithRetry();
+    }
+
+    private void restoreQueuedCallAction() {
+        String[] pending = CallActionReceiver.readPendingAction(this);
+        if (pending == null) return;
+        pendingCallAction = pending[0];
+        pendingCallId = pending[1];
     }
 
     private void captureCallAction(Intent intent) {
@@ -177,7 +185,7 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface public void startActiveCall(String title, String callId, String kind) { runOnUiThread(() -> CallNotificationService.startActive(MainActivity.this, callId, title, kind)); }
         @JavascriptInterface public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }
         @JavascriptInterface public String getPendingCallAction() { if (pendingCallAction == null || pendingCallId == null) return ""; return pendingCallAction + "|" + pendingCallId; }
-        @JavascriptInterface public void clearPendingCallAction() { pendingCallAction = null; pendingCallId = null; }
+        @JavascriptInterface public void clearPendingCallAction() { pendingCallAction = null; pendingCallId = null; CallActionReceiver.clearPendingAction(MainActivity.this); }
     }
 
     private void showLocalNotification(String title, String body, String kind, String url) {

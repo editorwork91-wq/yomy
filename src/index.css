@@ -150,3 +150,78 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+/* YOMY premium 3D chat surfaces. Motion is intentionally soft so the UI
+   feels dimensional without becoming distracting or expensive to render. */
+@keyframes yomy3dFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) rotateX(0deg) rotateY(0deg) scale(1); }
+  35% { transform: translate3d(8px, -14px, 22px) rotateX(8deg) rotateY(-10deg) scale(1.03); }
+  70% { transform: translate3d(-8px, -4px, 8px) rotateX(-5deg) rotateY(8deg) scale(.98); }
+}
+
+@keyframes yomy3dBreathe {
+  0%, 100% { transform: translateZ(0) scale(1); opacity: .56; }
+  50% { transform: translateZ(26px) scale(1.07); opacity: .82; }
+}
+
+@keyframes yomy3dPetal {
+  0%, 100% { transform: rotateZ(0deg) rotateX(0deg) translateZ(0); }
+  50% { transform: rotateZ(9deg) rotateX(16deg) translateZ(14px); }
+}
+
+@keyframes yomyChatEnter {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+.yomy-3d-stage {
+  perspective: 1100px;
+  transform-style: preserve-3d;
+  contain: layout paint style;
+}
+
+.yomy-3d-bloom {
+  transform-style: preserve-3d;
+  animation: yomy3dFloat 12s ease-in-out infinite;
+  will-change: transform;
+}
+
+.yomy-3d-bloom-core {
+  transform-style: preserve-3d;
+  box-shadow: 0 18px 45px rgba(190, 78, 123, .18), inset 0 1px 0 rgba(255,255,255,.72);
+  animation: yomy3dBreathe 6s ease-in-out infinite;
+}
+
+.yomy-3d-petal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42%;
+  height: 67%;
+  transform-origin: 50% 100%;
+  border-radius: 78% 78% 55% 55% / 88% 88% 48% 48%;
+  background: radial-gradient(circle at 40% 22%, rgba(255,255,255,.92), rgba(255,178,205,.82) 30%, rgba(196,73,123,.9) 74%, rgba(102,35,75,.94) 100%);
+  box-shadow: inset -4px -8px 14px rgba(72, 16, 48, .28), inset 3px 4px 10px rgba(255,255,255,.38);
+  animation: yomy3dPetal 5.5s ease-in-out infinite;
+  backface-visibility: hidden;
+}
+
+.yomy-3d-surface {
+  transform: translateZ(0);
+  transform-style: preserve-3d;
+  box-shadow: 0 12px 36px rgba(0,0,0,.07), 0 1px 0 rgba(255,255,255,.55) inset;
+  transition: transform .24s cubic-bezier(.2,.8,.2,1), box-shadow .24s ease;
+}
+
+.yomy-3d-surface:hover { transform: translate3d(0, -2px, 12px); box-shadow: 0 20px 44px rgba(0,0,0,.11); }
+
+.yomy-message-3d { animation: yomyChatEnter .24s cubic-bezier(.2,.8,.2,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .yomy-3d-bloom,
+  .yomy-3d-bloom-core,
+  .yomy-3d-petal,
+  .yomy-message-3d { animation: none !important; }
+  .yomy-3d-surface { transition: none !important; }
+}

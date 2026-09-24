@@ -264,48 +264,89 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     await sendSignal(call, 'answer', answer as unknown as Record<string, unknown>)
   }, [sendSignal, user?.id])
 
-  const acceptCall = useCallback(async (call: CallSession, callerProfile: Peer) => {
-    if (!user || call.status !== 'ringing') return
-    stopNativeCallNotification()
+  const acceptCall = useCallback(async (call: CallSession, callerProfile: Peer): Promise<boolean> => {
+    if (!user || !navigator.onLine) return false
+    if (call.status === 'active') {
+      const destination = '/messages/' + encodeURIComponent(callerProfile.username) + '?call=' + encodeURIComponent(call.id)
+      setCallPresentationRoute(destination)
+      setActive(call)
+      setIncoming(null)
+      setPeer(callerProfile)
+      openCallRoute(callerProfile, call.id)
+      return true
+    }
+    if (call.status !== 'ringing') return true
     try {
       const now = new Date().toISOString()
-      const { data: activated, error: activationError } = await supabase.from('call_sessions').update({ status: 'active', answered_at: now, started_at: now }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing').select('id').maybeSingle()
+      const { data: activated, error: activationError } = await supabase
+        .from('call_sessions')
+        .update({ status: 'active', answered_at: now, started_at: now })
+        .eq('id', call.id)
+        .eq('callee_id', user.id)
+        .eq('status', 'ringing')
+        .select('id')
+        .maybeSingle()
       if (activationError) throw activationError
-      if (!activated) return
+      if (!activated) {
+        const { data: latest } = await supabase.from('call_sessions').select('status').eq('id', call.id).maybeSingle()
+        return latest?.status === 'active' || ['ended', 'declined', 'missed', 'failed'].includes(latest?.status || '')
+      }
+
       const activeCall = { ...call, status: 'active' as CallStatus, answered_at: now, started_at: now }
       activeRef.current = activeCall
-      const destination = `/messages/${encodeURIComponent(callerProfile.username)}?call=${encodeURIComponent(call.id)}`
+      const destination = '/messages/' + encodeURIComponent(callerProfile.username) + '?call=' + encodeURIComponent(call.id)
       setCallPresentationRoute(destination)
       setActive(activeCall)
       setIncoming(null)
       setPeer(callerProfile)
       openCallRoute(callerProfile, call.id)
-      const pc = await setupPeer(activeCall, false)
-      const { data: signals } = await supabase.from('call_signals').select('*').eq('call_id', call.id).order('id')
-      for (const signal of (signals || []) as Signal[]) {
-        processedSignals.current.add(signal.id)
-        if (signal.signal_type === 'offer') await handleOffer(activeCall, signal, pc)
-        else if (signal.signal_type === 'ice-candidate') {
-          if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
-          else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
+
+      try {
+        const pc = await setupPeer(activeCall, false)
+        const { data: signals } = await supabase.from('call_signals').select('*').eq('call_id', call.id).order('id')
+        for (const signal of (signals || []) as Signal[]) {
+          processedSignals.current.add(signal.id)
+          if (signal.signal_type === 'offer') await handleOffer(activeCall, signal, pc)
+          else if (signal.signal_type === 'ice-candidate') {
+            if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
+            else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
+          }
         }
+        for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
+        pendingCandidates.current = []
+      } catch (peerError) {
+        await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id).eq('status', 'active')
+        cleanup()
+        toast.error(peerError instanceof Error ? peerError.message : 'Could not open call media')
       }
-      for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
-      pendingCandidates.current = []
+      stopNativeCallNotification()
+      return true
     } catch (err) {
-      await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id)
-      cleanup()
       toast.error(err instanceof Error ? err.message : 'Could not answer call')
+      return false
     }
   }, [cleanup, handleOffer, openCallRoute, setupPeer, user])
 
-  const declineCall = useCallback(async (call: CallSession) => {
-    if (!user || call.status !== 'ringing') return
-    stopNativeCallNotification()
-    const { error } = await supabase.from('call_sessions').update({ status: 'declined', ended_at: new Date().toISOString() }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing')
-    await sendSignal(call, 'decline', { declined_at: new Date().toISOString() })
-    if (error) console.warn('decline call update failed:', error.message)
-    cleanup()
+  const declineCall = useCallback(async (call: CallSession): Promise<boolean> => {
+    if (!user || !navigator.onLine) return false
+    if (call.status !== 'ringing') return true
+    try {
+      const endedAt = new Date().toISOString()
+      const { error } = await supabase
+        .from('call_sessions')
+        .update({ status: 'declined', ended_at: endedAt })
+        .eq('id', call.id)
+        .eq('callee_id', user.id)
+        .eq('status', 'ringing')
+      if (error) throw error
+      stopNativeCallNotification()
+      await sendSignal(call, 'decline', { declined_at: endedAt })
+      cleanup()
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not decline call')
+      return false
+    }
   }, [cleanup, sendSignal, user])
 
   const endCall = useCallback(async () => {
@@ -424,28 +465,36 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
       handledNativeActionsRef.current.add(key)
       try {
+        let completed = false
         if (action === 'open') {
           if (loaded.call.status === 'ringing') {
             setCallPresentationRoute(null)
             setIncoming(loaded.call)
             setPeer(loaded.callerProfile)
+            completed = true
           } else if (loaded.call.status === 'active') {
-            const destination = `/messages/${encodeURIComponent(loaded.callerProfile.username)}?call=${encodeURIComponent(loaded.call.id)}`
+            const destination = '/messages/' + encodeURIComponent(loaded.callerProfile.username) + '?call=' + encodeURIComponent(loaded.call.id)
             setCallPresentationRoute(destination)
             setIncoming(null)
             setPeer(loaded.callerProfile)
             openCallRoute(loaded.callerProfile, loaded.call.id)
+            completed = true
           } else {
-            handledNativeActionsRef.current.delete(key)
-            return false
+            completed = true
           }
         } else if (action === 'accept') {
-          await acceptCall(loaded.call, loaded.callerProfile)
+          completed = await acceptCall(loaded.call, loaded.callerProfile)
         } else if (action === 'decline') {
-          await declineCall(loaded.call)
+          completed = await declineCall(loaded.call)
         } else if (action === 'end' && activeRef.current?.id === callId) {
           await endCall()
+          completed = true
         } else {
+          handledNativeActionsRef.current.delete(key)
+          return false
+        }
+
+        if (!completed) {
           handledNativeActionsRef.current.delete(key)
           return false
         }
@@ -517,49 +566,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   return <CallContext.Provider value={value}>
     {children}
     <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
-    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#08110f] text-white overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(255,255,255,0.10),transparent_36%)]" />
-      <div className="relative min-h-full flex flex-col items-center px-7 pt-[max(4.5rem,env(safe-area-inset-top)+2rem)] pb-[max(2.5rem,env(safe-area-inset-bottom)+1.5rem)]">
-        <div className="text-center">
-          <p className="text-sm text-white/55 mb-3">Yomy</p>
-          <Avatar className="size-[clamp(6rem,32vw,9rem)] mx-auto border-4 border-white/10 shadow-2xl">
-            <AvatarImage src={peer.avatar_url} />
-            <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <h2 className="mt-6 text-[clamp(1.7rem,7vw,2.2rem)] font-medium tracking-tight">{peer.username}</h2>
-          <p className="mt-2 text-base text-white/60">Incoming {incoming?.kind === 'video' ? 'video' : 'voice'} call</p>
-          <p className="mt-1 text-sm text-white/40">Answer or decline</p>
-        </div>
-        <div className="mt-auto w-full max-w-sm grid grid-cols-2 gap-8 sm:gap-12 items-end pb-2">
-          <div className="text-center">
-            <Button variant="destructive" size="lg" className="mx-auto rounded-full size-[clamp(4rem,18vw,4.5rem)] shadow-xl bg-red-600 hover:bg-red-700" onClick={() => void declineCall(incoming as CallSession)}>
-              <PhoneOff className="size-7" />
-            </Button>
-            <p className="mt-3 text-sm text-white/70">Decline</p>
-          </div>
-          <div className="text-center">
-            <Button size="lg" className="mx-auto rounded-full size-[clamp(4rem,18vw,4.5rem)] shadow-xl bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => void acceptCall(incoming as CallSession, peer)}>
-              {incoming?.kind === 'video' ? <Video className="size-7" /> : <Phone className="size-7" />}
-            </Button>
-            <p className="mt-3 text-sm text-white/70">Answer</p>
-          </div>
-        </div>
-      </div>
-    </div>}
-
-    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7">
-      <Avatar className="size-[clamp(6.5rem,34vw,8rem)] border-4 border-white/10 shadow-2xl">
-        <AvatarImage src={peer.avatar_url} />
-        <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
-      </Avatar>
-      <h2 className="mt-6 text-[clamp(1.5rem,6vw,2rem)] font-semibold">{peer.username}</h2>
-      <p className="mt-2 text-white/60">{outgoingStage === 'ringing' ? 'Ringing…' : 'Connecting…'}</p>
-      <p className="mt-1 text-xs text-white/35">{outgoingStage === 'ringing' ? 'The other device received the call' : 'Waiting for the other device'}</p>
-      <div className="mt-auto pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <Button variant="destructive" size="lg" className="rounded-full size-16 shadow-xl" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button>
-      </div>
-    </div>}
 
     {showActive && peer && active && !((location.pathname + location.search) === callPresentationRoute) && (
       <div className="fixed top-[max(0.55rem,env(safe-area-inset-top))] left-3 right-3 z-[120] flex justify-center">

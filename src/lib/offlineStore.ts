@@ -35,6 +35,20 @@ export type SyncOperation =
       createdAt: string
       payload: { otherUserId: string; wallpaper: string }
     }
+  | {
+      opId: string
+      userId: string
+      kind: 'message_edit'
+      createdAt: string
+      payload: { messageId: string; content: string; editedAt: string }
+    }
+  | {
+      opId: string
+      userId: string
+      kind: 'message_delete'
+      createdAt: string
+      payload: { messageId: string }
+    }
 
 function openDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null)
@@ -137,7 +151,7 @@ export async function readQueuedMessages(userId: string): Promise<QueuedMessage[
   return await new Promise<QueuedMessage[]>(resolve => {
     const tx = db.transaction(QUEUE_STORE, 'readonly')
     const request = tx.objectStore(QUEUE_STORE).getAll()
-    request.onsuccess = () => resolve((request.result as QueuedMessage[]).filter(item => item.userId === userId))
+    request.onsuccess = () => resolve((request.result as QueuedMessage[]).filter(item => item.userId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)))
     request.onerror = () => resolve([])
   }).finally(() => db.close())
 }

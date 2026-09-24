@@ -50,6 +50,7 @@ export default function OfflineSyncEngine() {
           changed = true
         } else if (!isTransient(error)) {
           await removeQueuedMessage(user.id, item.clientMessageId)
+          window.dispatchEvent(new CustomEvent('yomy-sync-error', { detail: { kind: 'message', clientMessageId: item.clientMessageId, message: String(error?.message || 'Message could not be sent') } }))
         }
       }
 
@@ -86,6 +87,10 @@ export default function OfflineSyncEngine() {
               : await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', operation.payload.otherUserId)
             error = mutedResult.error
           }
+        } else if (operation.kind === 'message_edit') {
+          error = (await supabase.from('messages').update({ content: operation.payload.content, edited_at: operation.payload.editedAt }).eq('id', operation.payload.messageId).eq('sender_id', user.id)).error
+        } else if (operation.kind === 'message_delete') {
+          error = (await supabase.from('messages').update({ deleted_for_everyone: true, content: '', media_url: '', media_type: '' }).eq('id', operation.payload.messageId).eq('sender_id', user.id)).error
         }
 
         if (!error) {
@@ -93,8 +98,11 @@ export default function OfflineSyncEngine() {
           changed = true
         } else if (!isTransient(error)) {
           await removeSyncOperation(user.id, operation.opId)
+          window.dispatchEvent(new CustomEvent('yomy-sync-error', { detail: { kind: operation.kind, opId: operation.opId, messageId: 'messageId' in operation.payload ? operation.payload.messageId : undefined, message: String((error as { message?: string } | null)?.message || 'Sync failed') } }))
         }
       }
+    } catch (error) {
+      console.warn('offline sync cycle failed:', error)
     } finally {
       runningRef.current = false
       if (changed) window.dispatchEvent(new CustomEvent('yomy-sync-complete'))

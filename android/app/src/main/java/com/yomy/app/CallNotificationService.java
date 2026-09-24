@@ -169,12 +169,14 @@ public class CallNotificationService extends Service {
 
         PendingIntent decline = PendingIntent.getBroadcast(this, 41003, actionIntent(CallActionReceiver.ACTION_DECLINE, callId), flags);
 
-        // The app's real incoming-call experience is rendered by CallProvider.
-        // The notification itself only transports the intent into MainActivity.
-        Intent incomingScreenIntent = new Intent(this, MainActivity.class)
+        // Reuse YOMY's existing native incoming-call surface for the full-screen
+        // notification tap. Answer/Decline remain true notification actions.
+        Intent incomingScreenIntent = new Intent(this, IncomingCallActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                .putExtra(CallActionReceiver.EXTRA_ACTION, "open")
-                .putExtra(CallActionReceiver.EXTRA_CALL_ID, callId);
+                .putExtra(CallNotificationService.EXTRA_CALL_ID, callId)
+                .putExtra(CallNotificationService.EXTRA_TITLE, title)
+                .putExtra(CallNotificationService.EXTRA_BODY, body)
+                .putExtra(CallNotificationService.EXTRA_KIND, kind);
         PendingIntent incomingScreen = PendingIntent.getActivity(this, 41005, incomingScreenIntent, flags);
 
         // Answer is a true notification action: Android invokes the receiver,
