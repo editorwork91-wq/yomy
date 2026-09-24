@@ -772,7 +772,7 @@ export default function ChatPro() {
         </DropdownMenu>
       </header>
 
-      {!online && <div className="shrink-0 px-3 py-1.5 bg-amber-500/8 border-b border-amber-500/15 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline snapshot · messages stay here until connection returns.</span>{pendingCount > 0 && <span className="ml-auto rounded-full bg-amber-500/12 px-2 py-0.5 font-semibold">{pendingCount} waiting</span>}</div>}}
+{!online && <div className="shrink-0 px-3 py-1.5 bg-amber-500/8 border-b border-amber-500/15 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline snapshot · messages stay here until connection returns.</span>{pendingCount > 0 && <span className="ml-auto rounded-full bg-amber-500/12 px-2 py-0.5 font-semibold">{pendingCount} waiting</span>}</div>}
 
       <div className={'relative flex-1 overflow-hidden ' + wallpaperBackground}>
         <Wallpaper type={sharedWallpaper} />
