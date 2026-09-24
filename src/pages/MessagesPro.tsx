@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Archive, Inbox, MessageCircle, Plus, Search, WifiOff } from 'lucide-react'
+import { Archive, Inbox, Plus, Search, WifiOff } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import type { Message, Note, Profile as ProfileType } from '@/lib/supabase'
