@@ -515,22 +515,27 @@ export default function ChatPro() {
       return
     }
     const path = (kind === 'video' ? 'videos/' : 'images/') + user.id + '/' + crypto.randomUUID() + '.' + (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg'))
-    const { error: uploadError } = await supabase.storage.from('messages').upload(path, file, { upsert: false, contentType: file.type || undefined })
+    const clientMessageId = crypto.randomUUID()
+    const createdAt = new Date().toISOString()
+    const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
-    const { data: publicData } = supabase.storage.from('messages').getPublicUrl(path)
-    const { data, error } = await supabase.from('messages').insert({
-      sender_id: user.id,
-      receiver_id: otherUser.id,
-      content: input.trim(),
-      media_url: publicData.publicUrl,
-      media_type: kind,
-      media_bucket: 'messages',
-      media_path: path,
-      is_encrypted: true,
-      view_once: false,
-      reply_to_id: replyTo?.id || null,
-    }).select('*').single()
-    if (error) return toast.error(error.message)
+
+    const { data, error } = await supabase.rpc('send_message_v2', {
+      p_receiver_id: otherUser.id,
+      p_content: input.trim(),
+      p_reply_to_id: replyTo?.id || null,
+      p_media_url: '',
+      p_media_type: kind,
+      p_media_bucket: 'messages-private',
+      p_media_path: path,
+      p_view_once: false,
+      p_client_message_id: clientMessageId,
+      p_created_at: createdAt,
+    })
+    if (error) {
+      await supabase.storage.from('messages-private').remove([path])
+      return toast.error(error.message)
+    }
     setMessages(prev => [...prev, data as Message])
     setInput('')
     setReplyTo(null)
@@ -548,22 +553,27 @@ export default function ChatPro() {
   const uploadVoice = async (file: File) => {
     if (!user || !otherUser || !online) return
     const path = 'audio/' + user.id + '/' + crypto.randomUUID() + '.' + (file.name.split('.').pop() || 'webm')
-    const { error: uploadError } = await supabase.storage.from('messages').upload(path, file, { upsert: false, contentType: file.type || undefined })
+    const clientMessageId = crypto.randomUUID()
+    const createdAt = new Date().toISOString()
+    const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
-    const { data: pub } = supabase.storage.from('messages').getPublicUrl(path)
-    const { data, error } = await supabase.from('messages').insert({
-      sender_id: user.id,
-      receiver_id: otherUser.id,
-      content: '',
-      media_url: pub.publicUrl,
-      media_type: 'audio',
-      media_bucket: 'messages',
-      media_path: path,
-      is_encrypted: true,
-      view_once: false,
-      reply_to_id: replyTo?.id || null,
-    }).select('*').single()
-    if (error) return toast.error(error.message)
+
+    const { data, error } = await supabase.rpc('send_message_v2', {
+      p_receiver_id: otherUser.id,
+      p_content: '',
+      p_reply_to_id: replyTo?.id || null,
+      p_media_url: '',
+      p_media_type: 'audio',
+      p_media_bucket: 'messages-private',
+      p_media_path: path,
+      p_view_once: false,
+      p_client_message_id: clientMessageId,
+      p_created_at: createdAt,
+    })
+    if (error) {
+      await supabase.storage.from('messages-private').remove([path])
+      return toast.error(error.message)
+    }
     setMessages(prev => [...prev, data as Message])
     setReplyTo(null)
   }
