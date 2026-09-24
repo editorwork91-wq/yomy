@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useSearchParams, useNavigate, Link } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { ChevronLeft, Search, UsersRound, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import type { Profile } from '@/lib/supabase'
