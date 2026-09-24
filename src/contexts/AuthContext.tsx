@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { Profile } from '@/lib/supabase'
+import { applyYomyFontScale, applyYomyLanguage, systemTimezone } from '@/lib/i18n'
 
 type AuthContextType = {
   session: Session | null
@@ -27,6 +28,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const applyProfilePreferences = (nextProfile: Profile | null) => {
+    if (!nextProfile) {
+      const storedLanguage = localStorage.getItem('yomy-language') as 'en' | 'ar' | 'de' | 'fr' | 'es' | null
+      const storedScale = Number(localStorage.getItem('yomy-font-scale') || 1)
+      applyYomyLanguage(storedLanguage || 'en')
+      applyYomyFontScale(storedScale)
+      return
+    }
+    applyYomyLanguage(nextProfile.language || 'en')
+    applyYomyFontScale(nextProfile.font_scale || 1)
+  }
+
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
@@ -34,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .eq('id', userId)
       .maybeSingle()
     setProfile(data)
+    applyProfilePreferences(data)
   }
 
   const refreshProfile = async () => {
@@ -41,6 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    if (!localStorage.getItem('yomy-timezone')) localStorage.setItem('yomy-timezone', systemTimezone())
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
