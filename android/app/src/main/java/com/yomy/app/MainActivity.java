@@ -23,7 +23,10 @@ public class MainActivity extends BridgeActivity {
     private static final int YOMY_PERMISSIONS = 7001;
     private static final int YOMY_WEB_PERMISSION_REQUEST = 7002;
     private static final String EXTRA_DEEP_LINK = "yomy_deep_link";
-    private static final long CALL_ACTION_RETRY_WINDOW_MS = 10_000L;
+    private static final long CALL_ACTION_RETRY_WINDOW_MS = 30_000L;
+    private static final String CALL_PREFS = "yomy_call_actions";
+    private static final String CALL_PREF_ACTION = "action";
+    private static final String CALL_PREF_ID = "call_id";
     private PermissionRequest pendingWebPermissionRequest;
     private AudioManager audioManager;
     private int previousAudioMode = AudioManager.MODE_NORMAL;
@@ -54,9 +57,17 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void captureCallAction(Intent intent) {
-        if (intent == null) return;
-        String action = intent.getStringExtra(CallActionReceiver.EXTRA_ACTION);
-        String callId = intent.getStringExtra(CallActionReceiver.EXTRA_CALL_ID);
+        String action = intent == null ? null : intent.getStringExtra(CallActionReceiver.EXTRA_ACTION);
+        String callId = intent == null ? null : intent.getStringExtra(CallActionReceiver.EXTRA_CALL_ID);
+
+        if (action == null || callId == null || callId.trim().isEmpty()) {
+            try {
+                android.content.SharedPreferences prefs = getSharedPreferences(CALL_PREFS, Context.MODE_PRIVATE);
+                action = prefs.getString(CALL_PREF_ACTION, null);
+                callId = prefs.getString(CALL_PREF_ID, null);
+            } catch (Exception ignored) {}
+        }
+
         if (action == null || callId == null || callId.trim().isEmpty()) return;
         pendingCallAction = action;
         pendingCallId = callId;
@@ -177,7 +188,13 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface public void startActiveCall(String title, String callId, String kind) { runOnUiThread(() -> CallNotificationService.startActive(MainActivity.this, callId, title, kind)); }
         @JavascriptInterface public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }
         @JavascriptInterface public String getPendingCallAction() { if (pendingCallAction == null || pendingCallId == null) return ""; return pendingCallAction + "|" + pendingCallId; }
-        @JavascriptInterface public void clearPendingCallAction() { pendingCallAction = null; pendingCallId = null; }
+        @JavascriptInterface public void clearPendingCallAction() {
+            pendingCallAction = null;
+            pendingCallId = null;
+            try {
+                getSharedPreferences(CALL_PREFS, Context.MODE_PRIVATE).edit().clear().apply();
+            } catch (Exception ignored) {}
+        }
     }
 
     private void showLocalNotification(String title, String body, String kind, String url) {

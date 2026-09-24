@@ -24,6 +24,7 @@ import ChatPro from '@/pages/ChatPro'
 import MessagesPro from '@/pages/MessagesPro'
 import NetworkStatus from '@/components/system/NetworkStatus'
 import OfflineSyncEngine from '@/components/system/OfflineSyncEngine'
+import RealtimeInbox from '@/components/realtime/RealtimeInbox'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -58,6 +59,6 @@ function AppRoutes() {
   </Routes>
 }
 export function App() {
-  return <AuthProvider><BrowserRouter><CallProvider><AppRoutes /><NetworkStatus /><OfflineSyncEngine /><YomyEventEngine /><AttentionCenter /><YomyReminderEngine /><PushManager /><CallHistoryPanel /></CallProvider></BrowserRouter><Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} /></AuthProvider>
+  return <AuthProvider><BrowserRouter><div className="yomy-ios min-h-screen"><CallProvider><AppRoutes /><NetworkStatus /><OfflineSyncEngine /><RealtimeInbox /><YomyEventEngine /><AttentionCenter /><YomyReminderEngine /><PushManager /><CallHistoryPanel /></CallProvider></div></BrowserRouter><Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} /></AuthProvider>
 }
 export default App

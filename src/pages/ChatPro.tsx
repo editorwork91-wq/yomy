@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from 'emoji-picker-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
@@ -14,7 +15,7 @@ import { sendPushEvent } from '@/lib/push'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import {
   cacheJson, cacheMessages, queueMessage, readCachedJson, readCachedMessages,
-  readQueuedMessages, removeQueuedMessage, queueSyncOperation, patchCachedConversation
+  queueSyncOperation, patchCachedConversation
 } from '@/lib/offlineStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -156,6 +157,10 @@ export default function ChatPro() {
   const [reactionFor, setReactionFor] = useState<string | null>(null)
   const [pendingMedia, setPendingMedia] = useState<PendingMedia | null>(null)
   const [viewOnceUrl, setViewOnceUrl] = useState<string | null>(null)
+  const [viewOnceMessageId, setViewOnceMessageId] = useState<string | null>(null)
+  const [viewOnceRemaining, setViewOnceRemaining] = useState<number | null>(null)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [pendingViewOnceLimit, setPendingViewOnceLimit] = useState<0 | 1 | 2>(0)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -169,8 +174,7 @@ export default function ChatPro() {
   const recordingStreamRef = useRef<MediaStream | null>(null)
   const recordingChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<number | null>(null)
-  const syncingRef = useRef(false)
-
+  
   const targetUsername = username || searchParams.get('to')
 
   const loadOtherUser = useCallback(async () => {
@@ -263,38 +267,6 @@ export default function ChatPro() {
     setLoading(false)
   }, [online, otherUser, user])
 
-  const flushQueue = useCallback(async () => {
-    if (!user || !otherUser || !online || syncingRef.current) return
-    syncingRef.current = true
-    const queued = (await readQueuedMessages(user.id)).filter(item => item.otherUserId === otherUser.id)
-    if (!queued.length) {
-      syncingRef.current = false
-      return
-    }
-    for (const item of queued) {
-      const { data, error } = await supabase.rpc('send_message_v2', {
-        p_receiver_id: otherUser.id,
-        p_content: item.content,
-        p_reply_to_id: item.replyToId,
-        p_media_url: '',
-        p_media_type: '',
-        p_media_bucket: 'messages-private',
-        p_media_path: null,
-        p_view_once: false,
-        p_client_message_id: item.clientMessageId,
-        p_created_at: item.createdAt,
-      })
-      if (!error && data) {
-        await removeQueuedMessage(user.id, item.clientMessageId)
-      } else if (error && !isTransientSendError(error)) {
-        await removeQueuedMessage(user.id, item.clientMessageId)
-        setMessages(prev => prev.filter(message => message.client_message_id !== item.clientMessageId && message.id !== 'local:' + item.clientMessageId))
-        toast.error('Could not send a queued message: ' + error.message)
-      }
-    }
-    syncingRef.current = false
-    await loadMessages(false)
-  }, [loadMessages, online, otherUser, user])
 
   useEffect(() => { void loadOtherUser() }, [loadOtherUser])
   useEffect(() => {
@@ -304,7 +276,6 @@ export default function ChatPro() {
       void loadMessages()
     }
   }, [loadMessages, loadPreference, loadSharedSettings, otherUser])
-  useEffect(() => { if (online) void flushQueue() }, [flushQueue, online])
 
   useEffect(() => {
     if (!user || !otherUser || !online) return
@@ -360,7 +331,7 @@ export default function ChatPro() {
       window.removeEventListener('yomy-sync-complete', onSyncComplete)
       void supabase.removeChannel(channel)
     }
-  }, [flushQueue, loadMessages, loadSharedSettings, online, otherUser, user])
+  }, [loadMessages, loadSharedSettings, online, otherUser, user])
 
   useEffect(() => { window.setTimeout(() => scrollToBottom(false), 0) }, [messages.length, scrollToBottom])
   useEffect(() => () => {
@@ -525,18 +496,23 @@ export default function ChatPro() {
     const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
 
-    const { data, error } = await supabase.rpc('send_message_v2', {
-      p_receiver_id: otherUser.id,
-      p_content: input.trim(),
-      p_reply_to_id: replyTo?.id || null,
-      p_media_url: '',
-      p_media_type: kind,
-      p_media_bucket: 'messages-private',
-      p_media_path: path,
-      p_view_once: false,
-      p_client_message_id: clientMessageId,
-      p_created_at: createdAt,
-    })
+    const { data, error } = await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: otherUser.id,
+      content: input.trim(),
+      media_url: '',
+      media_type: kind,
+      media_bucket: 'messages-private',
+      media_path: path,
+      is_encrypted: true,
+      view_once: pendingViewOnceLimit > 0,
+      view_once_limit: pendingViewOnceLimit,
+      view_once_open_count: 0,
+      view_once_opened: false,
+      client_message_id: clientMessageId,
+      reply_to_id: replyTo?.id || null,
+      created_at: createdAt,
+    }).select('*').single()
     if (error) {
       await supabase.storage.from('messages-private').remove([path])
       return toast.error(error.message)
@@ -544,6 +520,7 @@ export default function ChatPro() {
     setMessages(prev => [...prev, data as Message])
     setInput('')
     setReplyTo(null)
+    setPendingViewOnceLimit(0)
     if (pendingMedia) URL.revokeObjectURL(pendingMedia.previewUrl)
     setPendingMedia(null)
     void sendPushEvent({
@@ -563,24 +540,36 @@ export default function ChatPro() {
     const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
 
-    const { data, error } = await supabase.rpc('send_message_v2', {
-      p_receiver_id: otherUser.id,
-      p_content: '',
-      p_reply_to_id: replyTo?.id || null,
-      p_media_url: '',
-      p_media_type: 'audio',
-      p_media_bucket: 'messages-private',
-      p_media_path: path,
-      p_view_once: false,
-      p_client_message_id: clientMessageId,
-      p_created_at: createdAt,
-    })
+    const { data, error } = await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: otherUser.id,
+      content: '',
+      media_url: '',
+      media_type: 'audio',
+      media_bucket: 'messages-private',
+      media_path: path,
+      is_encrypted: true,
+      view_once: false,
+      view_once_limit: 0,
+      view_once_open_count: 0,
+      view_once_opened: false,
+      client_message_id: clientMessageId,
+      reply_to_id: replyTo?.id || null,
+      created_at: createdAt,
+    }).select('*').single()
     if (error) {
       await supabase.storage.from('messages-private').remove([path])
       return toast.error(error.message)
     }
     setMessages(prev => [...prev, data as Message])
     setReplyTo(null)
+    void sendPushEvent({
+      type: 'message',
+      targetUserId: otherUser.id,
+      title: user.user_metadata?.username || 'Yomy',
+      body: '🎙️ Voice message',
+      data: { message_id: data.id, url: '/messages/' + otherUser.username },
+    })
   }
 
   const startVoice = async () => {
@@ -640,6 +629,9 @@ export default function ChatPro() {
       is_encrypted: true,
       view_once: false,
       view_once_opened: false,
+      view_once_limit: 0,
+      view_once_open_count: 0,
+      view_once_opened_at: null,
       deleted_at: null,
       deleted_for_everyone: false,
       reply_to_id: replyId,
@@ -670,18 +662,23 @@ export default function ChatPro() {
     }
 
     setSending(true)
-    const { data, error } = await supabase.rpc('send_message_v2', {
-      p_receiver_id: otherUser.id,
-      p_content: content,
-      p_reply_to_id: replyId,
-      p_media_url: '',
-      p_media_type: '',
-      p_media_bucket: 'messages-private',
-      p_media_path: null,
-      p_view_once: false,
-      p_client_message_id: clientMessageId,
-      p_created_at: createdAt,
-    })
+    const { data, error } = await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: otherUser.id,
+      content,
+      media_url: '',
+      media_type: '',
+      media_bucket: 'messages-private',
+      media_path: null,
+      is_encrypted: true,
+      view_once: false,
+      view_once_limit: 0,
+      view_once_open_count: 0,
+      view_once_opened: false,
+      client_message_id: clientMessageId,
+      reply_to_id: replyId,
+      created_at: createdAt,
+    }).select('*').single()
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
@@ -696,6 +693,7 @@ export default function ChatPro() {
       void sendPushEvent({ type: 'message', targetUserId: otherUser.id, title: user.user_metadata?.username || 'Yomy', body: content, data: { message_id: data.id, url: '/messages/' + otherUser.username } })
     } else if (isTransientSendError(error)) {
       await queueMessage({ clientMessageId, userId: user.id, otherUserId: otherUser.id, content, replyToId: replyId, createdAt })
+      window.dispatchEvent(new CustomEvent('yomy-sync-queued'))
     } else {
       setMessages(prev => prev.filter(message => message.id !== temp.id))
       await cacheMessages(user.id, otherUser.id, nextLocal.filter(message => message.id !== temp.id))
@@ -706,7 +704,7 @@ export default function ChatPro() {
 
   useEffect(() => {
     if (!online || !user || !messages.length) return
-    const candidates = messages.filter(message => message.media_type && !mediaUrls[message.id]).slice(-16)
+    const candidates = messages.filter(message => message.media_type && !message.view_once && !mediaUrls[message.id]).slice(-16)
     if (!candidates.length) return
     let cancelled = false
 
@@ -725,6 +723,28 @@ export default function ChatPro() {
 
     return () => { cancelled = true }
   }, [mediaUrls, messages, online, user])
+
+  const openViewOnce = async (message: Message) => {
+    if (!message.media_path || !user || !online) {
+      if (!online) toast.error('Connect to the internet to open protected media')
+      return
+    }
+    const { data, error } = await supabase.functions.invoke('message-media-url', {
+      body: { message_id: message.id, expires_in: 90, consume_view_once: true },
+    })
+    if (error || !data?.url) {
+      toast.error(String(data?.error || error?.message || 'Media is no longer available'))
+      return
+    }
+    const limit = Number(data.view_once_limit || message.view_once_limit || 1)
+    const used = Number(data.view_once_open_count || message.view_once_open_count || 0)
+    setMessages(prev => prev.map(item => item.id === message.id
+      ? { ...item, view_once: true, view_once_limit: (limit === 1 || limit === 2 ? limit : 1) as 0 | 1 | 2, view_once_open_count: used, view_once_opened: true, view_once_opened_at: data.view_once_opened_at || item.view_once_opened_at || null }
+      : item))
+    setViewOnceMessageId(message.id)
+    setViewOnceRemaining(Math.max(0, limit - used))
+    setViewOnceUrl(String(data.url))
+  }
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
   const pref = preference || (user && otherUser ? fallbackPreference(user.id, otherUser.id) : null)
@@ -798,8 +818,10 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
-                        {message.media_type === 'video' && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
+                        {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
+                        {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
+                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
+                        {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
                         {message.content && <p className="text-[15px] whitespace-pre-wrap break-words leading-[1.35]">{renderMessageText(message.content)}</p>}
@@ -817,11 +839,10 @@ export default function ChatPro() {
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
                   {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
-                    <Button variant="ghost" size="icon" className="size-7" onClick={() => setReactionFor(reactionFor === message.id ? null : message.id)}><Smile className="size-4" /></Button>
+                    <Button variant="ghost" size="icon" className="size-7" onClick={() => { setReactionFor(message.id); setEmojiOpen(true) }}><Smile className="size-4" /></Button>
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
                   </div>}
-                  {reactionFor === message.id && <div className="mt-1 rounded-full border bg-background/95 backdrop-blur-xl px-2 py-1.5 shadow-[0_14px_40px_rgba(0,0,0,.18)] flex gap-1">{['❤️','😂','👍','🔥','😮','😢','🎉','👏'].map(emoji => <button key={emoji} onClick={() => void react(message.id, emoji)} className="size-8 rounded-full hover:bg-muted active:scale-90 transition-transform">{emoji}</button>)}</div>}
                 </div>
               </div>
             )
@@ -830,7 +851,20 @@ export default function ChatPro() {
         </div>
       </div>
 
-      {pendingMedia && <div className="shrink-0 border-t bg-card px-3 py-2"><div className="flex items-center gap-3">{pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="size-16 rounded-xl object-cover" /> : <video src={pendingMedia.previewUrl} muted playsInline className="size-16 rounded-xl object-cover" />}<div className="min-w-0 flex-1"><p className="text-sm font-medium">{pendingMedia.kind === 'image' ? 'Photo ready' : 'Video ready'}</p><p className="text-xs text-muted-foreground truncate">Add an optional caption in the box below</p></div><Button variant="ghost" size="icon" onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null) }}><X className="size-5" /></Button><Button size="sm" disabled={!online} onClick={() => void uploadMedia(pendingMedia.file, pendingMedia.kind)}><Send className="size-4 mr-1" />Send</Button></div></div>}
+      {pendingMedia && <div className="shrink-0 border-t bg-card/92 backdrop-blur-xl px-3 py-2.5">
+        <div className="flex items-center gap-3">
+          {pendingMedia.kind === 'image' ? <img src={pendingMedia.previewUrl} alt="" className="size-16 rounded-2xl object-cover shadow-sm" /> : <video src={pendingMedia.previewUrl} muted playsInline className="size-16 rounded-2xl object-cover shadow-sm" />}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">{pendingMedia.kind === 'image' ? 'Photo ready' : 'Video ready'}</p>
+            <p className="text-xs text-muted-foreground truncate">Receiver access</p>
+            <div className="mt-2 inline-flex rounded-xl border bg-muted/55 p-0.5 shadow-inner">
+              {[{value:0,label:'Normal'},{value:1,label:'1×'},{value:2,label:'2×'}].map(option => <button key={option.value} type="button" onClick={() => setPendingViewOnceLimit(option.value as 0 | 1 | 2)} className={'px-3 py-1 rounded-[10px] text-[11px] font-semibold transition-all ' + (pendingViewOnceLimit === option.value ? 'bg-background shadow-sm ring-1 ring-black/5 dark:ring-white/10' : 'text-muted-foreground hover:text-foreground')}>{option.label}</button>)}
+            </div>
+          </div>
+          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => { URL.revokeObjectURL(pendingMedia.previewUrl); setPendingMedia(null); setPendingViewOnceLimit(0) }}><X className="size-5" /></Button>
+          <Button size="sm" disabled={!online} className="rounded-full px-4" onClick={() => void uploadMedia(pendingMedia.file, pendingMedia.kind)}><Send className="size-4 mr-1" />Send</Button>
+        </div>
+      </div>}
 
       {replyTo && <div className="shrink-0 border-t bg-card px-4 py-2 flex items-center gap-3"><Reply className="size-4 text-primary" /><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold">Replying to {replyTo.sender_id === user?.id ? 'yourself' : otherUser.username}</p><p className="text-xs text-muted-foreground truncate">{replyTo.content || 'Attachment'}</p></div><Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(null)}><X className="size-4" /></Button></div>}
 
@@ -839,10 +873,10 @@ export default function ChatPro() {
       {recording && <div className="shrink-0 border-t bg-card px-4 py-3 flex items-center gap-3"><span className="size-2.5 rounded-full bg-destructive animate-pulse" /><span className="text-sm font-medium">Recording {String(Math.floor(recordingSeconds / 60)).padStart(2,'0')}:{String(recordingSeconds % 60).padStart(2,'0')}</span><div className="flex-1" /><Button size="icon" className="rounded-full" onClick={() => recorderRef.current?.stop()}><Check /></Button></div>}
 
       {!recording && <div className="shrink-0 border-t bg-background/95 backdrop-blur-xl p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-end gap-1.5">
-        <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }); e.currentTarget.value='' }} />
+        <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingViewOnceLimit(0); setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => fileRef.current?.click()}><ImagePlus className="size-5" /></Button>
         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => void startVoice()}><Mic className="size-5" /></Button>
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" onClick={() => setInput(value => value + ' ❤️')}><Smile className="size-5" /></Button>
+        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" onClick={() => setEmojiOpen(true)} aria-label="Open emoji picker"><Smile className="size-5" /></Button>
         <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendText()} }} placeholder={editing ? 'Edit message…' : online ? 'Message' : 'Message offline…'} className="flex-1 rounded-2xl min-h-10 bg-muted/55 border-transparent focus-visible:border-border" />
         <Button size="icon" className="size-10 rounded-full shrink-0" disabled={!input.trim() || sending} onClick={() => void sendText()}>{editing ? <CheckCheck className="size-5" /> : <Send className="size-5" />}</Button>
       </div>}
@@ -874,7 +908,41 @@ export default function ChatPro() {
         </DialogContent>
       </Dialog>}
 
-      {viewOnceUrl && <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center p-4" onClick={() => setViewOnceUrl(null)}><img src={viewOnceUrl} alt="" className="max-w-full max-h-full object-contain" /><Button variant="ghost" className="absolute top-4 right-4 text-white" size="icon"><X className="size-6" /></Button></div>}
+      {emojiOpen && <Dialog open={emojiOpen} onOpenChange={open => { setEmojiOpen(open); if (!open) setReactionFor(null) }}>
+        <DialogContent className="w-[min(96vw,430px)] max-w-[430px] rounded-[28px] border-border/70 bg-background/95 p-2 shadow-[0_30px_100px_rgba(0,0,0,.28)] backdrop-blur-2xl">
+          <DialogHeader className="px-3 pt-2 pb-1"><DialogTitle className="text-base font-semibold">{reactionFor ? 'React to message' : 'Emoji'}</DialogTitle></DialogHeader>
+          <div className="overflow-hidden rounded-[22px] border border-border/60 shadow-inner">
+            <EmojiPicker
+              theme={EmojiTheme.AUTO}
+              emojiStyle={EmojiStyle.NATIVE}
+              width="100%"
+              height={440}
+              previewConfig={{ showPreview: false }}
+              onEmojiClick={data => {
+                if (reactionFor) {
+                  void react(reactionFor, data.emoji)
+                  setEmojiOpen(false)
+                  setReactionFor(null)
+                } else {
+                  setInput(value => value + data.emoji)
+                }
+              }}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>}
+
+      {viewOnceUrl && <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-4" onClick={() => { setViewOnceUrl(null); setViewOnceMessageId(null); setViewOnceRemaining(null) }}>
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 text-white/85 rounded-full bg-white/10 border border-white/10 px-4 py-2 text-xs backdrop-blur-xl" onClick={e => e.stopPropagation()}>
+          {viewOnceRemaining && viewOnceRemaining > 0 ? (viewOnceRemaining + ' view remaining') : 'This media expires after this view'}
+        </div>
+        <div className="relative max-w-full max-h-full rounded-[28px] overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,.5)] ring-1 ring-white/10">
+          {messages.find(item => item.id === viewOnceMessageId)?.media_type === 'video'
+            ? <video src={viewOnceUrl} autoPlay controls playsInline className="max-w-[94vw] max-h-[78vh] object-contain bg-black" onClick={e => e.stopPropagation()} />
+            : <img src={viewOnceUrl} alt="" className="max-w-[94vw] max-h-[78vh] object-contain" onClick={e => e.stopPropagation()} />}
+        </div>
+        <Button variant="ghost" className="absolute top-5 right-5 text-white hover:bg-white/10 rounded-full" size="icon" onClick={e => { e.stopPropagation(); setViewOnceUrl(null); setViewOnceMessageId(null); setViewOnceRemaining(null) }}><X className="size-6" /></Button>
+      </div>}
       {pref?.muted && <div className="fixed bottom-20 left-1/2 -translate-x-1/2 rounded-full bg-background/90 border px-3 py-1.5 text-[11px] shadow-xl backdrop-blur-xl">Notifications muted for this chat</div>}
     </div>
   )

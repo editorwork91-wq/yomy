@@ -13,6 +13,9 @@ public class CallActionReceiver extends BroadcastReceiver {
     public static final String EXTRA_CALL_ID = "call_id";
     public static final String EXTRA_ACTION = "yomy_call_action";
     private static final int CALL_NOTIFICATION_ID = 41001;
+    private static final String PREFS = "yomy_call_actions";
+    private static final String PREF_ACTION = "action";
+    private static final String PREF_CALL_ID = "call_id";
 
     public static void cancelCallNotification(Context context) {
         try {
@@ -29,6 +32,7 @@ public class CallActionReceiver extends BroadcastReceiver {
         String callId = intent == null ? null : intent.getStringExtra(EXTRA_CALL_ID);
         if (callId == null || callId.trim().isEmpty()) return;
 
+        storePendingAction(context, action, callId);
         cancelCallNotification(context);
 
         if (ACTION_OPEN.equals(action)) {
@@ -67,3 +71,14 @@ public class CallActionReceiver extends BroadcastReceiver {
         }
     }
 }
+
+
+    private static void storePendingAction(Context context, String action, String callId) {
+        try {
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(PREF_ACTION, action)
+                    .putString(PREF_CALL_ID, callId)
+                    .apply();
+        } catch (Exception ignored) {}
+    }
