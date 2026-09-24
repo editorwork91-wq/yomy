@@ -187,6 +187,8 @@ export default function ChatPro() {
   const cameraRecorderRef = useRef<MediaRecorder | null>(null)
   const cameraChunksRef = useRef<Blob[]>([])
   const cameraTimerRef = useRef<number | null>(null)
+  const resolvingMediaRef = useRef(new Set<string>())
+  const openingViewOnceRef = useRef(new Set<string>())
   
   const targetUsername = username || searchParams.get('to')
 
@@ -858,46 +860,59 @@ export default function ChatPro() {
 
   useEffect(() => {
     if (!online || !user || !messages.length) return
-    const candidates = messages.filter(message => message.media_type && !message.view_once && !mediaUrls[message.id]).slice(-16)
+    const candidates = messages
+      .filter(message => message.media_type && !message.view_once && !mediaUrls[message.id] && !resolvingMediaRef.current.has(message.id))
+      .slice(-16)
     if (!candidates.length) return
     let cancelled = false
 
     void Promise.all(candidates.map(async message => {
-      if (message.media_url && message.media_bucket !== 'messages-private') {
-        setMediaUrls(current => ({ ...current, [message.id]: message.media_url }))
-        return
-      }
-      const { data, error } = await supabase.functions.invoke('message-media-url', {
-        body: { message_id: message.id, expires_in: 3600 },
-      })
-      if (!cancelled && !error && data?.url) {
-        setMediaUrls(current => ({ ...current, [message.id]: String(data.url) }))
+      resolvingMediaRef.current.add(message.id)
+      try {
+        if (message.media_url && message.media_bucket !== 'messages-private') {
+          if (!cancelled) setMediaUrls(current => ({ ...current, [message.id]: message.media_url }))
+          return
+        }
+        const { data, error } = await supabase.functions.invoke('message-media-url', {
+          body: { message_id: message.id, expires_in: 3600 },
+        })
+        if (!cancelled && !error && data?.url) {
+          setMediaUrls(current => ({ ...current, [message.id]: String(data.url) }))
+        }
+      } finally {
+        resolvingMediaRef.current.delete(message.id)
       }
     }))
 
     return () => { cancelled = true }
-  }, [mediaUrls, messages, online, user])
+  }, [messages, online, user])
 
   const openViewOnce = async (message: Message) => {
     if (!message.media_path || !user || !online) {
       if (!online) toast.error('Connect to the internet to open protected media')
       return
     }
-    const { data, error } = await supabase.functions.invoke('message-media-url', {
-      body: { message_id: message.id, expires_in: 90, consume_view_once: true },
-    })
-    if (error || !data?.url) {
-      toast.error(String(data?.error || error?.message || 'Media is no longer available'))
-      return
+    if (openingViewOnceRef.current.has(message.id)) return
+    openingViewOnceRef.current.add(message.id)
+    try {
+      const { data, error } = await supabase.functions.invoke('message-media-url', {
+        body: { message_id: message.id, expires_in: 90, consume_view_once: true },
+      })
+      if (error || data?.ok === false || !data?.url) {
+        toast.error(String(data?.error || error?.message || 'Media is no longer available'))
+        return
+      }
+      const limit = Number(data.view_once_limit || message.view_once_limit || 1)
+      const used = Number(data.view_once_open_count || message.view_once_open_count || 0)
+      setMessages(prev => prev.map(item => item.id === message.id
+        ? { ...item, view_once: true, view_once_limit: (limit === 1 || limit === 2 ? limit : 1) as 0 | 1 | 2, view_once_open_count: used, view_once_opened: true, view_once_opened_at: data.view_once_opened_at || item.view_once_opened_at || null }
+        : item))
+      setViewOnceMessageId(message.id)
+      setViewOnceRemaining(Math.max(0, limit - used))
+      setViewOnceUrl(String(data.url))
+    } finally {
+      openingViewOnceRef.current.delete(message.id)
     }
-    const limit = Number(data.view_once_limit || message.view_once_limit || 1)
-    const used = Number(data.view_once_open_count || message.view_once_open_count || 0)
-    setMessages(prev => prev.map(item => item.id === message.id
-      ? { ...item, view_once: true, view_once_limit: (limit === 1 || limit === 2 ? limit : 1) as 0 | 1 | 2, view_once_open_count: used, view_once_opened: true, view_once_opened_at: data.view_once_opened_at || item.view_once_opened_at || null }
-      : item))
-    setViewOnceMessageId(message.id)
-    setViewOnceRemaining(Math.max(0, limit - used))
-    setViewOnceUrl(String(data.url))
   }
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
@@ -962,8 +977,8 @@ export default function ChatPro() {
             const reactionSummary = message.message_reactions?.reduce<Record<string, number>>((acc, item) => { acc[item.emoji] = (acc[item.emoji] || 0) + 1; return acc }, {})
             return (
               <div key={message.id} id={'message-' + message.id} className={'flex ' + (mine ? 'justify-end' : 'justify-start') + ' group'}>
-                <div className="max-w-[84%] sm:max-w-[72%] flex flex-col">
-                  <div className={'rounded-[1.15rem] px-3.5 py-2 shadow-sm border border-black/5 ' + (mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
+                <div className="max-w-[78%] sm:max-w-[66%] flex flex-col">
+                  <div className={'rounded-[1.3rem] px-3 py-1.5 shadow-sm border border-black/5 ' + (mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
                     {message.reply_to && !message.deleted_for_everyone && (
                       <button onClick={() => document.getElementById('message-' + message.reply_to_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className={'w-full text-left mb-2 rounded-lg px-2.5 py-1.5 text-[11px] ' + (mine ? 'bg-white/15' : 'bg-muted')}>
                         <span className="font-semibold block">{message.reply_to.sender_id === user?.id ? 'You' : otherUser.username}</span>
@@ -972,15 +987,15 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
+                        {message.media_type === 'image' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-[min(18rem,76vw)] h-24 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Eye className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View photo'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
                         {message.media_type === 'video' && message.view_once && !message.deleted_for_everyone && <button disabled={message.sender_id === user?.id || message.view_once_open_count >= (message.view_once_limit || 1)} onClick={() => void openViewOnce(message)} className="w-56 h-28 rounded-2xl border border-white/10 bg-black/10 dark:bg-white/5 flex items-center gap-3 px-4 text-left shadow-inner disabled:opacity-55"><Video className="size-5 shrink-0" /><span><b className="block text-sm">{message.sender_id === user?.id ? 'Sent media' : message.view_once_open_count >= (message.view_once_limit || 1) ? 'Media expired' : 'View video'}</b><small className="opacity-70">{message.sender_id === user?.id ? ((message.view_once_limit || 1) + '× mode') : Math.max(0, (message.view_once_limit || 1) - message.view_once_open_count) + ' view(s) left'}</small></span></button>}
-                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5" loading="lazy" /></button>}
-                        {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full mb-1.5" />}
+                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <button onClick={() => setViewOnceUrl(mediaUrls[message.id] || message.media_url)} className="block"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-64 max-w-[min(18rem,76vw)] object-cover mb-1.5" loading="lazy" /></button>}
+                        {message.media_type === 'video' && !message.view_once && (mediaUrls[message.id] || message.media_url) && <video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-64 max-w-[min(18rem,76vw)] mb-1.5" />}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
-                        {message.content && <p className="text-[15px] whitespace-pre-wrap break-words leading-[1.35]">{renderMessageText(message.content)}</p>}
+                        {message.content && <p className="text-[14px] whitespace-pre-wrap break-words leading-[1.45]">{renderMessageText(message.content)}</p>}
                         {message.content && firstUrl(message.content) && <LinkPreviewCard url={firstUrl(message.content)} />}
-                        {message.view_once && message.media_type && <p className="text-[11px] mt-1 opacity-75 flex items-center gap-1"><Eye className="size-3" />View once</p>}
+                        {message.view_once && message.media_type && <p className="text-[11px] mt-1 opacity-75 flex items-center gap-1"><Eye className="size-3" />{message.view_once_limit === 2 ? 'View twice' : 'View once'}</p>}
                       </>
                     )}
                     <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
