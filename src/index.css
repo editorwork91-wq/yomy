@@ -150,3 +150,40 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+@layer components {
+  .yomy-chat-wallpaper-romance {
+    background-color: oklch(0.985 0.02 350);
+    background-image: radial-gradient(circle at 20% 20%, oklch(0.9 0.12 350 / .28) 0 3px, transparent 4px), radial-gradient(circle at 80% 70%, oklch(0.86 0.14 20 / .22) 0 4px, transparent 5px), linear-gradient(135deg, oklch(0.98 0.025 350), oklch(0.96 0.035 20));
+    background-size: 72px 72px, 96px 96px, 100% 100%;
+  }
+  .yomy-chat-wallpaper-hearts {
+    background-color: oklch(0.985 0.015 350);
+    background-image: radial-gradient(circle at 20% 30%, oklch(0.63 0.2 15 / .16) 0 5px, transparent 6px), radial-gradient(circle at 75% 65%, oklch(0.63 0.2 15 / .12) 0 4px, transparent 5px);
+    background-size: 54px 54px, 68px 68px;
+  }
+  .yomy-chat-wallpaper-petals {
+    background-color: oklch(0.985 0.012 90);
+    background-image: radial-gradient(ellipse at 20% 20%, oklch(0.72 0.14 20 / .14) 0 5px, transparent 6px), radial-gradient(ellipse at 70% 75%, oklch(0.78 0.12 80 / .16) 0 6px, transparent 7px);
+    background-size: 84px 84px, 110px 110px;
+  }
+  .yomy-chat-wallpaper-midnight {
+    background-color: oklch(0.16 0.025 260);
+    background-image: radial-gradient(circle at 15% 15%, oklch(0.65 0.12 260 / .12) 0 2px, transparent 3px), radial-gradient(circle at 80% 70%, oklch(0.55 0.16 290 / .10) 0 3px, transparent 4px);
+    background-size: 64px 64px, 92px 92px;
+  }
+  .yomy-chat-wallpaper-paper {
+    background-color: oklch(0.97 0.01 90);
+    background-image: linear-gradient(oklch(0.5 0 0 / .025) 1px, transparent 1px), linear-gradient(90deg, oklch(0.5 0 0 / .018) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .yomy-chat-wallpaper-romance,
+  .yomy-chat-wallpaper-hearts,
+  .yomy-chat-wallpaper-petals,
+  .yomy-chat-wallpaper-paper { color: oklch(0.2 0.02 260); }
+  .dark .yomy-chat-wallpaper-romance { background-color: oklch(0.19 0.03 350); }
+  .dark .yomy-chat-wallpaper-hearts { background-color: oklch(0.18 0.025 350); }
+  .dark .yomy-chat-wallpaper-petals { background-color: oklch(0.18 0.02 90); }
+  .dark .yomy-chat-wallpaper-paper { background-color: oklch(0.19 0.015 90); }
+}
