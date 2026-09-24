@@ -34,9 +34,6 @@ export default function MessagesPro() {
   const [showArchived, setShowArchived] = useState(false)
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<ProfileType[]>([])
-  const refreshMessages = useCallback(async () => { await fetchInbox(); await fetchNotes() }, [fetchInbox, fetchNotes])
-  const { pullDistance, refreshing } = usePullToRefresh(refreshMessages)
-
   const fetchInbox = useCallback(async () => {
     if (!user) return
     const cached = await readCachedConversations<Conversation>(user.id)
@@ -102,6 +99,9 @@ export default function MessagesPro() {
       .limit(20)
     setNotes((data || []) as Note[])
   }, [online, user])
+
+  const refreshMessages = useCallback(async () => { await fetchInbox(); await fetchNotes() }, [fetchInbox, fetchNotes])
+  const { pullDistance, refreshing } = usePullToRefresh(refreshMessages)
 
   useEffect(() => {
     void fetchInbox()
