@@ -498,6 +498,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         if (action === 'open') openCallRoute(loaded.callerProfile, callId)
         else if (action === 'accept') await acceptCall(loaded.call, loaded.callerProfile)
         else if (action === 'decline') await declineCall(loaded.call)
+        else if (action === 'end' && activeRef.current?.id === callId) await endCall()
       }
       bridge?.clearPendingCallAction?.()
       window.setTimeout(() => handledNativeActionsRef.current.delete(key), 2500)
@@ -515,6 +516,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
           if (detail.action === 'open') openCallRoute(loaded.callerProfile, loaded.call.id)
           else if (detail.action === 'accept') await acceptCall(loaded.call, loaded.callerProfile)
           else if (detail.action === 'decline') await declineCall(loaded.call)
+          else if (detail.action === 'end' && activeRef.current?.id === detail.callId) await endCall()
         }
         nativeNotifications()?.clearPendingCallAction?.()
         window.setTimeout(() => handledNativeActionsRef.current.delete(key), 2500)
@@ -522,7 +524,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     }
     window.addEventListener('yomy-call-action', onAction)
     return () => window.removeEventListener('yomy-call-action', onAction)
-  }, [acceptCall, declineCall, loadIncomingById, openCallRoute])
+  }, [acceptCall, declineCall, endCall, loadIncomingById, openCallRoute])
 
   useEffect(() => {
     const callId = new URLSearchParams(location.search).get('call')
