@@ -425,9 +425,20 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       handledNativeActionsRef.current.add(key)
       try {
         if (action === 'open') {
-          setCallPresentationRoute(null)
-          setIncoming(loaded.call)
-          setPeer(loaded.callerProfile)
+          if (loaded.call.status === 'ringing') {
+            setCallPresentationRoute(null)
+            setIncoming(loaded.call)
+            setPeer(loaded.callerProfile)
+          } else if (loaded.call.status === 'active') {
+            const destination = `/messages/${encodeURIComponent(loaded.callerProfile.username)}?call=${encodeURIComponent(loaded.call.id)}`
+            setCallPresentationRoute(destination)
+            setIncoming(null)
+            setPeer(loaded.callerProfile)
+            openCallRoute(loaded.callerProfile, loaded.call.id)
+          } else {
+            handledNativeActionsRef.current.delete(key)
+            return false
+          }
         } else if (action === 'accept') {
           await acceptCall(loaded.call, loaded.callerProfile)
         } else if (action === 'decline') {
