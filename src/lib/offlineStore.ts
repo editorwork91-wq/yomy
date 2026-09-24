@@ -1,4 +1,4 @@
-type QueuedMessage = {
+export type QueuedMessage = {
   clientMessageId: string
   userId: string
   otherUserId: string
@@ -8,7 +8,7 @@ type QueuedMessage = {
 }
 
 const DB_NAME = 'yomy-offline-v4'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const KV_STORE = 'kv'
 const QUEUE_STORE = 'queue'
 
