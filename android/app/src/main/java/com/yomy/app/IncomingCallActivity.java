@@ -220,7 +220,7 @@ public class IncomingCallActivity extends Activity {
     }
 
     private void loadAvatar(String avatarUrl) {
-        if (avatarUrl == null || avatarUrl.isEmpty()) return
+        if (avatarUrl == null || avatarUrl.isEmpty()) return;
         new Thread(() -> {
             try {
                 java.net.URL url = new java.net.URL(avatarUrl);
