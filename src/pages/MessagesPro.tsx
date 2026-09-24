@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 type Conversation = {
@@ -33,6 +34,8 @@ export default function MessagesPro() {
   const [showArchived, setShowArchived] = useState(false)
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<ProfileType[]>([])
+  const refreshMessages = useCallback(async () => { await fetchInbox(); await fetchNotes() }, [fetchInbox, fetchNotes])
+  const { pullDistance, refreshing } = usePullToRefresh(refreshMessages)
 
   const fetchInbox = useCallback(async () => {
     if (!user) return
@@ -159,6 +162,8 @@ export default function MessagesPro() {
     <div className="min-h-screen bg-background pb-20">
       <TopBar title="Messages" right={<Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate('/messages/new')}><Plus className="size-5" /></Button>} />
       {!online && <div className="px-4 py-2 border-b border-amber-500/20 bg-amber-500/10 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline mode • conversations are available from this device</span></div>}
+
+      <div className="fixed left-1/2 top-14 z-30 -translate-x-1/2 pointer-events-none transition-opacity" style={{ opacity: pullDistance > 5 ? 1 : 0, transform: `translate(-50%, ${Math.min(34, pullDistance * .45)}px)` }}><div className="rounded-full border bg-background/85 px-3 py-1.5 text-[10px] shadow-lg backdrop-blur-xl">{refreshing ? 'Refreshing…' : pullDistance > 58 ? 'Release to refresh' : 'Pull to refresh'}</div></div>
 
       <div className="max-w-lg mx-auto">
         {notes.length > 0 && <div className="px-4 py-3 border-b border-border"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Notes</p><div className="flex gap-4 overflow-x-auto scrollbar-hide">{notes.map(note => <Link key={note.id} to={'/profile/' + note.profiles?.username} className="w-16 shrink-0 text-center"><Avatar className="size-12 mx-auto"><AvatarImage src={note.profiles?.avatar_url} /><AvatarFallback>{note.profiles?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><p className="text-[11px] truncate mt-1">{note.content}</p></Link>)}</div></div>}
