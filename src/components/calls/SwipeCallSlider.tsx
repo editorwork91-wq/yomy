@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import type { PointerEvent } from 'react'
 import { ChevronLeft, ChevronRight, Phone, PhoneOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -29,7 +30,7 @@ export default function SwipeCallSlider({
     try { navigator.vibrate?.(12) } catch {}
   }
 
-  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (disabled) return
     dragging.current = true
     event.currentTarget.setPointerCapture(event.pointerId)
