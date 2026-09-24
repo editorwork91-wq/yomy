@@ -16,7 +16,7 @@ type CallSession = { id: string; caller_id: string; callee_id: string; kind: Cal
 type Peer = { id: string; username: string; full_name: string; avatar_url: string }
 type CallContextValue = { startCall: (peer: Peer, kind: CallKind) => Promise<void> }
 type AudioRouteBridge = { setSpeaker: (enabled: boolean) => void }
-type NativeNotificationBridge = { stopCall?: () => void; getPendingCallAction?: () => string; clearPendingCallAction?: () => void }
+type NativeNotificationBridge = { stopCall?: () => void; showIncomingCallScreen?: (callId: string, title: string, body: string, kind: string, avatarUrl: string) => boolean; getPendingCallAction?: () => string; clearPendingCallAction?: () => void }
 
 type OutgoingStage = 'connecting' | 'ringing'
 const CALL_RING_TIMEOUT_MS = 60_000
@@ -166,9 +166,9 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setPeer(target)
     setOutgoingStage('connecting')
     try {
-      await setupPeer(call, true)
       const callerLabel = String(user.user_metadata?.username || user.user_metadata?.full_name || 'Yomy')
-      await sendPushEvent({ type: 'call', targetUserId: target.id, title: callerLabel, body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', data: { call_id: call.id, call_kind: kind, kind, event_type: 'CALL_INCOMING', push_title: callerLabel, push_body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', url: `/messages/${callerLabel}?call=${call.id}` } })
+      await sendPushEvent({ type: 'call', targetUserId: target.id, title: callerLabel, body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', data: { call_id: call.id, call_kind: kind, kind, event_type: 'CALL_INCOMING', push_title: callerLabel, push_body: kind === 'video' ? 'Incoming video call' : 'Incoming voice call', avatar_url: target.avatar_url || '', url: `/messages/${callerLabel}?call=${call.id}` } })
+      await setupPeer(call, true)
       timeoutRef.current = window.setTimeout(async () => {
         if (activeRef.current?.id === call.id && activeRef.current.status === 'ringing') {
           await supabase.from('call_sessions').update({ status: 'missed', ended_at: new Date().toISOString() }).eq('id', call.id).eq('status', 'ringing')
@@ -380,6 +380,12 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   }, [loadIncomingById, location.search, user])
 
   useEffect(() => {
+    if (!incoming || !peer || active || !nativeIncomingAvailable) return
+    const body = incoming.kind === 'video' ? 'Incoming video call' : 'Incoming voice call'
+    nativeNotifications()?.showIncomingCallScreen?.(incoming.id, peer.username, body, incoming.kind, peer.avatar_url || '')
+  }, [incoming, peer, active, nativeIncomingAvailable])
+
+  useEffect(() => {
     if (!active || active.status !== 'active') { setElapsedSeconds(0); return }
     const startAt = new Date(active.started_at || active.answered_at || active.created_at).getTime()
     const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startAt) / 1000)))
@@ -392,7 +398,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const toggleCamera = () => { const track = localStream?.getVideoTracks()[0]; if (!track) return; track.enabled = !track.enabled; setCameraOff(!track.enabled) }
   const applySpeakerRoute = (enabled: boolean) => { setNativeSpeaker(enabled); setSpeakerOn(enabled) }
   const value = useMemo(() => ({ startCall }), [startCall])
-  const showIncoming = !!incoming && !active
+  const nativeIncomingAvailable = typeof nativeNotifications()?.showIncomingCallScreen === 'function'
+  const showIncoming = !!incoming && !active && !nativeIncomingAvailable
   const showOutgoing = !!active && active.status === 'ringing'
   const showActive = !!active && active.status === 'active'
 
