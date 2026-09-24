@@ -29,22 +29,20 @@ function loadShards(): Shard[] {
   if (mode !== 'sharded') {
     return [{ name: 'yomy-main', url: mainUrl, service_role_key: mainServiceKey, anon_key: '', bucket: 'fedos', thumbnail_bucket: 'fedo-thumbnails' }]
   }
-  
-    const raw = Deno.env.get('MEDIA_SHARDS_JSON')
-    if (!raw) {
-      return [{ name: 'yomy-main', url: mainUrl, service_role_key: mainServiceKey, anon_key: '', bucket: 'fedos', thumbnail_bucket: 'fedo-thumbnails' }]
-    }
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed) || !parsed.length) throw new Error('MEDIA_SHARDS_JSON_INVALID')
-    const shards = parsed.filter((value: unknown): value is Shard => {
-      if (!value || typeof value !== 'object') return false
-      const shard = value as Shard
-      return typeof shard.url === 'string' && typeof shard.service_role_key === 'string' && typeof shard.anon_key === 'string'
-    })
-    if (!shards.length) throw new Error('MEDIA_SHARDS_JSON_NO_VALID_SHARDS')
-    return shards
+
+  const raw = Deno.env.get('MEDIA_SHARDS_JSON')
+  if (!raw) {
+    return [{ name: 'yomy-main', url: mainUrl, service_role_key: mainServiceKey, anon_key: '', bucket: 'fedos', thumbnail_bucket: 'fedo-thumbnails' }]
   }
-  
+  const parsed = JSON.parse(raw)
+  if (!Array.isArray(parsed) || !parsed.length) throw new Error('MEDIA_SHARDS_JSON_INVALID')
+  const shards = parsed.filter((value: unknown): value is Shard => {
+    if (!value || typeof value !== 'object') return false
+    const shard = value as Shard
+    return typeof shard.url === 'string' && typeof shard.service_role_key === 'string' && typeof shard.anon_key === 'string'
+  })
+  if (!shards.length) throw new Error('MEDIA_SHARDS_JSON_NO_VALID_SHARDS')
+  return shards
 }
 function safePath(path: unknown, userId: string) {
   return typeof path === 'string'
