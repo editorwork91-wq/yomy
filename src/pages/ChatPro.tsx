@@ -333,7 +333,7 @@ export default function ChatPro() {
       if (detail?.clientMessageId) {
         setMessages(prev => prev.filter(message => message.client_message_id !== detail.clientMessageId && message.id !== 'local:' + detail.clientMessageId))
         void loadMessages(false)
-        toast.error(detail.message || 'Message could not be be sent')
+        toast.error(detail.message || 'Message could not be sent')
       } else if (detail?.messageId) {
         void loadMessages(false)
         toast.error(detail.message || 'Sync failed')
