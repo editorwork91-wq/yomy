@@ -161,6 +161,7 @@ export default function ChatPro() {
   const [viewOnceRemaining, setViewOnceRemaining] = useState<number | null>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [pendingViewOnceLimit, setPendingViewOnceLimit] = useState<0 | 1 | 2>(0)
+  const [viewOncePickerOpen, setViewOncePickerOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -873,13 +874,57 @@ export default function ChatPro() {
       {recording && <div className="shrink-0 border-t bg-card px-4 py-3 flex items-center gap-3"><span className="size-2.5 rounded-full bg-destructive animate-pulse" /><span className="text-sm font-medium">Recording {String(Math.floor(recordingSeconds / 60)).padStart(2,'0')}:{String(recordingSeconds % 60).padStart(2,'0')}</span><div className="flex-1" /><Button size="icon" className="rounded-full" onClick={() => recorderRef.current?.stop()}><Check /></Button></div>}
 
       {!recording && <div className="shrink-0 border-t bg-background/95 backdrop-blur-xl p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] flex items-end gap-1.5">
-        <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingViewOnceLimit(0); setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => fileRef.current?.click()}><ImagePlus className="size-5" /></Button>
+        <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
+        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => fileRef.current?.click()} aria-label="Attach photo or video"><ImagePlus className="size-5" /></Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={'size-10 rounded-full shrink-0 relative ' + (pendingViewOnceLimit > 0 ? 'bg-primary/10 text-primary ring-1 ring-primary/25' : '')}
+          onClick={() => setViewOncePickerOpen(true)}
+          aria-label="View once settings"
+          title={pendingViewOnceLimit === 0 ? 'Normal media' : pendingViewOnceLimit === 1 ? 'View once' : 'View twice'}
+        >
+          <Eye className="size-5" />
+          {pendingViewOnceLimit > 0 && <span className="absolute -right-0.5 -top-0.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold leading-4">{pendingViewOnceLimit}×</span>}
+        </Button>
         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => void startVoice()}><Mic className="size-5" /></Button>
         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" onClick={() => setEmojiOpen(true)} aria-label="Open emoji picker"><Smile className="size-5" /></Button>
         <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendText()} }} placeholder={editing ? 'Edit message…' : online ? 'Message' : 'Message offline…'} className="flex-1 rounded-2xl min-h-10 bg-muted/55 border-transparent focus-visible:border-border" />
         <Button size="icon" className="size-10 rounded-full shrink-0" disabled={!input.trim() || sending} onClick={() => void sendText()}>{editing ? <CheckCheck className="size-5" /> : <Send className="size-5" />}</Button>
       </div>}
+
+      <Dialog open={viewOncePickerOpen} onOpenChange={setViewOncePickerOpen}>
+        <DialogContent className="max-w-sm rounded-[28px] border-white/15 bg-background/90 backdrop-blur-2xl shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Eye className="size-5 text-primary" />Media viewing mode</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2.5 pt-1">
+            {[
+              { value: 0 as const, title: 'Normal', description: 'Media stays available normally' },
+              { value: 1 as const, title: 'View once', description: 'Recipient can open it one time' },
+              { value: 2 as const, title: 'View twice', description: 'Recipient can open it two times' },
+            ].map(option => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => { setPendingViewOnceLimit(option.value); setViewOncePickerOpen(false) }}
+                className={'w-full rounded-2xl border px-4 py-3 text-left transition-all ' + (pendingViewOnceLimit === option.value ? 'border-primary/40 bg-primary/10 shadow-sm' : 'border-border/60 bg-muted/35 hover:bg-muted/60')}
+              >
+                <div className="flex items-center gap-3">
+                  <span className={'grid size-10 place-items-center rounded-xl ' + (pendingViewOnceLimit === option.value ? 'bg-primary text-primary-foreground' : 'bg-background/80')}>
+                    {option.value === 0 ? <ImagePlus className="size-5" /> : <Eye className="size-5" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <b className="block text-sm">{option.title}</b>
+                    <small className="block text-xs text-muted-foreground mt-0.5">{option.description}</small>
+                  </span>
+                  {pendingViewOnceLimit === option.value && <Check className="size-5 text-primary shrink-0" />}
+                </div>
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {settingsOpen && pref && <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="max-w-sm max-h-[82vh] overflow-y-auto">
