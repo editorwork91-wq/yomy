@@ -384,12 +384,19 @@ export default function ChatPro() {
         { user_id: user.id, other_user_id: otherUser.id, ...personalPatch },
         { onConflict: 'user_id,other_user_id' },
       )
-      if (error) toast.error(error.message)
+      if (error) {
+        if (isTransientSendError(error)) await queueSyncOperation({ opId: crypto.randomUUID(), userId: user.id, kind: 'chat_personal', createdAt: new Date().toISOString(), payload: { otherUserId: otherUser.id, patch: personalPatch } })
+        else toast.error(error.message)
+      }
     }
 
     if ('muted' in personalPatch) {
-      if (next.muted) await supabase.from('muted_chats').upsert({ user_id: user.id, muted_user_id: otherUser.id })
-      else await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', otherUser.id)
+      const mutedResult = next.muted
+        ? await supabase.from('muted_chats').upsert({ user_id: user.id, muted_user_id: otherUser.id })
+        : await supabase.from('muted_chats').delete().eq('user_id', user.id).eq('muted_user_id', otherUser.id)
+      if (mutedResult.error && isTransientSendError(mutedResult.error)) {
+        await queueSyncOperation({ opId: crypto.randomUUID(), userId: user.id, kind: 'chat_personal', createdAt: new Date().toISOString(), payload: { otherUserId: otherUser.id, patch: { muted: next.muted } } })
+      }
     }
 
     if ('wallpaper' in patch && patch.wallpaper) {
@@ -398,7 +405,10 @@ export default function ChatPro() {
         { ...pair, wallpaper: patch.wallpaper, updated_by: user.id },
         { onConflict: 'user_low,user_high' },
       )
-      if (error) toast.error(error.message)
+      if (error) {
+        if (isTransientSendError(error)) await queueSyncOperation({ opId: crypto.randomUUID(), userId: user.id, kind: 'chat_shared', createdAt: new Date().toISOString(), payload: { otherUserId: otherUser.id, wallpaper: patch.wallpaper } })
+        else toast.error(error.message)
+      }
     }
 
     window.dispatchEvent(new CustomEvent('yomy-chat-settings-changed', { detail: { otherUserId: otherUser.id, patch } }))
