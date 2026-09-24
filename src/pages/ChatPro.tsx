@@ -3,7 +3,7 @@ import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from 'emoji-picker-react
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Camera, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
-  Mic, MoreVertical, Palette, Phone, Reply, Send, Smile, Trash2, Video, WifiOff,
+  Mic, MoreVertical, Palette, Phone, Reply, RotateCcw, Send, Smile, Trash2, Video, WifiOff,
   X, Pencil, Eye, Clock3, UserRound, ShieldCheck
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -162,6 +162,13 @@ export default function ChatPro() {
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [pendingViewOnceLimit, setPendingViewOnceLimit] = useState<0 | 1 | 2>(0)
   const [viewOncePickerOpen, setViewOncePickerOpen] = useState(false)
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo')
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment')
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [cameraRecording, setCameraRecording] = useState(false)
+  const [cameraSeconds, setCameraSeconds] = useState(0)
+  const [cameraFlash, setCameraFlash] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -176,6 +183,10 @@ export default function ChatPro() {
   const recordingStreamRef = useRef<MediaStream | null>(null)
   const recordingChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<number | null>(null)
+  const cameraVideoRef = useRef<HTMLVideoElement>(null)
+  const cameraRecorderRef = useRef<MediaRecorder | null>(null)
+  const cameraChunksRef = useRef<Blob[]>([])
+  const cameraTimerRef = useRef<number | null>(null)
   
   const targetUsername = username || searchParams.get('to')
 
@@ -341,6 +352,20 @@ export default function ChatPro() {
     if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current)
     recordingStreamRef.current?.getTracks().forEach(track => track.stop())
   }, [pendingMedia])
+
+  useEffect(() => {
+    return () => {
+      cameraStream?.getTracks().forEach(track => track.stop())
+      if (cameraTimerRef.current) window.clearInterval(cameraTimerRef.current)
+    }
+  }, [cameraStream])
+
+  useEffect(() => {
+    const video = cameraVideoRef.current
+    if (!video || !cameraStream) return
+    video.srcObject = cameraStream
+    void video.play().catch(() => undefined)
+  }, [cameraStream, cameraOpen])
 
   const savePreference = async (patch: Partial<ChatPreference>) => {
     if (!user || !otherUser) return
@@ -572,6 +597,133 @@ export default function ChatPro() {
       body: '🎙️ Voice message',
       data: { message_id: data.id, url: '/messages/' + otherUser.username },
     })
+  }
+
+  const stopCamera = useCallback(() => {
+    cameraRecorderRef.current?.stop()
+    cameraRecorderRef.current = null
+    cameraStream?.getTracks().forEach(track => track.stop())
+    setCameraStream(null)
+    setCameraRecording(false)
+    setCameraSeconds(0)
+    if (cameraTimerRef.current) window.clearInterval(cameraTimerRef.current)
+    cameraTimerRef.current = null
+  }, [cameraStream])
+
+  const startCameraStream = useCallback(async (facing: 'environment' | 'user', mode: 'photo' | 'video') => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error('Camera is not supported on this device')
+      return false
+    }
+    cameraStream?.getTracks().forEach(track => track.stop())
+    try {
+      const constraints: MediaStreamConstraints = {
+        video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: mode === 'video',
+      }
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+      } catch (error) {
+        if (mode === 'video') {
+          stream = await navigator.mediaDevices.getUserMedia({ video: constraints.video })
+          toast.info('Microphone unavailable — video will be sent without audio')
+        } else {
+          throw error
+        }
+      }
+      setCameraStream(stream)
+      setCameraFacing(facing)
+      setCameraMode(mode)
+      return true
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not access camera')
+      return false
+    }
+  }, [cameraStream])
+
+  const openCamera = async () => {
+    if (!online || !!pendingMedia) return
+    const ok = await startCameraStream(cameraFacing, cameraMode)
+    if (ok) setCameraOpen(true)
+  }
+
+  const flipCamera = async () => {
+    if (cameraRecording) return
+    const next = cameraFacing === 'environment' ? 'user' : 'environment'
+    await startCameraStream(next, cameraMode)
+  }
+
+  const changeCameraMode = async (mode: 'photo' | 'video') => {
+    if (cameraRecording || mode === cameraMode) return
+    await startCameraStream(cameraFacing, mode)
+  }
+
+  const capturePhoto = () => {
+    const video = cameraVideoRef.current
+    if (!video || !cameraStream || video.videoWidth === 0 || video.videoHeight === 0) {
+      toast.error('Camera is not ready yet')
+      return
+    }
+    setCameraFlash(true)
+    window.setTimeout(() => setCameraFlash(false), 110)
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    if (cameraFacing === 'user') {
+      ctx.translate(canvas.width, 0)
+      ctx.scale(-1, 1)
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob(blob => {
+      if (!blob) return toast.error('Could not capture the photo')
+      const file = new File([blob], 'camera-photo-' + Date.now() + '.jpg', { type: 'image/jpeg' })
+      setPendingMedia({ file, kind: 'image', previewUrl: URL.createObjectURL(file) })
+      stopCamera()
+      setCameraOpen(false)
+    }, 'image/jpeg', 0.94)
+  }
+
+  const toggleCameraRecording = () => {
+    if (!cameraStream) return
+    if (cameraRecording) {
+      cameraRecorderRef.current?.stop()
+      return
+    }
+    const mimeType = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'].find(type => MediaRecorder.isTypeSupported(type))
+    try {
+      const recorder = mimeType
+        ? new MediaRecorder(cameraStream, { mimeType, videoBitsPerSecond: 5_000_000 })
+        : new MediaRecorder(cameraStream)
+      cameraRecorderRef.current = recorder
+      cameraChunksRef.current = []
+      recorder.ondataavailable = event => { if (event.data.size) cameraChunksRef.current.push(event.data) }
+      recorder.onstop = () => {
+        const blob = new Blob(cameraChunksRef.current, { type: recorder.mimeType || 'video/webm' })
+        const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+        const file = new File([blob], 'camera-video-' + Date.now() + '.' + ext, { type: blob.type })
+        cameraRecorderRef.current = null
+        setCameraRecording(false)
+        setCameraSeconds(0)
+        if (cameraTimerRef.current) window.clearInterval(cameraTimerRef.current)
+        cameraTimerRef.current = null
+        if (blob.size) {
+          setPendingMedia({ file, kind: 'video', previewUrl: URL.createObjectURL(file) })
+          stopCamera()
+          setCameraOpen(false)
+        } else {
+          toast.error('Could not record the video')
+        }
+      }
+      recorder.start(200)
+      setCameraRecording(true)
+      setCameraSeconds(0)
+      cameraTimerRef.current = window.setInterval(() => setCameraSeconds(value => value + 1), 1000)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not start video recording')
+    }
   }
 
   const startVoice = async () => {
@@ -878,7 +1030,7 @@ export default function ChatPro() {
         <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
         <input ref={cameraRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={e => { const file=e.target.files?.[0]; if(file && online) { setPendingMedia({ file, kind:file.type.startsWith('video/')?'video':'image', previewUrl:URL.createObjectURL(file) }) }; e.currentTarget.value='' }} />
         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" disabled={!online || !!pendingMedia} onClick={() => fileRef.current?.click()} aria-label="Attach photo or video" title="Gallery"><ImagePlus className="size-5" /></Button>
-        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0 relative overflow-visible" disabled={!online || !!pendingMedia} onClick={() => cameraRef.current?.click()} aria-label="Open camera" title="Camera">
+        <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0 relative overflow-visible" disabled={!online || !!pendingMedia} onClick={() => void openCamera()} aria-label="Open YOMY camera" title="Camera">
           <Camera className="size-5" />
           <span className="pointer-events-none absolute -right-0.5 -bottom-0.5 grid size-3.5 place-items-center rounded-full bg-primary text-primary-foreground shadow-md">
             <span className="size-1.5 rounded-full bg-white" />
@@ -899,6 +1051,33 @@ export default function ChatPro() {
         <Button variant="ghost" size="icon" className="size-10 rounded-full shrink-0" onClick={() => setEmojiOpen(true)} aria-label="Open emoji picker"><Smile className="size-5" /></Button>
         <Input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void sendText()} }} placeholder={editing ? 'Edit message…' : online ? 'Message' : 'Message offline…'} className="flex-1 rounded-2xl min-h-10 bg-muted/55 border-transparent focus-visible:border-border" />
         <Button size="icon" className="size-10 rounded-full shrink-0" disabled={!input.trim() || sending} onClick={() => void sendText()}>{editing ? <CheckCheck className="size-5" /> : <Send className="size-5" />}</Button>
+      </div>}
+
+      {cameraOpen && <div className="fixed inset-0 z-[130] bg-black text-white flex flex-col overflow-hidden">
+        <div className="absolute inset-0">
+          <video ref={cameraVideoRef} muted playsInline className={'h-full w-full object-cover ' + (cameraFacing === 'user' ? 'scale-x-[-1]' : '')} />
+          {cameraFlash && <div className="absolute inset-0 bg-white z-10" />}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/75 pointer-events-none" />
+        </div>
+        <div className="relative z-20 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+          <button type="button" onClick={() => { stopCamera(); setCameraOpen(false) }} disabled={cameraRecording} className="grid size-11 place-items-center rounded-full bg-black/35 backdrop-blur-xl border border-white/15 disabled:opacity-40" aria-label="Close camera"><X className="size-6" /></button>
+          <div className="rounded-full border border-white/15 bg-black/35 px-4 py-2 text-[11px] font-semibold tracking-[0.18em] backdrop-blur-xl">YOMY CAMERA</div>
+          <button type="button" onClick={() => void flipCamera()} disabled={cameraRecording} className="grid size-11 place-items-center rounded-full bg-black/35 backdrop-blur-xl border border-white/15" aria-label="Flip camera"><RotateCcw className="size-5" /></button>
+        </div>
+        <div className="relative z-20 mt-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div className="mx-auto mb-5 flex w-fit rounded-full border border-white/15 bg-black/40 p-1 backdrop-blur-2xl">
+            <button type="button" onClick={() => void changeCameraMode('photo')} disabled={cameraRecording} className={'min-w-28 rounded-full px-5 py-2 text-sm font-semibold transition-all disabled:opacity-50 ' + (cameraMode === 'photo' ? 'bg-white text-black shadow-lg' : 'text-white/80')}>PHOTO</button>
+            <button type="button" onClick={() => void changeCameraMode('video')} disabled={cameraRecording} className={'min-w-28 rounded-full px-5 py-2 text-sm font-semibold transition-all disabled:opacity-50 ' + (cameraMode === 'video' ? 'bg-white text-black shadow-lg' : 'text-white/80')}>VIDEO</button>
+          </div>
+          <div className="flex items-center justify-center gap-7">
+            <div className="w-12" />
+            <button type="button" onClick={() => cameraMode === 'photo' ? capturePhoto() : toggleCameraRecording()} className={'grid size-[78px] place-items-center rounded-full border-4 border-white shadow-[0_10px_50px_rgba(0,0,0,.45)] transition-transform active:scale-95 ' + (cameraRecording ? 'bg-red-500/90' : 'bg-white/95')} aria-label={cameraMode === 'photo' ? 'Take photo' : cameraRecording ? 'Stop recording' : 'Start recording'}>
+              {cameraMode === 'photo' ? <span className="size-[62px] rounded-full bg-white border-2 border-black/10" /> : cameraRecording ? <span className="size-7 rounded-lg bg-white" /> : <span className="size-16 rounded-full bg-red-500" />}
+            </button>
+            <div className="w-12 flex justify-center">{cameraRecording && <span className="rounded-full bg-black/45 border border-white/15 px-2.5 py-1.5 text-xs font-semibold backdrop-blur-xl">{String(Math.floor(cameraSeconds / 60)).padStart(2,'0')}:{String(cameraSeconds % 60).padStart(2,'0')}</span>}</div>
+          </div>
+          <p className="mt-4 text-center text-[11px] text-white/70">{cameraMode === 'photo' ? 'Tap to capture · Front/back camera supported' : cameraRecording ? 'Tap to stop and preview the video' : 'Tap to start recording · Audio included when permission is available'}</p>
+        </div>
       </div>}
 
       <Dialog open={viewOncePickerOpen} onOpenChange={setViewOncePickerOpen}>
