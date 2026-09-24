@@ -238,6 +238,7 @@ export default function ChatPro() {
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(250)
+    window.clearTimeout(timeoutId)
     if (!error && data) {
       const next = data as Message[]
       setMessages(next)
@@ -519,7 +520,8 @@ export default function ChatPro() {
     }
 
     setSending(true)
-    const timer = window.setTimeout(() => {}, 8000)
+    const controller = new AbortController()
+    const timeoutId = window.setTimeout(() => controller.abort(), 8000)
     const request = supabase.from('messages').upsert({
       sender_id: user.id,
       receiver_id: otherUser.id,
@@ -531,9 +533,8 @@ export default function ChatPro() {
       reply_to_id: replyId,
       created_at: createdAt,
       client_message_id: clientMessageId,
-    }, { onConflict: 'sender_id,client_message_id' }).select('*').single()
-    const timeout = new Promise<{ data: null; error: Error }>(resolve => window.setTimeout(() => resolve({ data: null, error: new Error('NETWORK_TIMEOUT') }), 8000))
-    const { data, error } = await Promise.race([request, timeout])
+    }, { onConflict: 'sender_id,client_message_id' }).select('*').single().abortSignal(controller.signal)
+    const { data, error } = await request
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
