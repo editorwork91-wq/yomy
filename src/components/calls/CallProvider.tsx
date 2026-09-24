@@ -501,7 +501,11 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   const restoreCall = useCallback(() => {
     setCallFocused(true)
-  }, [])
+    if (peer?.username) {
+      const destination = '/messages/' + encodeURIComponent(peer.username)
+      if (location.pathname !== destination) navigate(destination)
+    }
+  }, [location.pathname, navigate, peer?.username])
 
   const toggleMic = () => { const track = localStream?.getAudioTracks()[0]; if (!track) return; track.enabled = !track.enabled; setMuted(!track.enabled) }
   const toggleCamera = () => { const track = localStream?.getVideoTracks()[0]; if (!track) return; track.enabled = !track.enabled; setCameraOff(!track.enabled) }
