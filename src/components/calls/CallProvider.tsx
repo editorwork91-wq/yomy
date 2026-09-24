@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff, Maximize2, Minimize2, MessageCircle } from 'lucide-react'
+import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff, Maximize2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { sendPushEvent } from '@/lib/push'
@@ -201,6 +201,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [outgoingStage, setOutgoingStage] = useState<OutgoingStage>('connecting')
   const [callExpanded, setCallExpanded] = useState(false)
+  const [callPresentationRoute, setCallPresentationRoute] = useState<string | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const activeRef = useRef<CallSession | null>(null)
   const incomingRef = useRef<CallSession | null>(null)
@@ -232,6 +233,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setElapsedSeconds(0)
     setOutgoingStage('connecting')
     setCallExpanded(false)
+    setCallPresentationRoute(null)
     activeRef.current = null
     incomingRef.current = null
     peerRef.current = null
@@ -380,6 +382,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     const call = data as CallSession
     iceRestartAttemptsRef.current = 0
     activeRef.current = call
+    setCallPresentationRoute(location.pathname + location.search)
     setActive(call)
     setPeer(target)
     setOutgoingStage('connecting')
@@ -418,6 +421,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       if (!activated) return
       const activeCall = { ...call, status: 'active' as CallStatus, answered_at: now, started_at: now }
       activeRef.current = activeCall
+      const destination = `/messages/${encodeURIComponent(callerProfile.username)}?call=${encodeURIComponent(call.id)}`
+      setCallPresentationRoute(destination)
       setActive(activeCall)
       setIncoming(null)
       setPeer(callerProfile)
@@ -554,48 +559,65 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     const bridge = nativeNotifications()
-    const processPending = async () => {
+    let mounted = true
+    let retryTimer: number | null = null
+
+    const executeAction = async (action: string, callId: string) => {
+      if (!user || !callId || !mounted) return false
+      const key = action + ':' + callId
+      if (handledNativeActionsRef.current.has(key)) return false
+      const loaded = await loadCallForAction(callId)
+      if (!mounted || !loaded) return false
+
+      handledNativeActionsRef.current.add(key)
+      try {
+        if (action === 'open') {
+          setCallPresentationRoute(null)
+          setIncoming(loaded.call)
+          setPeer(loaded.callerProfile)
+        } else if (action === 'accept') {
+          await acceptCall(loaded.call, loaded.callerProfile)
+        } else if (action === 'decline') {
+          await declineCall(loaded.call)
+        } else if (action === 'end' && activeRef.current?.id === callId) {
+          await endCall()
+        } else {
+          handledNativeActionsRef.current.delete(key)
+          return false
+        }
+        bridge?.clearPendingCallAction?.()
+        nativeNotifications()?.clearPendingCallAction?.()
+        window.setTimeout(() => handledNativeActionsRef.current.delete(key), 2500)
+        return true
+      } catch {
+        handledNativeActionsRef.current.delete(key)
+        return false
+      }
+    }
+
+    const processPending = () => {
       const pending = bridge?.getPendingCallAction?.() || ''
       if (!pending) return
       const splitAt = pending.indexOf('|')
       if (splitAt <= 0) return
-      const action = pending.slice(0, splitAt)
-      const callId = pending.slice(splitAt + 1)
-      const key = `${action}:${callId}`
-      if (handledNativeActionsRef.current.has(key)) return
-      handledNativeActionsRef.current.add(key)
-      const loaded = await loadCallForAction(callId)
-      if (loaded) {
-        if (action === 'open') openCallRoute(loaded.callerProfile, callId)
-        else if (action === 'accept') await acceptCall(loaded.call, loaded.callerProfile)
-        else if (action === 'decline') await declineCall(loaded.call)
-        else if (action === 'end' && activeRef.current?.id === callId) await endCall()
-      }
-      bridge?.clearPendingCallAction?.()
-      window.setTimeout(() => handledNativeActionsRef.current.delete(key), 2500)
+      void executeAction(pending.slice(0, splitAt), pending.slice(splitAt + 1))
     }
-    void processPending()
+
     const onAction = (event: Event) => {
       const detail = (event as CustomEvent<{ action?: string; callId?: string }>).detail
       if (!detail?.action || !detail.callId) return
-      const key = `${detail.action}:${detail.callId}`
-      if (handledNativeActionsRef.current.has(key)) return
-      handledNativeActionsRef.current.add(key)
-      void (async () => {
-        const loaded = await loadCallForAction(detail.callId as string)
-        if (loaded) {
-          if (detail.action === 'open') openCallRoute(loaded.callerProfile, loaded.call.id)
-          else if (detail.action === 'accept') await acceptCall(loaded.call, loaded.callerProfile)
-          else if (detail.action === 'decline') await declineCall(loaded.call)
-          else if (detail.action === 'end' && activeRef.current?.id === detail.callId) await endCall()
-        }
-        nativeNotifications()?.clearPendingCallAction?.()
-        window.setTimeout(() => handledNativeActionsRef.current.delete(key), 2500)
-      })()
+      void executeAction(detail.action, detail.callId)
     }
+
+    processPending()
+    retryTimer = window.setInterval(processPending, 400)
     window.addEventListener('yomy-call-action', onAction)
-    return () => window.removeEventListener('yomy-call-action', onAction)
-  }, [acceptCall, declineCall, endCall, loadCallForAction, openCallRoute])
+    return () => {
+      mounted = false
+      if (retryTimer) window.clearInterval(retryTimer)
+      window.removeEventListener('yomy-call-action', onAction)
+    }
+  }, [acceptCall, declineCall, endCall, loadCallForAction, user])
 
   useEffect(() => {
     const callId = new URLSearchParams(location.search).get('call')
@@ -678,24 +700,86 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       </div>
     </div>}
 
-    {showActive && peer && active && <CallDock
-      peer={peer}
-      active={active}
-      connected={connected}
-      elapsedSeconds={elapsedSeconds}
-      localStream={localStream}
-      remoteStream={remoteStream}
-      muted={muted}
-      cameraOff={cameraOff}
-      speakerOn={speakerOn}
-      expanded={callExpanded}
-      onToggleMic={toggleMic}
-      onToggleCamera={toggleCamera}
-      onToggleSpeaker={() => applySpeakerRoute(!speakerOn)}
-      onEnd={() => void endCall()}
-      onOpenChat={openActiveChat}
-      onExpand={() => setCallExpanded(value => !value)}
-    />}
+    {showActive && peer && active && !((location.pathname + location.search) === callPresentationRoute) && (
+      <div className="fixed top-[max(0.55rem,env(safe-area-inset-top))] left-3 right-3 z-[120] flex justify-center">
+        <div className="w-full max-w-xl overflow-hidden rounded-[1.35rem] border border-white/15 bg-background/78 backdrop-blur-2xl shadow-[0_18px_70px_rgba(0,0,0,.30)] ring-1 ring-black/5">
+          <button className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left active:scale-[.99] transition-transform" onClick={() => callPresentationRoute && navigate(callPresentationRoute)}>
+            <div className="relative shrink-0">
+              <Avatar className="size-10 border border-white/15 shadow-lg"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
+              <span className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-background bg-emerald-500 animate-pulse" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5"><span className="font-semibold text-sm truncate">{peer.username}</span><span className="text-[10px] text-emerald-600 dark:text-emerald-400">LIVE</span></div>
+              <p className="text-[11px] text-muted-foreground truncate">{active.kind === 'video' ? 'Video call' : 'Voice call'} · {connected ? formatDuration(elapsedSeconds) : 'Reconnecting…'}</p>
+            </div>
+            <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0"><Phone className="size-4 text-primary" /></div>
+            <Maximize2 className="size-4 text-muted-foreground shrink-0" />
+          </button>
+          <div className="h-0.5 bg-gradient-to-r from-primary/70 via-primary/20 to-transparent" />
+        </div>
+      </div>
+    )}
+
+    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#07110e] text-white overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(0,255,170,.10),transparent_28%),radial-gradient(circle_at_15%_85%,rgba(90,110,255,.13),transparent_26%),radial-gradient(circle_at_85%_70%,rgba(255,80,150,.10),transparent_25%)]" />
+      <div className="absolute -top-24 -left-16 size-64 rounded-full border border-white/5 bg-white/[0.025] blur-2xl" />
+      <div className="absolute top-1/3 -right-24 size-72 rounded-full border border-white/5 bg-emerald-400/[0.04] blur-3xl" />
+      <div className="relative min-h-full flex flex-col items-center px-6 pt-[max(4.5rem,env(safe-area-inset-top)+2rem)] pb-[max(2rem,env(safe-area-inset-bottom)+1.25rem)]">
+        <div className="text-center">
+          <p className="text-[11px] tracking-[0.28em] uppercase text-white/40 mb-4">YOMY INCOMING CALL</p>
+          <div className="relative mx-auto w-[clamp(7.5rem,38vw,10rem)]">
+            <div className="absolute inset-[-18px] rounded-full border border-emerald-300/10 animate-pulse" />
+            <div className="absolute inset-[-34px] rounded-full border border-white/5" />
+            <Avatar className="relative size-[clamp(7.5rem,38vw,10rem)] border-4 border-white/10 shadow-[0_25px_90px_rgba(0,0,0,.45)]">
+              <AvatarImage src={peer.avatar_url} />
+              <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
+            </Avatar>
+          </div>
+          <h2 className="mt-8 text-[clamp(1.8rem,8vw,2.45rem)] font-medium tracking-tight">{peer.username}</h2>
+          <p className="mt-2 text-base text-white/65">Incoming {incoming?.kind === 'video' ? 'video' : 'voice'} call</p>
+          <p className="mt-1 text-xs text-white/35">Your call is ready</p>
+        </div>
+        <div className="mt-auto w-full max-w-md grid grid-cols-2 gap-8 sm:gap-12 pb-2">
+          <div className="text-center">
+            <Button variant="destructive" size="lg" className="mx-auto rounded-full size-[clamp(4.3rem,20vw,5rem)] shadow-[0_16px_45px_rgba(239,68,68,.28)] bg-red-600 hover:bg-red-700 active:scale-95 transition-transform" onClick={() => void declineCall(incoming as CallSession)}><PhoneOff className="size-7" /></Button>
+            <p className="mt-3 text-sm text-white/70">Decline</p>
+          </div>
+          <div className="text-center">
+            <Button size="lg" className="mx-auto rounded-full size-[clamp(4.3rem,20vw,5rem)] shadow-[0_16px_45px_rgba(16,185,129,.30)] bg-emerald-500 hover:bg-emerald-600 text-white active:scale-95 transition-transform" onClick={() => void acceptCall(incoming as CallSession, peer)}>{incoming?.kind === 'video' ? <Video className="size-7" /> : <Phone className="size-7" />}</Button>
+            <p className="mt-3 text-sm text-white/70">Answer</p>
+          </div>
+        </div>
+      </div>
+    </div>}
+
+    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7">
+      <Avatar className="size-[clamp(6.5rem,34vw,8.2rem)] border-4 border-white/10 shadow-2xl"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
+      <h2 className="mt-6 text-[clamp(1.5rem,6vw,2rem)] font-semibold">{peer.username}</h2>
+      <p className="mt-2 text-white/60">{outgoingStage === 'ringing' ? 'Ringing…' : 'Connecting…'}</p>
+      <p className="mt-1 text-xs text-white/35">{outgoingStage === 'ringing' ? 'The other device received the call' : 'Waiting for the other device'}</p>
+      <div className="mt-auto pb-[max(2rem,env(safe-area-inset-bottom))]"><Button variant="destructive" size="lg" className="rounded-full size-16 shadow-xl active:scale-95 transition-transform" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button></div>
+    </div>}
+
+    {showActive && peer && active && (location.pathname + location.search) === callPresentationRoute && <div className="fixed inset-0 z-[99] bg-black flex flex-col text-white overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,.08),transparent_28%)] pointer-events-none" />
+      <div className="relative flex items-center justify-between p-4 pt-[max(1.2rem,env(safe-area-inset-top)+.5rem)]">
+        <div><p className="font-semibold text-lg">{peer.username}</p><p className="text-sm opacity-70">{connected ? formatDuration(elapsedSeconds) : 'Reconnecting audio…'}</p></div>
+        <Avatar className="size-11 border border-white/10 shadow-lg"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
+      </div>
+      <div className="relative flex-1 flex items-center justify-center p-4">
+        {active.kind === 'video' ? <>
+          <div className="w-full h-full max-w-5xl flex items-center justify-center"><MediaView stream={remoteStream} /></div>
+          <div className="absolute top-6 right-6 w-28 sm:w-36 aspect-video rounded-xl overflow-hidden border border-white/30 shadow-2xl bg-black"><MediaView stream={localStream} muted /></div>
+        </> : <div className="relative"><div className="absolute inset-[-22px] rounded-full border border-white/10 animate-pulse" /><div className="size-40 rounded-full overflow-hidden ring-4 ring-white/5 shadow-[0_25px_100px_rgba(0,0,0,.45)]"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div></div>}
+      </div>
+      <div className="relative flex justify-center items-center gap-4 p-6 pb-[max(1.25rem,env(safe-area-inset-bottom)+.75rem)]">
+        <Button variant={speakerOn ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? "Use earpiece" : "Use speaker"}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button>
+        <Button variant={muted ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={toggleMic} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? <MicOff /> : <Mic />}</Button>
+        {active.kind === "video" && <Button variant={cameraOff ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={toggleCamera} aria-label={cameraOff ? "Turn camera on" : "Turn camera off"}>{cameraOff ? <VideoOff /> : <Video />}</Button>}
+        <Button variant="destructive" size="icon" className="rounded-full size-14 shadow-2xl active:scale-95 transition-transform" onClick={() => void endCall()} aria-label="End call"><PhoneOff /></Button>
+      </div>
+    </div>}
+
   </CallContext.Provider>
 }
  
