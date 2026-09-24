@@ -95,5 +95,6 @@ export default function Explore() {
       </div>
       <BottomNav />
       </div>
+    </div>
   )
 }
