@@ -139,6 +139,7 @@ export default function ChatPro() {
   const [recordingSeconds, setRecordingSeconds] = useState(0)
   const [draftTheme, setDraftTheme] = useState<ChatPreference['wallpaper']>('default')
   const [draftBubble, setDraftBubble] = useState<ChatPreference['bubble_theme']>('default')
+  const longPressRef = useRef<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -170,11 +171,16 @@ export default function ChatPro() {
   const loadPreference = useCallback(async (peerId: string) => {
     if (!user) return
     const key = 'chatPref:' + user.id + ':' + peerId
-    const cached = await readCachedJson<ChatPreference>(key)
+    const cached = await readCachedJson<ChatPreference & { pendingSync?: boolean }>(key)
     if (cached) setPreference(cached)
     if (!online) {
       if (!cached) setPreference(fallbackPreference(user.id, peerId))
       return
+    }
+    if (cached?.pendingSync) {
+      const { pendingSync: _pending, ...pendingPreference } = cached
+      const { error } = await supabase.from('chat_preferences').upsert(pendingPreference, { onConflict: 'user_id,other_user_id' })
+      if (!error) await cacheJson(key, pendingPreference)
     }
     const { data } = await supabase.from('chat_preferences').select('*').eq('user_id', user.id).eq('other_user_id', peerId).maybeSingle()
     const next = (data as ChatPreference | null) || fallbackPreference(user.id, peerId)
@@ -187,13 +193,17 @@ export default function ChatPro() {
     const low = user.id < peerId ? user.id : peerId
     const high = user.id < peerId ? peerId : user.id
     const key = 'chatShared:' + low + ':' + high
-    const cached = await readCachedJson<{ wallpaper?: ChatPreference['wallpaper'] }>(key)
+    const cached = await readCachedJson<{ wallpaper?: ChatPreference['wallpaper']; pendingSync?: boolean }>(key)
     if (cached?.wallpaper) setSharedWallpaper(cached.wallpaper)
     if (!online) return
+    if (cached?.pendingSync && cached.wallpaper) {
+      const { error } = await supabase.from('chat_shared_settings').upsert({ user_low: low, user_high: high, wallpaper: cached.wallpaper, updated_by: user.id }, { onConflict: 'user_low,user_high' })
+      if (!error) await cacheJson(key, { wallpaper: cached.wallpaper, pendingSync: false })
+    }
     const { data } = await supabase.from('chat_shared_settings').select('wallpaper').eq('user_low', low).eq('user_high', high).maybeSingle()
     const wallpaper = (data?.wallpaper as ChatPreference['wallpaper'] | undefined) || cached?.wallpaper || 'default'
     setSharedWallpaper(wallpaper)
-    await cacheJson(key, { wallpaper })
+    await cacheJson(key, { wallpaper, pendingSync: false })
   }, [online, user])
 
   const saveSharedWallpaper = useCallback(async (wallpaper: ChatPreference['wallpaper']) => {
@@ -202,8 +212,8 @@ export default function ChatPro() {
     const high = user.id < otherUser.id ? otherUser.id : user.id
     const key = 'chatShared:' + low + ':' + high
     setSharedWallpaper(wallpaper)
-    await cacheJson(key, { wallpaper })
-    if (!online) return
+    await cacheJson(key, { wallpaper, pendingSync: !online })
+    if (!online) { await cacheJson(key, { wallpaper, pendingSync: true }); return }
     const { error } = await supabase.from('chat_shared_settings').upsert({
       user_low: low,
       user_high: high,
@@ -321,7 +331,7 @@ export default function ChatPro() {
     const base = preference || fallbackPreference(user.id, otherUser.id)
     const next = { ...base, ...patch }
     setPreference(next)
-    await cacheJson('chatPref:' + user.id + ':' + otherUser.id, next)
+    await cacheJson('chatPref:' + user.id + ':' + otherUser.id, { ...next, pendingSync: !online })
     if (!online) {
       toast.success('Saved on this device • will sync when online')
       return
@@ -586,7 +596,7 @@ export default function ChatPro() {
             <DropdownMenuItem onClick={() => navigate('/profile/' + otherUser.username)}>Open profile</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void savePreference({ archived: !pref?.archived })}><Archive className="size-4 mr-2" />{pref?.archived ? 'Remove from archive' : 'Move to archive'}</DropdownMenuItem>
             <DropdownMenuItem onClick={() => void savePreference({ muted: !pref?.muted })}><BellOff className="size-4 mr-2" />{pref?.muted ? 'Unmute notifications' : 'Mute notifications'}</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => { setDraftTheme(pref?.wallpaper || 'default'); setDraftBubble(pref?.bubble_theme || 'default'); setSettingsOpen(true) }}><Palette className="size-4 mr-2" />Chat theme & colors</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => { setDraftTheme(sharedWallpaper); setDraftBubble(pref?.bubble_theme || 'default'); setSettingsOpen(true) }}><Palette className="size-4 mr-2" />Chat theme & colors</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => scrollToBottom(true)}>Jump to latest</DropdownMenuItem>
           </DropdownMenuContent>
@@ -611,7 +621,7 @@ export default function ChatPro() {
             return (
               <div key={message.id} id={'message-' + message.id} className={'flex ' + (mine ? 'justify-end' : 'justify-start') + ' group'}>
                 <div className="max-w-[84%] sm:max-w-[72%] flex flex-col">
-                  <div onDoubleClick={() => void react(message.id, '❤️')} onContextMenu={event => { event.preventDefault(); setReactionTarget(message.id); setReactionPickerOpen(true) }} className={'relative rounded-[1.15rem] px-3.5 py-2 shadow-sm border border-black/5 ' + (mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
+                  <div onDoubleClick={() => void react(message.id, '❤️')} onPointerDown={() => { longPressRef.current = window.setTimeout(() => { setReactionTarget(message.id); setReactionPickerOpen(true) }, 560) }} onPointerUp={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current) }} onPointerCancel={() => { if (longPressRef.current) window.clearTimeout(longPressRef.current) }} onContextMenu={event => { event.preventDefault(); setReactionTarget(message.id); setReactionPickerOpen(true) }} className={'relative rounded-[1.15rem] px-3.5 py-2 shadow-sm border border-black/5 ' + (mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
                     {message.reply_to && !message.deleted_for_everyone && (
                       <button onClick={() => document.getElementById('message-' + message.reply_to_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className={'w-full text-left mb-2 rounded-lg px-2.5 py-1.5 text-[11px] ' + (mine ? 'bg-white/15' : 'bg-muted')}>
                         <span className="font-semibold block">{message.reply_to.sender_id === user?.id ? 'You' : otherUser.username}</span>
@@ -630,7 +640,7 @@ export default function ChatPro() {
                     <div className="flex items-center justify-end gap-1 mt-1 -mb-0.5">
                       <span className={'text-[10px] ' + (mine ? 'text-white/60' : 'text-muted-foreground')}>{format(new Date(message.created_at), 'HH:mm')}</span>
                       {message.edited_at && <span className={'text-[10px] ' + (mine ? 'text-white/55' : 'text-muted-foreground')}>edited</span>}
-                      {mine && (queued ? <span className="text-white/60 text-[10px]">queued</span> : message.is_seen ? <CheckCheck className="size-3.5 text-sky-200" /> : message.delivered_at ? <CheckCheck className="size-3.5 text-white/70" /> : <Check className="size-3.5 text-white/70" />)}
+                      {mine && (queued ? <span className="text-white/60 text-[10px]">Sending…</span> : message.is_seen ? <CheckCheck className="size-3.5 text-sky-200" /> : message.delivered_at ? <CheckCheck className="size-3.5 text-white/70" /> : <span className="text-[9px] text-white/65">✓</span>)}
                     </div>
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
