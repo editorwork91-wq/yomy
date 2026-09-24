@@ -579,7 +579,7 @@ export default function ChatPro() {
         <Button variant="ghost" size="icon" className="relative z-10 size-10 rounded-full" onClick={() => navigate(-1)}><ChevronLeft className="size-5" /></Button>
         <Link to={'/profile/' + otherUser.username} className="relative z-10 flex items-center gap-2 min-w-0 flex-1">
           <div className="relative">
-            <Avatar className="size-10"><AvatarImage src={otherUser.avatar_url} /><AvatarFallback>{initials(otherUser)}</AvatarFallback></Avatar>
+            <Avatar className="size-10 ring-2 ring-white/30 shadow-[0_0_0_3px_rgba(255,255,255,.07)]"><AvatarImage src={otherUser.avatar_url} /><AvatarFallback>{initials(otherUser)}</AvatarFallback></Avatar>
             {online && <span className="absolute right-0 bottom-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
           </div>
           <div className="min-w-0">
@@ -643,7 +643,7 @@ export default function ChatPro() {
                     </div>
                   </div>
                   {Object.keys(reactionSummary || {}).length > 0 && <div className="-mt-2 z-10 rounded-full border bg-background px-2 py-0.5 text-[11px] shadow-sm">{Object.entries(reactionSummary || {}).map(([emoji, count]) => <span key={emoji} className="mr-1">{emoji}{count > 1 ? count : ''}</span>)}</div>}
-                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
+                  {!queued && !message.deleted_for_everyone && <div className="mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex gap-1 justify-end">
                     <Button variant="ghost" size="icon" className="size-8 rounded-full" onClick={() => { setReactionTarget(message.id); setReactionPickerOpen(true) }} aria-label="React"><Smile className="size-4" /></Button>
                     <Button variant="ghost" size="icon" className="size-7" onClick={() => setReplyTo(message)}><Reply className="size-4" /></Button>
                     {mine && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-7"><MoreVertical className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => void copyMessage(message)}><Copy className="size-4 mr-2" />Copy</DropdownMenuItem>{message.media_type === '' && <DropdownMenuItem onClick={() => { setEditing(message); setInput(message.content) }}><Pencil className="size-4 mr-2" />Edit</DropdownMenuItem>}<DropdownMenuSeparator /><DropdownMenuItem onClick={() => void deleteForEveryone(message)} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />Delete for everyone</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
@@ -679,7 +679,7 @@ export default function ChatPro() {
           <DialogHeader><DialogTitle>Chat theme & colors</DialogTitle></DialogHeader>
           <div className="space-y-5">
             <section>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Decorative background</p>
+              <div className="flex items-center justify-between mb-2"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Decorative background</p><span className="text-[10px] rounded-full bg-primary/10 text-primary px-2 py-1">shared with this chat</span></div>
               <div className="grid grid-cols-2 gap-2">
                 {wallpapers.map(item => <button key={item} onClick={() => setDraftTheme(item)} className={'rounded-2xl border p-3 text-left transition-all ' + (draftTheme === item ? 'ring-2 ring-primary border-primary' : '')}>
                   <div className={'h-14 rounded-xl mb-2 flex items-center justify-center text-lg ' + (item === 'default' ? 'bg-muted' : item === 'midnight' ? 'bg-slate-950 text-white' : item === 'paper' ? 'bg-muted/40' : 'bg-pink-100 dark:bg-pink-950/30')}>{item === 'romance' ? '♥ ✿' : item === 'hearts' ? '♥ ♡' : item === 'petals' ? '✿ ❀' : item === 'midnight' ? '✦ ⋆' : item === 'paper' ? '· •' : 'A'}</div>
