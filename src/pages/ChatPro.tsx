@@ -14,7 +14,7 @@ import { sendPushEvent } from '@/lib/push'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import {
   cacheJson, cacheMessages, queueMessage, readCachedJson, readCachedMessages,
-  readQueuedMessages, removeQueuedMessage, queueSyncOperation, patchCachedConversation
+  queueSyncOperation, patchCachedConversation
 } from '@/lib/offlineStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
