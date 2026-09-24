@@ -1002,6 +1002,16 @@ export default function ChatPro() {
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
   const pref = preference || (user && otherUser ? fallbackPreference(user.id, otherUser.id) : null)
+  const peerSleeping = useMemo(() => {
+    if (!otherUser?.sleep_mode_enabled) return false
+    try {
+      const time = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: otherUser.timezone_name || 'UTC' }).format(new Date())
+      const minutes = Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5))
+      const start = Number((otherUser.sleep_start || '22:00').slice(0, 2)) * 60 + Number((otherUser.sleep_start || '22:00').slice(3, 5))
+      const end = Number((otherUser.sleep_end || '05:00').slice(0, 2)) * 60 + Number((otherUser.sleep_end || '05:00').slice(3, 5))
+      return start < end ? minutes >= start && minutes < end : minutes >= start || minutes < end
+    } catch { return false }
+  }, [otherUser])
   const myBubble = pref ? bubbleClasses[pref.bubble_theme] : bubbleClasses.default
 
   const wallpaperBackground = useMemo(() => {
@@ -1021,14 +1031,14 @@ export default function ChatPro() {
         <Link to={'/profile/' + otherUser.username} className="flex items-center gap-2 min-w-0 flex-1">
           <div className="relative">
             <Avatar className="size-10"><AvatarImage src={otherUser.avatar_url} /><AvatarFallback>{initials(otherUser)}</AvatarFallback></Avatar>
-            {online && <span className="absolute right-0 bottom-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
+            {online && !peerSleeping && <span className="absolute right-0 bottom-0 size-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <p className="font-semibold text-sm truncate">{otherUser.username}</p>
               {otherUser.is_verified && <ShieldCheck className="size-3.5 text-sky-500 shrink-0" />}
             </div>
-            <p className="text-[11px] text-muted-foreground truncate">{online ? 'Online · synced' : 'Offline · device snapshot'}</p>
+            <p className="text-[11px] text-muted-foreground truncate">{peerSleeping ? 'Sleep mode' : online ? 'Online · synced' : 'Offline · device snapshot'}</p>
           </div>
         </Link>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
