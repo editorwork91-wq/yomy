@@ -155,7 +155,7 @@ export default function MessagesPro() {
   )
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="yomy-glass-page min-h-screen pb-20">
       <TopBar title="Messages" right={<Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate('/messages/new')}><Plus className="size-5" /></Button>} />
       {!online && <div className="px-4 py-2 border-b border-amber-500/20 bg-amber-500/10 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline mode • conversations are available from this device</span></div>}
 
@@ -167,7 +167,7 @@ export default function MessagesPro() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void searchPeople() }} placeholder="Search people…" className="pl-9 rounded-2xl bg-muted/55 border-transparent" />
           </div>
-          {results.length > 0 && <div className="mt-2 rounded-2xl border bg-card overflow-hidden">{results.map(p => <Link key={p.id} to={'/messages/' + p.username} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50"><Avatar className="size-10"><AvatarImage src={p.avatar_url} /><AvatarFallback>{p.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium">{p.username}</p><p className="text-xs text-muted-foreground truncate">{p.full_name}</p></div></Link>)}</div>}
+          {results.length > 0 && <div className="mt-2 rounded-2xl border border-border/45 yomy-ios-panel overflow-hidden">{results.map(p => <Link key={p.id} to={'/messages/' + p.username} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50"><Avatar className="size-10"><AvatarImage src={p.avatar_url} /><AvatarFallback>{p.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium">{p.username}</p><p className="text-xs text-muted-foreground truncate">{p.full_name}</p></div></Link>)}</div>}
         </div>
 
         {archivedCount > 0 && <button onClick={() => setShowArchived(value => !value)} className="w-full flex items-center gap-3 px-4 py-3 border-y border-border bg-card/60 hover:bg-muted/40 transition-colors"><div className="size-10 rounded-full bg-muted flex items-center justify-center"><Archive className="size-5" /></div><div className="flex-1 text-left"><p className="text-sm font-semibold">{showArchived ? 'Back to chats' : 'Archived'}</p><p className="text-xs text-muted-foreground">{archivedCount} archived chat{archivedCount === 1 ? '' : 's'}</p></div><span className="text-muted-foreground">›</span></button>}
@@ -176,7 +176,7 @@ export default function MessagesPro() {
           ? <div className="h-56 flex items-center justify-center"><Spinner className="size-6" /></div>
           : visible.length === 0
             ? <div className="py-20 text-center text-muted-foreground"><div className="size-14 rounded-full bg-muted mx-auto flex items-center justify-center"><Inbox className="size-6" /></div><p className="mt-3 text-sm font-medium">{showArchived ? 'No archived chats' : 'No conversations yet'}</p><p className="mt-1 text-xs">{showArchived ? 'Chats you archive appear here.' : 'Search for a person above to start chatting.'}</p></div>
-            : <div className="divide-y divide-border">{visible.map(conv => <Link key={conv.user.id} to={'/messages/' + conv.user.username} className="flex items-center gap-3 px-4 py-3.5 hover:bg-muted/45 active:bg-muted/65 transition-colors">
+            : <div className="yomy-ios-panel overflow-hidden">{visible.map(conv => <Link key={conv.user.id} to={'/messages/' + conv.user.username} className="flex items-center gap-3 px-4 py-3.5 hover:bg-muted/45 active:bg-muted/65 transition-colors">
               <div className="relative"><Avatar className="size-12"><AvatarImage src={conv.user.avatar_url} /><AvatarFallback>{conv.user.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar>{conv.unreadCount > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">{conv.unreadCount}</span>}</div>
               <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><p className={'text-sm truncate ' + (conv.unreadCount ? 'font-semibold' : 'font-medium')}>{conv.user.username}</p>{conv.muted && <span className="text-[10px]">🔕</span>}</div><p className={'text-[13px] truncate mt-0.5 ' + (conv.unreadCount ? 'text-foreground' : 'text-muted-foreground')}>{conv.lastMessage?.sender_id === user?.id ? 'You: ' : ''}{conv.lastMessage?.deleted_for_everyone ? 'Message deleted' : conv.lastMessage?.view_once ? '📷 Photo' : conv.lastMessage?.media_type === 'audio' ? '🎤 Voice message' : conv.lastMessage?.media_type === 'video' ? '🎬 Video' : conv.lastMessage?.content || ''}</p></div>
               <span className="text-[10px] text-muted-foreground shrink-0">{conv.lastMessage && formatDistanceToNow(new Date(conv.lastMessage.created_at), { addSuffix: false })}</span>
