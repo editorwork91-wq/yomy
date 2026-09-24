@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Check, Eraser, Undo2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -33,7 +33,7 @@ export default function ChatDoodleEditor({ onCancel, onDone }: { onCancel: () =>
     ctx.fillRect(0,0,width,height)
   }, [])
 
-  const point = (e: PointerEvent<HTMLCanvasElement>) => {
+  const point = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }
