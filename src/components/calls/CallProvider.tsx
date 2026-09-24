@@ -264,48 +264,89 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     await sendSignal(call, 'answer', answer as unknown as Record<string, unknown>)
   }, [sendSignal, user?.id])
 
-  const acceptCall = useCallback(async (call: CallSession, callerProfile: Peer) => {
-    if (!user || call.status !== 'ringing') return
-    stopNativeCallNotification()
+  const acceptCall = useCallback(async (call: CallSession, callerProfile: Peer): Promise<boolean> => {
+    if (!user || !navigator.onLine) return false
+    if (call.status === 'active') {
+      const destination = '/messages/' + encodeURIComponent(callerProfile.username) + '?call=' + encodeURIComponent(call.id)
+      setCallPresentationRoute(destination)
+      setActive(call)
+      setIncoming(null)
+      setPeer(callerProfile)
+      openCallRoute(callerProfile, call.id)
+      return true
+    }
+    if (call.status !== 'ringing') return true
     try {
       const now = new Date().toISOString()
-      const { data: activated, error: activationError } = await supabase.from('call_sessions').update({ status: 'active', answered_at: now, started_at: now }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing').select('id').maybeSingle()
+      const { data: activated, error: activationError } = await supabase
+        .from('call_sessions')
+        .update({ status: 'active', answered_at: now, started_at: now })
+        .eq('id', call.id)
+        .eq('callee_id', user.id)
+        .eq('status', 'ringing')
+        .select('id')
+        .maybeSingle()
       if (activationError) throw activationError
-      if (!activated) return
+      if (!activated) {
+        const { data: latest } = await supabase.from('call_sessions').select('status').eq('id', call.id).maybeSingle()
+        return latest?.status === 'active' || ['ended', 'declined', 'missed', 'failed'].includes(latest?.status || '')
+      }
+
       const activeCall = { ...call, status: 'active' as CallStatus, answered_at: now, started_at: now }
       activeRef.current = activeCall
-      const destination = `/messages/${encodeURIComponent(callerProfile.username)}?call=${encodeURIComponent(call.id)}`
+      const destination = '/messages/' + encodeURIComponent(callerProfile.username) + '?call=' + encodeURIComponent(call.id)
       setCallPresentationRoute(destination)
       setActive(activeCall)
       setIncoming(null)
       setPeer(callerProfile)
       openCallRoute(callerProfile, call.id)
-      const pc = await setupPeer(activeCall, false)
-      const { data: signals } = await supabase.from('call_signals').select('*').eq('call_id', call.id).order('id')
-      for (const signal of (signals || []) as Signal[]) {
-        processedSignals.current.add(signal.id)
-        if (signal.signal_type === 'offer') await handleOffer(activeCall, signal, pc)
-        else if (signal.signal_type === 'ice-candidate') {
-          if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
-          else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
+
+      try {
+        const pc = await setupPeer(activeCall, false)
+        const { data: signals } = await supabase.from('call_signals').select('*').eq('call_id', call.id).order('id')
+        for (const signal of (signals || []) as Signal[]) {
+          processedSignals.current.add(signal.id)
+          if (signal.signal_type === 'offer') await handleOffer(activeCall, signal, pc)
+          else if (signal.signal_type === 'ice-candidate') {
+            if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
+            else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
+          }
         }
+        for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
+        pendingCandidates.current = []
+      } catch (peerError) {
+        await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id).eq('status', 'active')
+        cleanup()
+        toast.error(peerError instanceof Error ? peerError.message : 'Could not open call media')
       }
-      for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
-      pendingCandidates.current = []
+      stopNativeCallNotification()
+      return true
     } catch (err) {
-      await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id)
-      cleanup()
       toast.error(err instanceof Error ? err.message : 'Could not answer call')
+      return false
     }
   }, [cleanup, handleOffer, openCallRoute, setupPeer, user])
 
-  const declineCall = useCallback(async (call: CallSession) => {
-    if (!user || call.status !== 'ringing') return
-    stopNativeCallNotification()
-    const { error } = await supabase.from('call_sessions').update({ status: 'declined', ended_at: new Date().toISOString() }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing')
-    await sendSignal(call, 'decline', { declined_at: new Date().toISOString() })
-    if (error) console.warn('decline call update failed:', error.message)
-    cleanup()
+  const declineCall = useCallback(async (call: CallSession): Promise<boolean> => {
+    if (!user || !navigator.onLine) return false
+    if (call.status !== 'ringing') return true
+    try {
+      const endedAt = new Date().toISOString()
+      const { error } = await supabase
+        .from('call_sessions')
+        .update({ status: 'declined', ended_at: endedAt })
+        .eq('id', call.id)
+        .eq('callee_id', user.id)
+        .eq('status', 'ringing')
+      if (error) throw error
+      stopNativeCallNotification()
+      await sendSignal(call, 'decline', { declined_at: endedAt })
+      cleanup()
+      return true
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not decline call')
+      return false
+    }
   }, [cleanup, sendSignal, user])
 
   const endCall = useCallback(async () => {
@@ -424,28 +465,36 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
       handledNativeActionsRef.current.add(key)
       try {
+        let completed = false
         if (action === 'open') {
           if (loaded.call.status === 'ringing') {
             setCallPresentationRoute(null)
             setIncoming(loaded.call)
             setPeer(loaded.callerProfile)
+            completed = true
           } else if (loaded.call.status === 'active') {
-            const destination = `/messages/${encodeURIComponent(loaded.callerProfile.username)}?call=${encodeURIComponent(loaded.call.id)}`
+            const destination = '/messages/' + encodeURIComponent(loaded.callerProfile.username) + '?call=' + encodeURIComponent(loaded.call.id)
             setCallPresentationRoute(destination)
             setIncoming(null)
             setPeer(loaded.callerProfile)
             openCallRoute(loaded.callerProfile, loaded.call.id)
+            completed = true
           } else {
-            handledNativeActionsRef.current.delete(key)
-            return false
+            completed = true
           }
         } else if (action === 'accept') {
-          await acceptCall(loaded.call, loaded.callerProfile)
+          completed = await acceptCall(loaded.call, loaded.callerProfile)
         } else if (action === 'decline') {
-          await declineCall(loaded.call)
+          completed = await declineCall(loaded.call)
         } else if (action === 'end' && activeRef.current?.id === callId) {
           await endCall()
+          completed = true
         } else {
+          handledNativeActionsRef.current.delete(key)
+          return false
+        }
+
+        if (!completed) {
           handledNativeActionsRef.current.delete(key)
           return false
         }
@@ -453,11 +502,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         nativeNotifications()?.clearPendingCallAction?.()
         window.setTimeout(() => handledNativeActionsRef.current.delete(key), 2500)
         return true
-      } catch {
-        handledNativeActionsRef.current.delete(key)
-        return false
       }
-    }
 
     const processPending = () => {
       const pending = bridge?.getPendingCallAction?.() || ''
