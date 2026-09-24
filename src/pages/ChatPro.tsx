@@ -309,7 +309,10 @@ export default function ChatPro() {
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, payload => {
         const row = payload.new as Message
-        setMessages(prev => prev.map(m => m.id === row.id ? { ...m, ...row } : m))
+        setMessages(prev => {
+          if (!prev.some(m => m.id === row.id)) return prev
+          return prev.map(m => m.id === row.id ? { ...m, ...row } : m)
+        })
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_shared_settings' }, payload => {
         const row = payload.new as { user_low?: string; user_high?: string; wallpaper?: string }
@@ -325,9 +328,31 @@ export default function ChatPro() {
         setSharedWallpaper(wallpaper)
         void cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper })
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, payload => {
+        const row = payload.new as { id: string; message_id: string; user_id: string; emoji: string; created_at: string }
+        setMessages(prev => {
+          if (!prev.some(m => m.id === row.message_id)) return prev
+          return prev.map(m => m.id !== row.message_id ? m : {
+            ...m,
+            message_reactions: [...(m.message_reactions || []).filter(reaction => reaction.id !== row.id && reaction.user_id !== row.user_id), row],
+          })
+        })
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, payload => {
+        const row = payload.new as { id: string; message_id: string; user_id: string; emoji: string; created_at: string }
+        setMessages(prev => prev.map(m => m.id !== row.message_id ? m : {
+          ...m,
+          message_reactions: [...(m.message_reactions || []).filter(reaction => reaction.id !== row.id && reaction.user_id !== row.user_id), row],
+        }))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, payload => {
+        const row = payload.old as { id?: string; message_id?: string }
+        if (!row.id) return
+        setMessages(prev => prev.map(m => !m.message_reactions?.some(reaction => reaction.id === row.id) ? m : {
+          ...m,
+          message_reactions: m.message_reactions.filter(reaction => reaction.id !== row.id),
+        }))
+      })
       .subscribe()
     const onOnline = () => { void loadMessages(false); void loadSharedSettings(otherUser.id) }
     const onVisible = () => {
