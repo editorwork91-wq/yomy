@@ -33,7 +33,7 @@ export default function ChatDoodleEditor({ onCancel, onDone }: { onCancel: () =>
     ctx.fillRect(0,0,width,height)
   }, [])
 
-  const point = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const point = (e: PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }
