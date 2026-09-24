@@ -14,6 +14,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.CookieManager;
 import org.json.JSONObject;
 
 import com.getcapacitor.BridgeActivity;
@@ -36,12 +39,43 @@ public class MainActivity extends BridgeActivity {
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        configureHuaweiCompatibleWebView();
         captureCallAction(getIntent());
         captureDeepLink(getIntent());
         requestYomyPermissions();
         installMediaPermissionBridge();
         installAudioRouteBridge();
         installLocalNotificationBridge();
+    }
+
+    /**
+     * Compatibility profile for Huawei ART-L29 / Android 10 WebView.
+     * This only configures the embedded browser; YOMY features and routes remain unchanged.
+     */
+    private void configureHuaweiCompatibleWebView() {
+        try {
+            WebView webView = getBridge() == null ? null : getBridge().getWebView();
+            if (webView == null) return;
+            WebSettings settings = webView.getSettings();
+            settings.setJavaScriptEnabled(true);
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+            settings.setMediaPlaybackRequiresUserGesture(false);
+            settings.setTextZoom(100);
+            settings.setBuiltInZoomControls(false);
+            settings.setDisplayZoomControls(false);
+            settings.setSupportZoom(false);
+            settings.setLoadWithOverviewMode(false);
+            settings.setUseWideViewPort(false);
+            settings.setDefaultTextEncodingName("UTF-8");
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+                CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+            }
+            CookieManager.getInstance().setAcceptCookie(true);
+        } catch (Exception ignored) {
+            // Keep Capacitor defaults when a device WebView omits an optional setting.
+        }
     }
 
     @Override protected void onNewIntent(Intent intent) {
