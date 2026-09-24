@@ -169,7 +169,6 @@ export default function ChatPro() {
   const recordingStreamRef = useRef<MediaStream | null>(null)
   const recordingChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<number | null>(null)
-  const syncingRef = useRef(false)
 
   const targetUsername = username || searchParams.get('to')
 
@@ -263,39 +262,6 @@ export default function ChatPro() {
     setLoading(false)
   }, [online, otherUser, user])
 
-  const flushQueue = useCallback(async () => {
-    if (!user || !otherUser || !online || syncingRef.current) return
-    syncingRef.current = true
-    const queued = (await readQueuedMessages(user.id)).filter(item => item.otherUserId === otherUser.id)
-    if (!queued.length) {
-      syncingRef.current = false
-      return
-    }
-    for (const item of queued) {
-      const { data, error } = await supabase.rpc('send_message_v2', {
-        p_receiver_id: otherUser.id,
-        p_content: item.content,
-        p_reply_to_id: item.replyToId,
-        p_media_url: '',
-        p_media_type: '',
-        p_media_bucket: 'messages-private',
-        p_media_path: null,
-        p_view_once: false,
-        p_client_message_id: item.clientMessageId,
-        p_created_at: item.createdAt,
-      })
-      if (!error && data) {
-        await removeQueuedMessage(user.id, item.clientMessageId)
-      } else if (error && !isTransientSendError(error)) {
-        await removeQueuedMessage(user.id, item.clientMessageId)
-        setMessages(prev => prev.filter(message => message.client_message_id !== item.clientMessageId && message.id !== 'local:' + item.clientMessageId))
-        toast.error('Could not send a queued message: ' + error.message)
-      }
-    }
-    syncingRef.current = false
-    await loadMessages(false)
-  }, [loadMessages, online, otherUser, user])
-
   useEffect(() => { void loadOtherUser() }, [loadOtherUser])
   useEffect(() => {
     if (otherUser) {
@@ -304,7 +270,6 @@ export default function ChatPro() {
       void loadMessages()
     }
   }, [loadMessages, loadPreference, loadSharedSettings, otherUser])
-  useEffect(() => { if (online) void flushQueue() }, [flushQueue, online])
 
   useEffect(() => {
     if (!user || !otherUser || !online) return
