@@ -104,6 +104,7 @@ export async function queueMessage(message: QueuedMessage) {
     tx.onerror = () => resolve()
   })
   db.close()
+  try { window.dispatchEvent(new CustomEvent('yomy-message-queue-changed')) } catch {}
 }
 
 export async function readQueuedMessages(userId: string): Promise<QueuedMessage[]> {
