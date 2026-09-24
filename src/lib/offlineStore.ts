@@ -202,3 +202,22 @@ export async function removeSyncOperation(userId: string, opId: string) {
   })
   db.close()
 }
+
+
+export async function patchCachedConversation<T extends {
+  user: { id: string }
+  lastMessage: unknown
+  unreadCount: number
+  archived: boolean
+  muted: boolean
+}>(userId: string, otherUserId: string, patch: Partial<T>) {
+  const conversations = (await readCachedConversations<T>(userId)) || []
+  const index = conversations.findIndex(item => item.user.id === otherUserId)
+  if (index >= 0) {
+    conversations[index] = { ...conversations[index], ...patch }
+  } else if (patch.user && patch.lastMessage) {
+    conversations.unshift(patch as T)
+  }
+  await cacheConversations(userId, conversations)
+  return conversations
+}
