@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
@@ -33,8 +33,7 @@ export default function RealtimeInbox() {
           if (deliveryError) console.error('message delivery receipt failed:', deliveryError.message)
 
           const { data: sender } = await supabase.from('profiles').select('id,username,full_name,avatar_url,is_verified').eq('id', message.sender_id).maybeSingle()
-          const senderName = sender?.username || 'Yomy'
-          const inCurrentChat = sender?.username === currentChat
+                    const inCurrentChat = sender?.username === currentChat
 
           const cached = (await readCachedConversations<{
             user: { id: string; username: string; full_name: string; avatar_url: string; is_verified: boolean }
@@ -65,7 +64,6 @@ export default function RealtimeInbox() {
           await cacheConversations(user.id, nextConversation)
 
           if (inCurrentChat) return
-          ping()
         }
       )
       .subscribe()
