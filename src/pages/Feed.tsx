@@ -23,9 +23,6 @@ export default function Feed() {
   const [hasMore, setHasMore] = useState(true)
   const online = useNetworkStatus()
   const PAGE_SIZE = 10
-  const refreshHome = useCallback(async () => { setPage(0); setHasMore(true); await fetchPosts(0) }, [fetchPosts])
-  const { pullDistance, refreshing } = usePullToRefresh(refreshHome)
-
   const fetchPosts = useCallback(async (pageNum: number) => {
     if (!user) return
     if (pageNum === 0) {
@@ -50,6 +47,9 @@ export default function Feed() {
     if (pageNum === 0) { setPosts(enriched); await cacheFeed(user.id, enriched) } else setPosts(prev => [...prev, ...enriched])
     setHasMore(enriched.length === PAGE_SIZE); setLoading(false)
   }, [online, user])
+
+  const refreshHome = useCallback(async () => { setPage(0); setHasMore(true); await fetchPosts(0) }, [fetchPosts])
+  const { pullDistance, refreshing } = usePullToRefresh(refreshHome)
 
   useEffect(() => { setPage(0); void fetchPosts(0) }, [fetchPosts])
   useEffect(() => { const handleScroll = () => { if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 300 && hasMore && !loading) { const nextPage = page + 1; setPage(nextPage); void fetchPosts(nextPage) } }; window.addEventListener('scroll', handleScroll); return () => window.removeEventListener('scroll', handleScroll) }, [hasMore, loading, page, fetchPosts])
