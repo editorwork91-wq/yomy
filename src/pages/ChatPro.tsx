@@ -590,14 +590,16 @@ export default function ChatPro() {
         return
       }
       const openedCount = Number(data.view_once_open_count || info.count + 1)
-      setMessages(prev => prev.map(item => item.id === message.id
+      const nextMessages = messages.map(item => item.id === message.id
         ? { ...item, view_once_opened: true, view_once_open_count: openedCount, view_once_opened_at: data.view_once_opened_at || item.view_once_opened_at }
-        : item))
+        : item)
+      setMessages(nextMessages)
+      await cacheMessages(user.id, otherUser.id, nextMessages)
       setMediaViewer({ url: String(data.url), kind: 'image' })
     } finally {
       setViewOnceOpening(false)
     }
-  }, [online, otherUser, user])
+  }, [messages, online, otherUser, user])
 
   const uploadMedia = async (file: File, kind: 'image' | 'video', onceLimit: ViewOnceLimit = 0) => {
     if (!user || !otherUser) return
@@ -611,7 +613,7 @@ export default function ChatPro() {
     const { error: uploadError } = await supabase.storage.from('messages-private').upload(path, file, { upsert: false, contentType: file.type || undefined })
     if (uploadError) return toast.error(uploadError.message)
 
-    const { data, error } = await supabase.rpc('send_message_v2', {
+    const { data, error } = await supabase.rpc('send_message_v3', {
       p_receiver_id: otherUser.id,
       p_content: input.trim(),
       p_reply_to_id: replyTo?.id || null,
