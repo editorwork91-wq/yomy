@@ -608,7 +608,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
 
     {showActive && peer && active && (location.pathname + location.search) === callPresentationRoute && <div className="fixed inset-0 z-[99] bg-black flex flex-col text-white overflow-hidden yomy-call-stage">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,.08),transparent_28%)] pointer-events-none" />
-      <div className="relative flex items-center justify-between p-4 pt-[max(1.2rem,env(safe-area-inset-top)+.5rem)]">
+      <div className="relative flex items-center justify-between p-3 m-3 rounded-[1.35rem] yomy-call-topbar">
         <div><p className="font-semibold text-lg">{peer.username}</p><p className="text-sm opacity-70">{connected ? formatDuration(elapsedSeconds) : 'Reconnecting audio…'}</p></div>
         <Avatar className="size-11 border border-white/10 shadow-lg"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
       </div>
@@ -619,7 +619,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         </> : <div className="relative"><div className="absolute inset-[-22px] rounded-full border border-white/10 animate-pulse" /><div className="size-40 rounded-full overflow-hidden ring-4 ring-white/5 shadow-[0_25px_100px_rgba(0,0,0,.45)]"><Avatar className="size-full"><AvatarImage src={peer.avatar_url} /><AvatarFallback className="text-4xl">{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar></div></div>}
       </div>
       <div className="relative flex justify-center items-center gap-3 p-6 pb-[max(1.25rem,env(safe-area-inset-bottom)+.75rem)]"><button type="button" className="yomy-call-add" onClick={() => toast.info('Add participant UI is ready; the current WebRTC transport is still 1:1.')} aria-label="Add participant"><Plus className="size-4" /><span>Add</span></button>
-        <Button variant={speakerOn ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? "Use earpiece" : "Use speaker"}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button>
+        <Button variant={speakerOn ? "secondary" : "outline"} size="icon" className="rounded-full size-12 glass-call-control" onClick={() => applySpeakerRoute(!speakerOn)} aria-label={speakerOn ? "Use earpiece" : "Use speaker"}>{speakerOn ? <Volume2 /> : <VolumeX />}</Button>
         <Button variant={muted ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={toggleMic} aria-label={muted ? "Unmute microphone" : "Mute microphone"}>{muted ? <MicOff /> : <Mic />}</Button>
         {active.kind === "video" && <Button variant={cameraOff ? "secondary" : "outline"} size="icon" className="rounded-full size-12 border-white/20 bg-white/5 hover:bg-white/10" onClick={toggleCamera} aria-label={cameraOff ? "Turn camera on" : "Turn camera off"}>{cameraOff ? <VideoOff /> : <Video />}</Button>}
         <Button variant="destructive" size="icon" className="rounded-full size-14 shadow-2xl active:scale-95 transition-transform" onClick={() => void endCall()} aria-label="End call"><PhoneOff /></Button>
