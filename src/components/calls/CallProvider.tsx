@@ -57,6 +57,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [outgoingStage, setOutgoingStage] = useState<OutgoingStage>('connecting')
   const [callPresentationRoute, setCallPresentationRoute] = useState<string | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  const callActionRef = useRef<string | null>(null)
   const activeRef = useRef<CallSession | null>(null)
   const incomingRef = useRef<CallSession | null>(null)
   const peerRef = useRef<Peer | null>(null)
@@ -265,21 +266,36 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   }, [sendSignal, user?.id])
 
   const acceptCall = useCallback(async (call: CallSession, callerProfile: Peer) => {
-    if (!user || call.status !== 'ringing') return
+    if (!user || call.status !== 'ringing' || callActionRef.current === call.id) return
+    callActionRef.current = call.id
     stopNativeCallNotification()
     try {
       const now = new Date().toISOString()
-      const { data: activated, error: activationError } = await supabase.from('call_sessions').update({ status: 'active', answered_at: now, started_at: now }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing').select('id').maybeSingle()
+      const { data: activated, error: activationError } = await supabase
+        .from('call_sessions')
+        .update({ status: 'active', answered_at: now, started_at: now })
+        .eq('id', call.id)
+        .eq('callee_id', user.id)
+        .eq('status', 'ringing')
+        .select('id')
+        .maybeSingle()
       if (activationError) throw activationError
-      if (!activated) return
+      if (!activated) {
+        const { data: current } = await supabase.from('call_sessions').select('status').eq('id', call.id).maybeSingle()
+        if (current?.status !== 'ringing') cleanup()
+        return
+      }
+
       const activeCall = { ...call, status: 'active' as CallStatus, answered_at: now, started_at: now }
       activeRef.current = activeCall
-      const destination = `/messages/${encodeURIComponent(callerProfile.username)}?call=${encodeURIComponent(call.id)}`
+      const destination = '/messages/' + encodeURIComponent(callerProfile.username) + '?call=' + encodeURIComponent(call.id)
       setCallPresentationRoute(destination)
       setActive(activeCall)
       setIncoming(null)
+      incomingRef.current = null
       setPeer(callerProfile)
       openCallRoute(callerProfile, call.id)
+
       const pc = await setupPeer(activeCall, false)
       const { data: signals } = await supabase.from('call_signals').select('*').eq('call_id', call.id).order('id')
       for (const signal of (signals || []) as Signal[]) {
@@ -296,18 +312,29 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       await supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id)
       cleanup()
       toast.error(err instanceof Error ? err.message : 'Could not answer call')
+    } finally {
+      if (callActionRef.current === call.id) callActionRef.current = null
     }
   }, [cleanup, handleOffer, openCallRoute, setupPeer, user])
-
   const declineCall = useCallback(async (call: CallSession) => {
-    if (!user || call.status !== 'ringing') return
+    if (!user || call.status !== 'ringing' || callActionRef.current === call.id) return
+    callActionRef.current = call.id
     stopNativeCallNotification()
-    const { error } = await supabase.from('call_sessions').update({ status: 'declined', ended_at: new Date().toISOString() }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing')
-    await sendSignal(call, 'decline', { declined_at: new Date().toISOString() })
-    if (error) console.warn('decline call update failed:', error.message)
-    cleanup()
+    try {
+      const declinedAt = new Date().toISOString()
+      const { error } = await supabase
+        .from('call_sessions')
+        .update({ status: 'declined', ended_at: declinedAt })
+        .eq('id', call.id)
+        .eq('callee_id', user.id)
+        .eq('status', 'ringing')
+      await sendSignal(call, 'decline', { declined_at: declinedAt })
+      if (error) console.warn('decline call update failed:', error.message)
+      cleanup()
+    } finally {
+      if (callActionRef.current === call.id) callActionRef.current = null
+    }
   }, [cleanup, sendSignal, user])
-
   const endCall = useCallback(async () => {
     const call = activeRef.current
     if (!call) return
@@ -342,9 +369,10 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         const call = payload.new as CallSession
         if (incomingRef.current?.id === call.id && call.status !== 'ringing') {
           stopNativeCallNotification()
-          if (call.status !== 'active') { setIncoming(null); incomingRef.current = null; setPeer(current => current && current.id === call.caller_id ? null : current) }
+          setIncoming(null)
+          incomingRef.current = null
+          if (call.status !== 'active') setPeer(current => current && current.id === call.caller_id ? null : current)
         }
-        if (activeRef.current?.id !== call.id) return
         if (call.status === 'active') {
           activeRef.current = call
           setActive(call)
@@ -517,36 +545,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   return <CallContext.Provider value={value}>
     {children}
     <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
-    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#08110f] text-white overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(255,255,255,0.10),transparent_36%)]" />
-      <div className="relative min-h-full flex flex-col items-center px-7 pt-[max(4.5rem,env(safe-area-inset-top)+2rem)] pb-[max(2.5rem,env(safe-area-inset-bottom)+1.5rem)]">
-        <div className="text-center">
-          <p className="text-sm text-white/55 mb-3">Yomy</p>
-          <Avatar className="size-[clamp(6rem,32vw,9rem)] mx-auto border-4 border-white/10 shadow-2xl">
-            <AvatarImage src={peer.avatar_url} />
-            <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <h2 className="mt-6 text-[clamp(1.7rem,7vw,2.2rem)] font-medium tracking-tight">{peer.username}</h2>
-          <p className="mt-2 text-base text-white/60">Incoming {incoming?.kind === 'video' ? 'video' : 'voice'} call</p>
-          <p className="mt-1 text-sm text-white/40">Answer or decline</p>
-        </div>
-        <div className="mt-auto w-full max-w-sm grid grid-cols-2 gap-8 sm:gap-12 items-end pb-2">
-          <div className="text-center">
-            <Button variant="destructive" size="lg" className="mx-auto rounded-full size-[clamp(4rem,18vw,4.5rem)] shadow-xl bg-red-600 hover:bg-red-700" onClick={() => void declineCall(incoming as CallSession)}>
-              <PhoneOff className="size-7" />
-            </Button>
-            <p className="mt-3 text-sm text-white/70">Decline</p>
-          </div>
-          <div className="text-center">
-            <Button size="lg" className="mx-auto rounded-full size-[clamp(4rem,18vw,4.5rem)] shadow-xl bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => void acceptCall(incoming as CallSession, peer)}>
-              {incoming?.kind === 'video' ? <Video className="size-7" /> : <Phone className="size-7" />}
-            </Button>
-            <p className="mt-3 text-sm text-white/70">Answer</p>
-          </div>
-        </div>
-      </div>
-    </div>}
 
     {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7">
       <Avatar className="size-[clamp(6.5rem,34vw,8rem)] border-4 border-white/10 shadow-2xl">
