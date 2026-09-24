@@ -314,7 +314,7 @@ export default function ChatPro() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .subscribe()
-    const onOnline = () => { void flushQueue(); void loadMessages(false); void loadSharedSettings(otherUser.id) }
+    const onOnline = () => { void loadMessages(false); void loadSharedSettings(otherUser.id) }
     const onVisible = () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
         void loadMessages(false)
