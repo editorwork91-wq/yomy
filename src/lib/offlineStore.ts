@@ -8,9 +8,33 @@ type QueuedMessage = {
 }
 
 const DB_NAME = 'yomy-offline-v4'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const KV_STORE = 'kv'
 const QUEUE_STORE = 'queue'
+const OUTBOX_STORE = 'outbox'
+
+export type SyncOperation =
+  | {
+      opId: string
+      userId: string
+      kind: 'reaction_set'
+      createdAt: string
+      payload: { messageId: string; mode: 'set' | 'clear'; emoji?: string }
+    }
+  | {
+      opId: string
+      userId: string
+      kind: 'chat_personal'
+      createdAt: string
+      payload: { otherUserId: string; patch: { archived?: boolean; muted?: boolean; bubble_theme?: string } }
+    }
+  | {
+      opId: string
+      userId: string
+      kind: 'chat_shared'
+      createdAt: string
+      payload: { otherUserId: string; wallpaper: string }
+    }
 
 function openDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null)
@@ -20,6 +44,7 @@ function openDb(): Promise<IDBDatabase | null> {
       const db = request.result
       if (!db.objectStoreNames.contains(KV_STORE)) db.createObjectStore(KV_STORE)
       if (!db.objectStoreNames.contains(QUEUE_STORE)) db.createObjectStore(QUEUE_STORE, { keyPath: 'clientMessageId' })
+      if (!db.objectStoreNames.contains(OUTBOX_STORE)) db.createObjectStore(OUTBOX_STORE, { keyPath: 'opId' })
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => resolve(null)
@@ -127,6 +152,51 @@ export async function removeQueuedMessage(userId: string, clientMessageId: strin
   await new Promise<void>(resolve => {
     const tx = db.transaction(QUEUE_STORE, 'readwrite')
     tx.objectStore(QUEUE_STORE).delete(clientMessageId)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => resolve()
+  })
+  db.close()
+}
+
+
+export async function queueSyncOperation(operation: SyncOperation) {
+  const db = await openDb()
+  if (!db) {
+    const existing = (await getValue<SyncOperation[]>(`syncOutbox:${operation.userId}`)) || []
+    if (!existing.some(item => item.opId === operation.opId)) existing.push(operation)
+    await putValue(`syncOutbox:${operation.userId}`, existing)
+    return
+  }
+  await new Promise<void>(resolve => {
+    const tx = db.transaction(OUTBOX_STORE, 'readwrite')
+    tx.objectStore(OUTBOX_STORE).put(operation)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => resolve()
+  })
+  db.close()
+}
+
+export async function readSyncOperations(userId: string): Promise<SyncOperation[]> {
+  const db = await openDb()
+  if (!db) return (await getValue<SyncOperation[]>(`syncOutbox:${userId}`)) || []
+  return await new Promise<SyncOperation[]>(resolve => {
+    const tx = db.transaction(OUTBOX_STORE, 'readonly')
+    const request = tx.objectStore(OUTBOX_STORE).getAll()
+    request.onsuccess = () => resolve((request.result as SyncOperation[]).filter(item => item.userId === userId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)))
+    request.onerror = () => resolve([])
+  }).finally(() => db.close())
+}
+
+export async function removeSyncOperation(userId: string, opId: string) {
+  const db = await openDb()
+  if (!db) {
+    const items = (await getValue<SyncOperation[]>(`syncOutbox:${userId}`)) || []
+    await putValue(`syncOutbox:${userId}`, items.filter(item => item.opId !== opId))
+    return
+  }
+  await new Promise<void>(resolve => {
+    const tx = db.transaction(OUTBOX_STORE, 'readwrite')
+    tx.objectStore(OUTBOX_STORE).delete(opId)
     tx.oncomplete = () => resolve()
     tx.onerror = () => resolve()
   })
