@@ -891,18 +891,47 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
-                        {message.media_type === 'image' && message.view_once ? (
-                          <button type="button" disabled={!canOpenOnce || viewOnceOpening} onClick={() => void openViewOnceMedia(message)} className={'w-full min-w-56 rounded-2xl border px-4 py-4 text-left transition-all yomy-3d-surface ' + (canOpenOnce ? 'bg-black/5 dark:bg-white/5 hover:scale-[1.01] cursor-pointer' : 'opacity-70 cursor-default')}>
+                        {message.media_type === 'image' && message.view_once && (
+                          <button
+                            type="button"
+                            disabled={!canOpenOnce || viewOnceOpening}
+                            onClick={() => void openViewOnceMedia(message)}
+                            className={'w-full min-w-56 rounded-2xl border px-4 py-4 text-left transition-all yomy-3d-surface ' + (canOpenOnce ? 'bg-black/5 dark:bg-white/5 hover:scale-[1.01] cursor-pointer' : 'opacity-70 cursor-default')}
+                          >
                             <div className="flex items-center gap-3">
-                              <div className="size-12 shrink-0 rounded-2xl bg-black/10 dark:bg-white/10 flex items-center justify-center shadow-inner">{once?.remaining ? <Eye className="size-5" /> : <EyeOff className="size-5" />}</div>
+                              <div className="size-12 shrink-0 rounded-2xl bg-black/10 dark:bg-white/10 flex items-center justify-center shadow-inner">
+                                {once?.remaining ? <Eye className="size-5" /> : <EyeOff className="size-5" />}
+                              </div>
                               <div className="min-w-0 flex-1">
                                 <p className="font-semibold text-sm">{once?.remaining ? (once.limit === 1 ? 'View once photo' : 'View twice photo') : 'Photo closed'}</p>
-                                <p className="text-[11px] opacity-70 mt-0.5">{mine ? 'Sent • recipient can view it' : once?.remaining === 2 ? 'Two opens available' : once?.remaining === 1 ? 'One open remaining' : 'This photo is closed permanently'}</p>
+                                <p className="text-[11px] opacity-70 mt-0.5">
+                                  {mine
+                                    ? (once?.remaining ? 'Sent • recipient can view it' : 'Closed after the allowed views')
+                                    : once?.remaining === 2
+                                      ? 'Two opens available'
+                                      : once?.remaining === 1
+                                        ? 'One open remaining'
+                                        : 'This photo is closed permanently'}
+                                </p>
                               </div>
                               {canOpenOnce && <span className="rounded-full px-2 py-1 text-[10px] font-semibold bg-background/70 border">{viewOnceOpening ? 'Opening…' : 'Open'}</span>}
                             </div>
                           </button>
-                        ) : message.media_type === 'image' && (mediaUrls[message.id] || message.media_url) && <button type="button" onClick={() => setMediaViewer({ url: mediaUrls[message.id] || message.media_url, kind: 'image' })} className="group/media relative block overflow-hidden rounded-xl yomy-3d-surface"><img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5 transition-transform duration-200 group-hover/media:scale-[1.015]" loading="lazy" /><span className="absolute right-2 top-2 size-8 rounded-full bg-black/55 text-white flex items-center justify-center opacity-0 group-hover/media:opacity-100 transition-opacity"><Maximize2 className="size-4" /></span></button>}
+                        )}
+
+                        {message.media_type === 'image' && !message.view_once && (mediaUrls[message.id] || message.media_url) && (
+                          <button
+                            type="button"
+                            onClick={() => setMediaViewer({ url: mediaUrls[message.id] || message.media_url, kind: 'image' })}
+                            className="group/media relative block overflow-hidden rounded-xl yomy-3d-surface"
+                          >
+                            <img src={mediaUrls[message.id] || message.media_url} alt="" className="rounded-xl max-h-72 max-w-full object-cover mb-1.5 transition-transform duration-200 group-hover/media:scale-[1.015]" loading="lazy" />
+                            <span className="absolute right-2 top-2 size-8 rounded-full bg-black/55 text-white flex items-center justify-center opacity-0 group-hover/media:opacity-100 transition-opacity">
+                              <Maximize2 className="size-4" />
+                            </span>
+                          </button>
+                        )}
+
                         {message.media_type === 'video' && (mediaUrls[message.id] || message.media_url) && <div className="relative overflow-hidden rounded-xl mb-1.5"><video src={mediaUrls[message.id] || message.media_url} controls playsInline preload="metadata" className="rounded-xl max-h-72 max-w-full" /><button type="button" onClick={() => setMediaViewer({ url: mediaUrls[message.id] || message.media_url, kind: 'video' })} aria-label="Open video" className="absolute right-2 top-2 size-8 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md"><Maximize2 className="size-4" /></button></div>}
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
