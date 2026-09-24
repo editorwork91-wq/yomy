@@ -563,6 +563,13 @@ export default function ChatPro() {
     }
     setMessages(prev => [...prev, data as Message])
     setReplyTo(null)
+    void sendPushEvent({
+      type: 'message',
+      targetUserId: otherUser.id,
+      title: user.user_metadata?.username || 'Yomy',
+      body: '🎙️ Voice message',
+      data: { message_id: data.id, url: '/messages/' + otherUser.username },
+    })
   }
 
   const startVoice = async () => {
