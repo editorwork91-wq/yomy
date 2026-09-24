@@ -1,4 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { Home, Search, PlusSquare, Heart, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
@@ -6,24 +7,39 @@ import { useAuth } from '@/contexts/AuthContext'
 export default function BottomNav() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const [language, setLanguage] = useState(document.documentElement.lang || 'en')
+  useEffect(() => {
+    const onLanguage = () => setLanguage(document.documentElement.lang || 'en')
+    window.addEventListener('yomy-language-changed', onLanguage)
+    return () => window.removeEventListener('yomy-language-changed', onLanguage)
+  }, [])
+  const labels = language === 'ar'
+    ? { home:'الرئيسية', explore:'استكشاف', create:'إنشاء', activity:'النشاط', profile:'الملف' }
+    : language === 'de'
+      ? { home:'Start', explore:'Entdecken', create:'Erstellen', activity:'Aktivität', profile:'Profil' }
+      : language === 'fr'
+        ? { home:'Accueil', explore:'Explorer', create:'Créer', activity:'Activité', profile:'Profil' }
+        : language === 'es'
+          ? { home:'Inicio', explore:'Explorar', create:'Crear', activity:'Actividad', profile:'Perfil' }
+          : { home:'Home', explore:'Explore', create:'Create', activity:'Activity', profile:'Profile' }
 
   const navItems = [
-    { to: '/', icon: Home, label: 'Home' },
-    { to: '/explore', icon: Search, label: 'Explore' },
-    { to: '/create', icon: PlusSquare, label: 'Create' },
-    { to: '/notifications', icon: Heart, label: 'Activity' },
-    { to: `/profile/${profile?.username}`, icon: User, label: 'Profile' },
+    { to: '/', icon: Home, label: labels.home },
+    { to: '/explore', icon: Search, label: labels.explore },
+    { to: '/create', icon: PlusSquare, label: labels.create },
+    { to: '/notifications', icon: Heart, label: labels.activity },
+    { to: `/profile/${profile?.username}`, icon: User, label: labels.profile },
   ]
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-[max(0.45rem,env(safe-area-inset-bottom))] pointer-events-none">
-      <div className="pointer-events-auto flex items-center justify-around max-w-lg mx-auto h-[3.75rem] px-2 rounded-[1.55rem] border border-border/55 bg-background/76 shadow-[0_-12px_36px_rgba(0,0,0,.09),inset_0_1px_0_rgba(255,255,255,.16)] backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65">
+      <div className="pointer-events-auto flex items-center justify-around max-w-lg mx-auto h-[3.75rem] px-2 rounded-[1.55rem] border border-border/45 yomy-glass-bar">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             aria-label={label}
-            onClick={label === 'Create' ? (e) => { e.preventDefault(); navigate('/create') } : undefined}
+            onClick={label === labels.create ? (e) => { e.preventDefault(); navigate('/create') } : undefined}
             className={({ isActive }) =>
               cn(
                 'relative flex size-11 items-center justify-center rounded-xl transition-all duration-200 active:scale-95',
