@@ -518,69 +518,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     {children}
     <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
 
-    {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#08110f] text-white overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(255,255,255,0.10),transparent_36%)]" />
-      <div className="relative min-h-full flex flex-col items-center px-7 pt-[max(4.5rem,env(safe-area-inset-top)+2rem)] pb-[max(2.5rem,env(safe-area-inset-bottom)+1.5rem)]">
-        <div className="text-center">
-          <p className="text-sm text-white/55 mb-3">Yomy</p>
-          <Avatar className="size-[clamp(6rem,32vw,9rem)] mx-auto border-4 border-white/10 shadow-2xl">
-            <AvatarImage src={peer.avatar_url} />
-            <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
-          </Avatar>
-          <h2 className="mt-6 text-[clamp(1.7rem,7vw,2.2rem)] font-medium tracking-tight">{peer.username}</h2>
-          <p className="mt-2 text-base text-white/60">Incoming {incoming?.kind === 'video' ? 'video' : 'voice'} call</p>
-          <p className="mt-1 text-sm text-white/40">Answer or decline</p>
-        </div>
-        <div className="mt-auto w-full max-w-sm grid grid-cols-2 gap-8 sm:gap-12 items-end pb-2">
-          <div className="text-center">
-            <Button variant="destructive" size="lg" className="mx-auto rounded-full size-[clamp(4rem,18vw,4.5rem)] shadow-xl bg-red-600 hover:bg-red-700" onClick={() => void declineCall(incoming as CallSession)}>
-              <PhoneOff className="size-7" />
-            </Button>
-            <p className="mt-3 text-sm text-white/70">Decline</p>
-          </div>
-          <div className="text-center">
-            <Button size="lg" className="mx-auto rounded-full size-[clamp(4rem,18vw,4.5rem)] shadow-xl bg-emerald-500 hover:bg-emerald-600 text-white" onClick={() => void acceptCall(incoming as CallSession, peer)}>
-              {incoming?.kind === 'video' ? <Video className="size-7" /> : <Phone className="size-7" />}
-            </Button>
-            <p className="mt-3 text-sm text-white/70">Answer</p>
-          </div>
-        </div>
-      </div>
-    </div>}
-
-    {showOutgoing && peer && <div className="fixed inset-0 z-[99] bg-black text-white flex flex-col items-center justify-center p-7">
-      <Avatar className="size-[clamp(6.5rem,34vw,8rem)] border-4 border-white/10 shadow-2xl">
-        <AvatarImage src={peer.avatar_url} />
-        <AvatarFallback className="text-4xl bg-white/10">{peer.username[0]?.toUpperCase()}</AvatarFallback>
-      </Avatar>
-      <h2 className="mt-6 text-[clamp(1.5rem,6vw,2rem)] font-semibold">{peer.username}</h2>
-      <p className="mt-2 text-white/60">{outgoingStage === 'ringing' ? 'Ringing…' : 'Connecting…'}</p>
-      <p className="mt-1 text-xs text-white/35">{outgoingStage === 'ringing' ? 'The other device received the call' : 'Waiting for the other device'}</p>
-      <div className="mt-auto pb-[max(2rem,env(safe-area-inset-bottom))]">
-        <Button variant="destructive" size="lg" className="rounded-full size-16 shadow-xl" onClick={() => void endCall()}><PhoneOff className="size-7" /></Button>
-      </div>
-    </div>}
-
-    {showActive && peer && active && !((location.pathname + location.search) === callPresentationRoute) && (
-      <div className="fixed top-[max(0.55rem,env(safe-area-inset-top))] left-3 right-3 z-[120] flex justify-center">
-        <div className="w-full max-w-xl overflow-hidden rounded-[1.35rem] border border-white/15 bg-background/78 backdrop-blur-2xl shadow-[0_18px_70px_rgba(0,0,0,.30)] ring-1 ring-black/5">
-          <button className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left active:scale-[.99] transition-transform" onClick={() => callPresentationRoute && navigate(callPresentationRoute)}>
-            <div className="relative shrink-0">
-              <Avatar className="size-10 border border-white/15 shadow-lg"><AvatarImage src={peer.avatar_url} /><AvatarFallback>{peer.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
-              <span className="absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-background bg-emerald-500 animate-pulse" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5"><span className="font-semibold text-sm truncate">{peer.username}</span><span className="text-[10px] text-emerald-600 dark:text-emerald-400">LIVE</span></div>
-              <p className="text-[11px] text-muted-foreground truncate">{active.kind === 'video' ? 'Video call' : 'Voice call'} · {connected ? formatDuration(elapsedSeconds) : 'Reconnecting…'}</p>
-            </div>
-            <div className="size-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0"><Phone className="size-4 text-primary" /></div>
-            <Maximize2 className="size-4 text-muted-foreground shrink-0" />
-          </button>
-          <div className="h-0.5 bg-gradient-to-r from-primary/70 via-primary/20 to-transparent" />
-        </div>
-      </div>
-    )}
-
     {showIncoming && peer && <div className="fixed inset-0 z-[100] bg-[#07110e] text-white overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(0,255,170,.10),transparent_28%),radial-gradient(circle_at_15%_85%,rgba(90,110,255,.13),transparent_26%),radial-gradient(circle_at_85%_70%,rgba(255,80,150,.10),transparent_25%)]" />
       <div className="absolute -top-24 -left-16 size-64 rounded-full border border-white/5 bg-white/[0.025] blur-2xl" />
