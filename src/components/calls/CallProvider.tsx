@@ -10,7 +10,7 @@ import { toast } from 'sonner'
 
 type CallKind = 'voice' | 'video'
 type CallStatus = 'ringing' | 'active' | 'ended' | 'declined' | 'missed' | 'failed'
-type Signal = { id: number; call_id: string; sender_id: string; recipient_id: string; signal_type: string; payload: Record<string, unknown> }
+type Signal = { id: number; call_id: string; sender_id: string; recipient_id: string; signal_type: 'offer' | 'answer' | 'ice-candidate' | 'renegotiate' | 'hangup'; payload: Record<string, unknown> }
 type CallSession = { id: string; caller_id: string; callee_id: string; kind: CallKind; status: CallStatus; created_at: string; answered_at?: string | null; started_at?: string | null; ended_at?: string | null }
 type Peer = { id: string; username: string; full_name: string; avatar_url: string }
 type CallContextValue = { startCall: (peer: Peer, kind: CallKind) => Promise<void> }
@@ -108,7 +108,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     return data as Peer | null
   }, [])
 
-  const sendSignal = useCallback(async (call: CallSession, signalType: string, payload: Record<string, unknown>) => {
+  const sendSignal = useCallback(async (call: CallSession, signalType: Signal['signal_type'], payload: Record<string, unknown>) => {
     if (!user) return
     const recipientId = call.caller_id === user.id ? call.callee_id : call.caller_id
     const { error } = await supabase.from('call_signals').insert({ call_id: call.id, sender_id: user.id, recipient_id: recipientId, signal_type: signalType, payload })
@@ -324,7 +324,9 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         if (call.status === 'active') {
           activeRef.current = call
           setActive(call)
+          setCallFocused(true)
           setOutgoingStage('ringing')
+          startNativeActiveCall(call, peerRef.current)
         } else if (['declined', 'missed', 'failed', 'ended'].includes(call.status)) cleanup()
       })
       .subscribe()
@@ -342,8 +344,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         if (!call || signal.call_id !== call.id) return
         processedSignals.current.add(signal.id)
         try {
-          if (signal.signal_type === 'ringing_ack' && call.status === 'ringing') setOutgoingStage('ringing')
-          else if (signal.signal_type === 'answer' && call.caller_id === user.id && pc) {
+          if (signal.signal_type === 'answer' && call.caller_id === user.id && pc) {
             await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
             const now = new Date().toISOString()
             const activeCall = { ...call, status: 'active' as CallStatus, answered_at: call.answered_at || now, started_at: call.started_at || now }
@@ -358,7 +359,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
           else if (signal.signal_type === 'ice-candidate' && pc) {
             if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
             else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
-          } else if (signal.signal_type === 'decline' || signal.signal_type === 'hangup') cleanup()
+          } else if (signal.signal_type === 'hangup') cleanup()
         } catch (err) { console.warn('signal handling failed:', err instanceof Error ? err.message : err) }
       })
       .subscribe()
@@ -381,7 +382,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
         setCallFocused(true)
         setOutgoingStage('ringing')
         startNativeActiveCall(updated, peerRef.current)
-      } else if (['declined', 'missed', 'failed', 'ended'].includes(nextStatus)) cleanup()
+      } else if (nextStatus === 'declined' || nextStatus === 'missed' || nextStatus === 'failed' || nextStatus === 'ended') cleanup()
     }, CALL_STATE_POLL_MS)
     return () => window.clearInterval(timer)
   }, [cleanup, user])
