@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
   Mic, MoreVertical, Palette, Phone, Reply, Send, Smile, Trash2, Video, WifiOff,
-  X, Pencil, Eye, Clock3
+  X, Pencil, Eye, Clock3, UserRound, ShieldCheck
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase'
@@ -14,13 +14,14 @@ import { sendPushEvent } from '@/lib/push'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import {
   cacheJson, cacheMessages, queueMessage, readCachedJson, readCachedMessages,
-  readQueuedMessages, removeQueuedMessage
+  readQueuedMessages, removeQueuedMessage, queueSyncOperation
 } from '@/lib/offlineStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
+import LinkPreviewCard from '@/components/posts/LinkPreviewCard'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle
 } from '@/components/ui/dialog'
@@ -34,13 +35,13 @@ type ChatPreference = {
   other_user_id: string
   archived: boolean
   muted: boolean
-  wallpaper: 'default' | 'romance' | 'hearts' | 'petals' | 'midnight' | 'paper'
+  wallpaper: 'default' | 'romance' | 'hearts' | 'petals' | 'midnight' | 'paper' | 'roses'
   bubble_theme: 'default' | 'ocean' | 'mint' | 'violet' | 'rose' | 'amber'
 }
 
 type PendingMedia = { file: File; kind: 'image' | 'video'; previewUrl: string }
 
-const wallpapers: ChatPreference['wallpaper'][] = ['default', 'romance', 'hearts', 'petals', 'midnight', 'paper']
+const wallpapers: ChatPreference['wallpaper'][] = ['default', 'romance', 'hearts', 'petals', 'roses', 'midnight', 'paper']
 const bubbleThemes: ChatPreference['bubble_theme'][] = ['default', 'ocean', 'mint', 'violet', 'rose', 'amber']
 
 const bubbleClasses: Record<ChatPreference['bubble_theme'], string> = {
@@ -59,6 +60,7 @@ const wallpaperLabel: Record<ChatPreference['wallpaper'], string> = {
   petals: 'Flowers & petals',
   midnight: 'Midnight',
   paper: 'Paper',
+  roses: 'Rose garden',
 }
 
 function fallbackPreference(userId: string, otherUserId: string): ChatPreference {
@@ -74,6 +76,16 @@ function fallbackPreference(userId: string, otherUserId: string): ChatPreference
 
 function initials(profile?: ProfileType | null) {
   return profile?.username?.slice(0, 1)?.toUpperCase() || '?'
+}
+
+function firstUrl(value: string) {
+  return value.match(/https?:\/\/[^\s]+/i)?.[0] || ''
+}
+
+function sharedChatKey(userId: string, otherUserId: string) {
+  return userId < otherUserId
+    ? { user_low: userId, user_high: otherUserId }
+    : { user_low: otherUserId, user_high: userId }
 }
 
 function isTransientSendError(error: unknown) {
@@ -101,20 +113,26 @@ function Wallpaper({ type }: { type: ChatPreference['wallpaper'] }) {
   const symbols = type === 'romance'
     ? ['♥', '♡', '✿', '❀', '♥', '❁']
     : type === 'hearts'
-      ? ['♥', '♡', '❤', '❥']
+      ? ['♥', '♡', '❤', '❥', '💗']
       : type === 'petals'
-        ? ['✿', '❀', '❁', '✾']
-        : type === 'midnight'
-          ? ['✦', '✧', '⋆', '✩']
-          : ['·', '•', '⊹', '◦']
+        ? ['✿', '❀', '❁', '✾', '🌸']
+        : type === 'roses'
+          ? ['🌹', '♡', '✿', '❀', '🌹']
+          : type === 'midnight'
+            ? ['✦', '✧', '⋆', '✩']
+            : ['·', '•', '⊹', '◦']
+
   return (
-    <div className="absolute inset-0 pointer-events-none overflow-hidden select-none opacity-[0.075]">
-      <div className="grid grid-cols-6 gap-x-7 gap-y-8 p-5 text-3xl leading-none text-foreground">
-        {Array.from({ length: 54 }, (_, i) => (
-          <span key={i} className="text-center" style={{ transform: 'rotate(' + ((i % 5 - 2) * 7) + 'deg)' }}>
-            {symbols[i % symbols.length]}
-          </span>
-        ))}
+    <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
+      <div className="absolute inset-0 opacity-70" style={{
+        backgroundImage: type === 'midnight'
+          ? 'radial-gradient(circle at 20% 20%, rgba(120,140,255,.12), transparent 30%), radial-gradient(circle at 80% 70%, rgba(190,120,255,.10), transparent 28%)'
+          : type === 'roses'
+            ? 'radial-gradient(circle at 18% 24%, rgba(255,90,130,.11), transparent 22%), radial-gradient(circle at 82% 72%, rgba(255,160,180,.10), transparent 26%)'
+            : 'radial-gradient(circle at 20% 20%, rgba(255,120,160,.08), transparent 25%), radial-gradient(circle at 85% 75%, rgba(120,180,255,.07), transparent 24%)'
+      }} />
+      <div className="relative grid grid-cols-6 gap-x-7 gap-y-8 p-5 text-2xl leading-none text-foreground/80 opacity-[0.085]">
+        {Array.from({ length: 60 }, (_, i) => <span key={i} className="text-center" style={{ transform: 'rotate(' + ((i % 5 - 2) * 7) + 'deg) scale(' + (0.88 + ((i % 3) * .08)) + ')' }}>{symbols[i % symbols.length]}</span>)}
       </div>
     </div>
   )
