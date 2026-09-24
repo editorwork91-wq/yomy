@@ -7,26 +7,10 @@ import { cacheConversations, readCachedConversations } from '@/lib/offlineStore'
 export default function RealtimeInbox() {
   const { user } = useAuth()
   const location = useLocation()
-  const soundRef = useRef<AudioContext | null>(null)
-  const notifiedMessageIds = useRef(new Set<string>())
-
   const ping = () => {
     try {
-      const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-      if (!AudioCtx) return
-      const ctx = soundRef.current || new AudioCtx()
-      soundRef.current = ctx
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.frequency.value = 880
-      gain.gain.value = 0.025
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.055)
-    } catch {
-      // Optional; browsers may block programmatic audio.
-    }
+      window.dispatchEvent(new CustomEvent('yomy-attention', { detail: { title: 'New message', body: 'You have a new message', url: '/messages', kind: 'message' } }))
+    } catch {}
   }
 
   useEffect(() => {
@@ -88,7 +72,7 @@ export default function RealtimeInbox() {
 
           if (inCurrentChat) return
           ping()
-          void notifiedMessageIds.current
+          ping()
         }
       )
       .subscribe()
