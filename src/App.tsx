@@ -21,6 +21,9 @@ import EditProfile from '@/pages/EditProfile'
 import Settings from '@/pages/Settings'
 import Messages from '@/pages/Messages'
 import Chat from '@/pages/Chat'
+import ChatPro from '@/pages/ChatPro'
+import MessagesPro from '@/pages/MessagesPro'
+import NetworkStatus from '@/components/system/NetworkStatus'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -48,13 +51,13 @@ function AppRoutes() {
     <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
     <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-    <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-    <Route path="/messages/new" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
-    <Route path="/messages/:username" element={<ProtectedRoute><Chat /></ProtectedRoute>} />
+    <Route path="/messages" element={<ProtectedRoute><MessagesPro /></ProtectedRoute>} />
+    <Route path="/messages/new" element={<ProtectedRoute><ChatPro /></ProtectedRoute>} />
+    <Route path="/messages/:username" element={<ProtectedRoute><ChatPro /></ProtectedRoute>} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
 }
 export function App() {
-  return <AuthProvider><BrowserRouter><CallProvider><AppRoutes /><YomyEventEngine /><YomyReminderEngine /><PushManager /><CallHistoryPanel /></CallProvider></BrowserRouter><Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} /></AuthProvider>
+  return <AuthProvider><BrowserRouter><CallProvider><AppRoutes /><NetworkStatus /><YomyEventEngine /><YomyReminderEngine /><PushManager /><CallHistoryPanel /></CallProvider></BrowserRouter><Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} /></AuthProvider>
 }
 export default App
