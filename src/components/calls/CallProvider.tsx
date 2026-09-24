@@ -127,29 +127,66 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setLocalStream(stream)
     setNativeSpeaker(false)
     setSpeakerOn(false)
+
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
     pcRef.current = pc
     stream.getTracks().forEach(track => pc.addTrack(track, stream))
+
     const remote = new MediaStream()
     setRemoteStream(remote)
-    pc.ontrack = event => event.streams[0]?.getTracks().forEach(track => { if (!remote.getTracks().some(t => t.id === track.id)) remote.addTrack(track) })
-    pc.onicecandidate = event => { if (event.candidate) void sendSignal(call, 'ice-candidate', event.candidate.toJSON() as unknown as Record<string, unknown>) }
-    pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') setConnected(true)
-      if (pc.connectionState === 'failed') {
-        void supabase.from('call_sessions').update({ status: 'failed', ended_at: new Date().toISOString() }).eq('id', call.id).eq('status', 'active')
-        cleanup()
-        toast.error('Call connection failed')
+
+    let recoveryAttempts = 0
+    const recoverIce = async () => {
+      if (!caller || recoveryAttempts >= 2 || pcRef.current !== pc || pc.signalingState === 'closed') return
+      recoveryAttempts += 1
+      try {
+        pc.restartIce()
+        const offer = await pc.createOffer({
+          iceRestart: true,
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: call.kind === 'video',
+        })
+        if (pcRef.current !== pc) return
+        await pc.setLocalDescription(offer)
+        await sendSignal(call, 'offer', offer as unknown as Record<string, unknown>)
+      } catch (error) {
+        console.warn('ICE recovery failed:', error instanceof Error ? error.message : error)
       }
     }
+
+    pc.ontrack = event => event.streams[0]?.getTracks().forEach(track => {
+      if (!remote.getTracks().some(t => t.id === track.id)) remote.addTrack(track)
+    })
+    pc.onicecandidate = event => {
+      if (event.candidate) void sendSignal(call, 'ice-candidate', event.candidate.toJSON() as unknown as Record<string, unknown>)
+    }
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') {
+        if (iceRecoveryTimerRef.current) window.clearTimeout(iceRecoveryTimerRef.current)
+        iceRecoveryTimerRef.current = null
+        recoveryAttempts = 0
+        setConnected(true)
+      } else if (pc.connectionState === 'disconnected') {
+        setConnected(false)
+        if (caller && !iceRecoveryTimerRef.current) {
+          iceRecoveryTimerRef.current = window.setTimeout(() => {
+            iceRecoveryTimerRef.current = null
+            if (pcRef.current === pc && pc.connectionState === 'disconnected') void recoverIce()
+          }, 2500)
+        }
+      } else if (pc.connectionState === 'failed') {
+        setConnected(false)
+        if (caller) void recoverIce()
+      }
+    }
+
     if (caller) {
       const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: call.kind === 'video' })
       await pc.setLocalDescription(offer)
       await sendSignal(call, 'offer', offer as unknown as Record<string, unknown>)
     }
     return pc
-  }, [cleanup, sendSignal])
-
+  }, [sendSignal])
   const loadIncomingById = useCallback(async (callId: string) => {
     if (!user || !callId) return null
     const { data, error } = await supabase.from('call_sessions').select('*').eq('id', callId).eq('callee_id', user.id).maybeSingle()
@@ -390,7 +427,44 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   }, [acceptCall, declineCall, loadIncomingById, openCallRoute])
 
   useEffect(() => {
-    const callId = new URLSearchParams(location.search).get('call')
+    if (!user) return
+    const timer = window.setInterval(async () => {
+      const call = activeRef.current
+      const pc = pcRef.current
+      if (!call || !pc) return
+      const { data } = await supabase.from('call_signals').select('*').eq('call_id', call.id).eq('recipient_id', user.id).order('id', { ascending: true })
+      for (const signal of (data || []) as Signal[]) {
+        if (processedSignals.current.has(signal.id)) continue
+        processedSignals.current.add(signal.id)
+        try {
+          if (signal.signal_type === 'answer' && call.caller_id === user.id) {
+            await pc.setRemoteDescription(signal.payload as unknown as RTCSessionDescriptionInit)
+            const now = new Date().toISOString()
+            const activeCall = { ...call, status: 'active' as CallStatus, answered_at: call.answered_at || now, started_at: call.started_at || now }
+            activeRef.current = activeCall
+            setActive(activeCall)
+            setCallFocused(true)
+            setOutgoingStage('ringing')
+            startNativeActiveCall(activeCall, peerRef.current)
+            for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
+            pendingCandidates.current = []
+          } else if (signal.signal_type === 'offer' && call.callee_id === user.id) {
+            await handleOffer(call, signal, pc)
+          } else if (signal.signal_type === 'ice-candidate') {
+            if (pc.remoteDescription) await pc.addIceCandidate(signal.payload as RTCIceCandidateInit)
+            else pendingCandidates.current.push(signal.payload as RTCIceCandidateInit)
+          } else if (signal.signal_type === 'hangup' || signal.signal_type === 'decline') {
+            cleanup()
+          }
+        } catch (error) {
+          console.warn('signal reconciliation failed:', error instanceof Error ? error.message : error)
+        }
+      }
+    }, 900)
+    return () => window.clearInterval(timer)
+  }, [cleanup, handleOffer, user])
+
+
     if (!callId || !user || activeRef.current) return
     void loadIncomingById(callId)
   }, [loadIncomingById, location.search, user])
