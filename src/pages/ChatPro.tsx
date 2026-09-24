@@ -272,16 +272,17 @@ export default function ChatPro() {
       return
     }
     for (const item of queued) {
-      const { data, error } = await supabase.rpc('send_message', {
+      const { data, error } = await supabase.rpc('send_message_v2', {
         p_receiver_id: otherUser.id,
         p_content: item.content,
         p_reply_to_id: item.replyToId,
         p_media_url: '',
         p_media_type: '',
-        p_media_bucket: 'messages',
+        p_media_bucket: 'messages-private',
         p_media_path: null,
         p_view_once: false,
         p_client_message_id: item.clientMessageId,
+        p_created_at: item.createdAt,
       })
       if (!error && data) {
         await removeQueuedMessage(user.id, item.clientMessageId)
@@ -658,16 +659,17 @@ export default function ChatPro() {
     }
 
     setSending(true)
-    const { data, error } = await supabase.rpc('send_message', {
+    const { data, error } = await supabase.rpc('send_message_v2', {
       p_receiver_id: otherUser.id,
       p_content: content,
       p_reply_to_id: replyId,
       p_media_url: '',
       p_media_type: '',
-      p_media_bucket: 'messages',
+      p_media_bucket: 'messages-private',
       p_media_path: null,
       p_view_once: false,
       p_client_message_id: clientMessageId,
+      p_created_at: createdAt,
     })
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
@@ -683,6 +685,28 @@ export default function ChatPro() {
     }
     setSending(false)
   }
+
+  useEffect(() => {
+    if (!online || !user || !messages.length) return
+    const candidates = messages.filter(message => message.media_type && !mediaUrls[message.id]).slice(-16)
+    if (!candidates.length) return
+    let cancelled = false
+
+    void Promise.all(candidates.map(async message => {
+      if (message.media_url && message.media_bucket !== 'messages-private') {
+        setMediaUrls(current => ({ ...current, [message.id]: message.media_url }))
+        return
+      }
+      const { data, error } = await supabase.functions.invoke('message-media-url', {
+        body: { message_id: message.id, expires_in: 3600 },
+      })
+      if (!cancelled && !error && data?.url) {
+        setMediaUrls(current => ({ ...current, [message.id]: String(data.url) }))
+      }
+    }))
+
+    return () => { cancelled = true }
+  }, [mediaUrls, messages, online, user])
 
   const pendingCount = messages.filter(message => message.id.startsWith('local:')).length
   const pref = preference || (user && otherUser ? fallbackPreference(user.id, otherUser.id) : null)
