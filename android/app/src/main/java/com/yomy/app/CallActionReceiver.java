@@ -70,9 +70,6 @@ public class CallActionReceiver extends BroadcastReceiver {
             context.startActivity(launch);
         }
     }
-}
-
-
     private static void storePendingAction(Context context, String action, String callId) {
         try {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -82,3 +79,4 @@ public class CallActionReceiver extends BroadcastReceiver {
                     .apply();
         } catch (Exception ignored) {}
     }
+}
