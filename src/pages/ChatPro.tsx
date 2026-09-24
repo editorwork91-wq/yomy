@@ -1243,8 +1243,6 @@ export default function ChatPro() {
         </div>
       </div>}
 
-      </div>}
-
       {cameraOpen && <div className="fixed inset-0 z-[130] bg-black text-white flex flex-col overflow-hidden">
         <div className="absolute inset-0">
           <video ref={cameraVideoRef} muted playsInline className={'h-full w-full object-cover ' + (cameraFacing === 'user' ? 'scale-x-[-1]' : '')} />
