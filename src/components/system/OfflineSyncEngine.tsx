@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { sendPushEvent } from '@/lib/push'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   readQueuedMessages,
@@ -33,22 +34,43 @@ export default function OfflineSyncEngine() {
       const queuedMessages = await readQueuedMessages(user.id)
       for (const item of queuedMessages) {
         if (!navigator.onLine) break
-        const { error } = await supabase.rpc('send_message_v2', {
-          p_receiver_id: item.otherUserId,
-          p_content: item.content,
-          p_reply_to_id: item.replyToId,
-          p_media_url: '',
-          p_media_type: '',
-          p_media_bucket: 'messages-private',
-          p_media_path: null,
-          p_view_once: false,
-          p_client_message_id: item.clientMessageId,
-          p_created_at: item.createdAt,
-        })
-        if (!error) {
+        const { data, error } = await supabase.from('messages').insert({
+          sender_id: user.id,
+          receiver_id: item.otherUserId,
+          content: item.content,
+          media_url: '',
+          media_type: '',
+          media_bucket: 'messages-private',
+          media_path: null,
+          is_encrypted: true,
+          view_once: false,
+          view_once_limit: 0,
+          view_once_open_count: 0,
+          view_once_opened: false,
+          client_message_id: item.clientMessageId,
+          reply_to_id: item.replyToId,
+          created_at: item.createdAt,
+        }).select('*').single()
+
+        let sentMessage = data
+        let sendError = error
+        if (sendError?.code === '23505') {
+          const existing = await supabase.from('messages').select('*').eq('sender_id', user.id).eq('client_message_id', item.clientMessageId).maybeSingle()
+          sentMessage = existing.data
+          sendError = existing.error
+        }
+
+        if (!sendError && sentMessage) {
           await removeQueuedMessage(user.id, item.clientMessageId)
           changed = true
-        } else if (!isTransient(error)) {
+          await sendPushEvent({
+            type: 'message',
+            targetUserId: item.otherUserId,
+            title: user.user_metadata?.username || 'Yomy',
+            body: item.content,
+            data: { message_id: sentMessage.id, url: '/messages' },
+          })
+        } else if (sendError && !isTransient(sendError)) {
           await removeQueuedMessage(user.id, item.clientMessageId)
         }
       }
