@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff } from 'lucide-react'
+import { ChevronDown, Phone, Video, Mic, MicOff, PhoneOff, Volume2, VolumeX, VideoOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { sendPushEvent } from '@/lib/push'
@@ -15,7 +15,12 @@ type CallSession = { id: string; caller_id: string; callee_id: string; kind: Cal
 type Peer = { id: string; username: string; full_name: string; avatar_url: string }
 type CallContextValue = { startCall: (peer: Peer, kind: CallKind) => Promise<void> }
 type AudioRouteBridge = { setSpeaker: (enabled: boolean) => void }
-type NativeNotificationBridge = { stopCall?: () => void; getPendingCallAction?: () => string; clearPendingCallAction?: () => void }
+type NativeNotificationBridge = {
+  stopCall?: () => void
+  startActiveCall?: (title: string, callId: string, kind: CallKind, route: string) => void
+  getPendingCallAction?: () => string
+  clearPendingCallAction?: () => void
+}
 
 type OutgoingStage = 'connecting' | 'ringing'
 const CALL_RING_TIMEOUT_MS = 60_000
@@ -26,6 +31,10 @@ const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }, .
 
 function nativeNotifications() { return (window as Window & { YomyNotification?: NativeNotificationBridge }).YomyNotification }
 function stopNativeCallNotification() { nativeNotifications()?.stopCall?.() }
+function startNativeActiveCall(call: CallSession, caller: Peer | null) {
+  if (!caller) return
+  nativeNotifications()?.startActiveCall?.(caller.username || 'Yomy', call.id, call.kind, `/messages/${encodeURIComponent(caller.username)}`)
+}
 function setNativeSpeaker(enabled: boolean) { const bridge = (window as Window & { YomyAudio?: AudioRouteBridge }).YomyAudio; bridge?.setSpeaker?.(enabled) }
 function formatDuration(seconds: number) { return `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}` }
 
@@ -49,6 +58,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const [cameraOff, setCameraOff] = useState(false)
   const [speakerOn, setSpeakerOn] = useState(false)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const [callFocused, setCallFocused] = useState(true)
   const [outgoingStage, setOutgoingStage] = useState<OutgoingStage>('connecting')
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const activeRef = useRef<CallSession | null>(null)
@@ -59,6 +69,7 @@ export default function CallProvider({ children }: { children: React.ReactNode }
   const remoteAudioRef = useRef<HTMLAudioElement>(null)
   const timeoutRef = useRef<number | null>(null)
   const handledNativeActionsRef = useRef(new Set<string>())
+  const iceRecoveryTimerRef = useRef<number | null>(null)
 
   useEffect(() => { incomingRef.current = incoming }, [incoming])
   useEffect(() => { peerRef.current = peer }, [peer])
@@ -79,6 +90,9 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     setSpeakerOn(false)
     setElapsedSeconds(0)
     setOutgoingStage('connecting')
+    setCallFocused(true)
+    if (iceRecoveryTimerRef.current) window.clearTimeout(iceRecoveryTimerRef.current)
+    iceRecoveryTimerRef.current = null
     activeRef.current = null
     incomingRef.current = null
     peerRef.current = null
@@ -150,7 +164,6 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     if (!callerProfile) return null
     setIncoming(call)
     setPeer(callerProfile)
-    await sendSignal(call, 'ringing_ack', { received_at: new Date().toISOString() })
     return { call, callerProfile }
   }, [profileFor, sendSignal, user])
 
@@ -163,7 +176,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     activeRef.current = call
     setActive(call)
     setPeer(target)
-    setOutgoingStage('connecting')
+    setOutgoingStage('ringing')
+    setCallFocused(true)
     try {
       await setupPeer(call, true)
       const callerLabel = String(user.user_metadata?.username || user.user_metadata?.full_name || 'Yomy')
@@ -202,6 +216,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
       setActive(activeCall)
       setIncoming(null)
       setPeer(callerProfile)
+      setCallFocused(true)
+      startNativeActiveCall(activeCall, callerProfile)
       openCallRoute(callerProfile, call.id)
       const pc = await setupPeer(activeCall, false)
       const { data: signals } = await supabase.from('call_signals').select('*').eq('call_id', call.id).order('id')
@@ -226,10 +242,9 @@ export default function CallProvider({ children }: { children: React.ReactNode }
     if (!user || call.status !== 'ringing') return
     stopNativeCallNotification()
     const { error } = await supabase.from('call_sessions').update({ status: 'declined', ended_at: new Date().toISOString() }).eq('id', call.id).eq('callee_id', user.id).eq('status', 'ringing')
-    await sendSignal(call, 'decline', { declined_at: new Date().toISOString() })
     if (error) console.warn('decline call update failed:', error.message)
     cleanup()
-  }, [cleanup, sendSignal, user])
+  }, [cleanup, user])
 
   const endCall = useCallback(async () => {
     const call = activeRef.current
@@ -296,6 +311,8 @@ export default function CallProvider({ children }: { children: React.ReactNode }
             const activeCall = { ...call, status: 'active' as CallStatus, answered_at: call.answered_at || now, started_at: call.started_at || now }
             activeRef.current = activeCall
             setActive(activeCall)
+            setCallFocused(true)
+            startNativeActiveCall(activeCall, peerRef.current)
             setOutgoingStage('ringing')
             for (const candidate of pendingCandidates.current) await pc.addIceCandidate(candidate)
             pendingCandidates.current = []
