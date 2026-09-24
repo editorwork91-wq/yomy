@@ -145,9 +145,21 @@ export default function ChatPro() {
 
   const loadOtherUser = useCallback(async () => {
     if (!targetUsername) return
-    const { data } = await supabase.from('profiles').select('*').eq('username', targetUsername).maybeSingle()
-    if (data) setOtherUser(data as ProfileType)
-  }, [targetUsername])
+    const cacheKey = 'chatPeer:' + targetUsername
+    const cached = await readCachedJson<ProfileType>(cacheKey)
+    if (cached) setOtherUser(cached)
+
+    if (!online) return
+    const { data, error } = await supabase.from('profiles').select('*').eq('username', targetUsername).maybeSingle()
+    if (error) {
+      if (!cached) toast.error('Could not load this conversation')
+      return
+    }
+    if (data) {
+      setOtherUser(data as ProfileType)
+      await cacheJson(cacheKey, data as ProfileType)
+    }
+  }, [online, targetUsername])
 
   const loadPreference = useCallback(async (peerId: string) => {
     if (!user) return
