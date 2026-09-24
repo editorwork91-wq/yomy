@@ -188,3 +188,79 @@ button, input, textarea, select {
 .yomy-ios-press:active {
   transform: scale(.975);
 }
+
+
+:root {
+  --yomy-font-scale: 1;
+}
+
+html {
+  font-size: calc(16px * var(--yomy-font-scale));
+}
+
+.yomy-ios, .yomy-ios * {
+  transition-timing-function: cubic-bezier(.22,.7,.2,1);
+}
+
+.yomy-ios-panel {
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 1.55rem;
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  box-shadow: 0 18px 55px rgba(0,0,0,.075), inset 0 1px 0 rgba(255,255,255,.38);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+}
+
+.yomy-settings-header {
+  display:flex; align-items:center; gap:.75rem; padding:.9rem 1rem; 
+}
+.yomy-settings-header h2 { font-size:.78rem; font-weight:750; letter-spacing:.01em; }
+.yomy-settings-header p { font-size:.68rem; color:var(--muted-foreground); margin-top:.15rem; }
+
+.yomy-icon-orb, .yomy-icon-button {
+  display:grid; place-items:center; 
+  border-radius:1rem;
+  background: color-mix(in srgb, var(--muted) 72%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 8px 22px rgba(0,0,0,.05);
+}
+.yomy-icon-orb { width:2.55rem; height:2.55rem; flex:none; }
+.yomy-icon-button { width:2.35rem; height:2.35rem; }
+.yomy-icon-button:active { transform:scale(.92); }
+
+.yomy-setting-row {
+  min-height:3.35rem;
+  width:100%;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+  padding:.7rem .55rem;
+  border-radius:1.15rem;
+  transition:transform 160ms ease, background 160ms ease;
+}
+.yomy-setting-row:active { transform:scale(.985); background:color-mix(in srgb,var(--muted) 55%,transparent); }
+
+.yomy-ios-control {
+  min-height:2.85rem;
+  border:1px solid color-mix(in srgb,var(--border) 75%,transparent);
+  border-radius:1rem;
+  background:color-mix(in srgb,var(--muted) 52%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 5px 16px rgba(0,0,0,.035);
+  padding:.65rem .8rem;
+}
+.yomy-time-card {
+  display:flex; flex-direction:column; gap:.35rem; padding:.7rem .8rem;
+  border-radius:1rem; background:color-mix(in srgb,var(--muted) 50%,transparent);
+  border:1px solid color-mix(in srgb,var(--border) 70%,transparent);
+}
+.yomy-time-card span { font-size:.63rem; color:var(--muted-foreground); }
+.yomy-time-card input { width:100%; background:transparent; border:0; outline:none; font-size:.9rem; font-weight:650; }
+
+.yomy-sticker-tile {
+  width:3.6rem; height:3.6rem; flex:none; display:grid; place-items:center;
+  border-radius:1.2rem; overflow:hidden; background:color-mix(in srgb,var(--muted) 55%,transparent);
+  border:1px solid color-mix(in srgb,var(--border) 70%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.3), 0 8px 20px rgba(0,0,0,.06);
+}
+.yomy-sticker-tile img { width:100%; height:100%; object-fit:contain; padding:.3rem; }
+.yomy-sticker-tile:active { transform:scale(.91); }
