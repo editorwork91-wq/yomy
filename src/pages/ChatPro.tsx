@@ -339,6 +339,28 @@ export default function ChatPro() {
         setSharedWallpaper(wallpaper)
         void cacheJson('chatShared:' + [user.id, otherUser.id].sort().join(':'), { wallpaper })
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_poll_votes' }, payload => {
+        const vote = payload.new as { poll_id: string; user_id: string; option_id: string }
+        setMessages(prev => prev.map(message => {
+          const raw = message.chat_poll
+          const poll = Array.isArray(raw) ? raw[0] : raw
+          if (message.message_type !== 'poll' || !poll || poll.id !== vote.poll_id) return message
+          return { ...message, chat_poll: { ...poll, chat_poll_votes: [...(poll.chat_poll_votes || []).filter(v => v.user_id !== vote.user_id), { user_id: vote.user_id, option_id: vote.option_id }] } }
+        }))
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_poll_votes' }, payload => {
+        const vote = payload.new as { poll_id: string; user_id: string; option_id: string }
+        setMessages(prev => prev.map(message => {
+          const raw = message.chat_poll
+          const poll = Array.isArray(raw) ? raw[0] : raw
+          if (message.message_type !== 'poll' || !poll || poll.id !== vote.poll_id) return message
+          return { ...message, chat_poll: { ...poll, chat_poll_votes: [...(poll.chat_poll_votes || []).filter(v => v.user_id !== vote.user_id), { user_id: vote.user_id, option_id: vote.option_id }] } }
+        }))
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+        const row = payload.new as Message
+        if (row.message_type === 'poll' && row.sender_id === otherUser.id) void loadMessages(false)
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, payload => {
         const row = payload.new as { id: string; message_id: string; user_id: string; emoji: string; created_at: string }
         setMessages(prev => {
