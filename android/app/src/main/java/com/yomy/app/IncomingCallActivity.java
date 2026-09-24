@@ -27,6 +27,7 @@ import android.view.WindowInsetsController;
 import android.graphics.LinearGradient;
 import android.graphics.Shader;
 import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
 import android.animation.ValueAnimator;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
@@ -491,6 +492,50 @@ public class IncomingCallActivity extends Activity {
                 }
             });
             animator.start();
+        }
+    }
+
+    private static final class CallBackdrop extends View {
+        private final android.graphics.Paint paint = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        private final android.graphics.Paint glow = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+
+        CallBackdrop(Context context) {
+            super(context);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
+
+        @Override protected void onDraw(android.graphics.Canvas canvas) {
+            float w = getWidth();
+            float h = getHeight();
+
+            paint.setShader(new LinearGradient(
+                    0, 0, w, h,
+                    new int[] { Color.rgb(4, 14, 12), Color.rgb(8, 28, 23), Color.rgb(3, 12, 11) },
+                    null,
+                    Shader.TileMode.CLAMP
+            ));
+            canvas.drawRect(0, 0, w, h, paint);
+            paint.setShader(null);
+
+            glow.setColor(Color.argb(35, 55, 211, 147));
+            glow.setMaskFilter(new android.graphics.BlurMaskFilter(dp(42), android.graphics.BlurMaskFilter.Blur.NORMAL));
+            canvas.drawCircle(w * 0.5f, h * 0.22f, dp(72), glow);
+
+            glow.setColor(Color.argb(20, 71, 126, 255));
+            canvas.drawCircle(w * 0.08f, h * 0.84f, dp(95), glow);
+
+            glow.setColor(Color.argb(18, 255, 255, 255));
+            canvas.drawCircle(w * 0.9f, h * 0.72f, dp(75), glow);
+
+            glow.clearShadowLayer();
+            paint.setColor(Color.argb(12, 255, 255, 255));
+            paint.setStyle(android.graphics.Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1));
+            canvas.drawCircle(w * 0.5f, h * 0.22f, dp(150), paint);
+        }
+
+        private int dp(int value) {
+            return Math.round(value * getResources().getDisplayMetrics().density);
         }
     }
 
