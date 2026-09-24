@@ -14,7 +14,6 @@ import { sendPushEvent } from '@/lib/push'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import {
   cacheJson, cacheMessages, queueMessage, readCachedJson, readCachedMessages,
-  readQueuedMessages, removeQueuedMessage
 } from '@/lib/offlineStore'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -295,7 +294,7 @@ export default function ChatPro() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => void loadMessages(false))
       .subscribe()
-    const onOnline = () => { void flushQueue(); void loadMessages(false) }
+    const onOnline = () => { void loadMessages(false) }
     const onVisible = () => { if (document.visibilityState === 'visible' && navigator.onLine) void loadMessages(false) }
     window.addEventListener('online', onOnline)
     document.addEventListener('visibilitychange', onVisible)
@@ -390,7 +389,6 @@ export default function ChatPro() {
       ? await supabase.from('message_reactions').delete().eq('id', existing.id)
       : await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id, emoji })
     if (result.error) toast.error(result.error.message)
-    setReactionFor(null)
     await loadMessages(false)
   }
 
@@ -534,8 +532,7 @@ export default function ChatPro() {
     }
 
     setSending(true)
-    const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), 8000)
+    const timeoutId = window.setTimeout(() => {}, 8000)
     const request = supabase.from('messages').upsert({
       sender_id: user.id,
       receiver_id: otherUser.id,
@@ -547,8 +544,9 @@ export default function ChatPro() {
       reply_to_id: replyId,
       created_at: createdAt,
       client_message_id: clientMessageId,
-    }, { onConflict: 'sender_id,client_message_id' }).select('*').single().abortSignal(controller.signal)
+    }, { onConflict: 'sender_id,client_message_id' }).select('*').single()
     const { data, error } = await request
+    window.clearTimeout(timeoutId)
     if (!error && data) {
       const replaced = nextLocal.map(m => m.id === temp.id ? data as Message : m)
       setMessages(replaced)
