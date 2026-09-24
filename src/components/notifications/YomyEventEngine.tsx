@@ -70,6 +70,11 @@ function callResultCopy(event: YomyEvent) {
     default: return null
   }
 }
+\nfunction emitAttention(title: string, body: string, url: string | null, kind: 'message' | 'call' = 'message') {
+  try {
+    window.dispatchEvent(new CustomEvent('yomy-attention', { detail: { title, body, url: url || '/notifications', kind } }))
+  } catch {}
+}
 function isAggregatable(type: string) { return type === 'LIKE_CREATED' || type === 'COMMENT_LIKE_CREATED' || type === 'POST_ACTIVITY' || type === 'STORY_CREATED' }
 function aggregationKey(event: YomyEvent) { return `${event.event_type}:${event.entity_id || event.source_id}` }
 function activitySummary(type: string, count: number, names: string[]) {
@@ -149,7 +154,10 @@ export default function YomyEventEngine() {
       const { error } = await supabase.rpc('mark_message_delivered', { p_message_id: event.source_id })
       if (error) console.warn('Yomy message delivery reconciliation failed:', error.message)
       if (isMessageOpen(actor?.username || null)) return
-      showYomyLocalNotification(actorName, messageBody(event.payload), 'message', event.deep_link || '/messages')
+      const body = messageBody(event.payload)
+      const link = event.deep_link || '/messages'
+      emitAttention(actorName, body, link, 'message')
+      showYomyLocalNotification(actorName, body, 'message', link)
       return
     }
 
@@ -161,18 +169,27 @@ export default function YomyEventEngine() {
 
     const callResult = callResultCopy(event)
     if (callResult) {
-      showYomyLocalNotification(actorName, callResult, 'message', event.deep_link || '/messages')
+      const link = event.deep_link || '/messages'
+      emitAttention(actorName, callResult, link, 'call')
+      showYomyLocalNotification(actorName, callResult, 'call', link)
       return
     }
 
     if (event.event_type === 'REMINDER_FIRED') {
-      showYomyLocalNotification(String(event.payload.title || 'Yomy reminder'), String(event.payload.body || 'Reminder'), 'message', event.deep_link || '/notifications')
+      const title = String(event.payload.title || 'Yomy reminder')
+      const body = String(event.payload.body || 'Reminder')
+      const link = event.deep_link || '/notifications'
+      emitAttention(title, body, link, 'message')
+      showYomyLocalNotification(title, body, 'message', link)
       return
     }
 
     if (isAggregatable(event.event_type)) { await queueActivity(event, actorName); return }
     if (event.source_table === 'notifications') {
-      showYomyLocalNotification(actorName, activityCopy(event.payload), 'message', event.deep_link || '/notifications')
+      const body = activityCopy(event.payload)
+      const link = event.deep_link || '/notifications'
+      emitAttention(actorName, body, link, 'message')
+      showYomyLocalNotification(actorName, body, 'message', link)
     }
   }, [isMessageOpen, profileFor, queueActivity, remember, user?.id])
 

@@ -7,6 +7,7 @@ import YomyReminderEngine from '@/components/notifications/YomyReminderEngine'
 import PushManager from '@/components/notifications/PushManager'
 import CallProvider from '@/components/calls/CallProvider'
 import CallHistoryPanel from '@/components/calls/CallHistoryPanel'
+import AttentionCenter from '@/components/notifications/AttentionCenter'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
 import Feed from '@/pages/Feed'
@@ -56,6 +57,6 @@ function AppRoutes() {
   </Routes>
 }
 export function App() {
-  return <AuthProvider><BrowserRouter><CallProvider><AppRoutes /><NetworkStatus /><YomyEventEngine /><YomyReminderEngine /><PushManager /><CallHistoryPanel /></CallProvider></BrowserRouter><Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} /></AuthProvider>
+  return <AuthProvider><BrowserRouter><CallProvider><AppRoutes /><NetworkStatus /><YomyEventEngine /><AttentionCenter /><YomyReminderEngine /><PushManager /><CallHistoryPanel /></CallProvider></BrowserRouter><Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} /></AuthProvider>
 }
 export default App

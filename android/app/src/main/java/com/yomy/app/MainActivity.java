@@ -174,6 +174,7 @@ public class MainActivity extends BridgeActivity {
     private final class LocalNotificationBridge {
         @JavascriptInterface public void show(String title, String body, String kind, String url) { runOnUiThread(() -> showLocalNotification(title, body, kind, url)); }
         @JavascriptInterface public void showCall(String title, String body, String callId, String kind) { runOnUiThread(() -> CallNotificationService.start(MainActivity.this, callId, title, body, kind)); }
+        @JavascriptInterface public void startActiveCall(String title, String callId, String kind) { runOnUiThread(() -> CallNotificationService.startActive(MainActivity.this, callId, title, kind)); }
         @JavascriptInterface public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }
         @JavascriptInterface public String getPendingCallAction() { if (pendingCallAction == null || pendingCallId == null) return ""; return pendingCallAction + "|" + pendingCallId; }
         @JavascriptInterface public void clearPendingCallAction() { pendingCallAction = null; pendingCallId = null; }
