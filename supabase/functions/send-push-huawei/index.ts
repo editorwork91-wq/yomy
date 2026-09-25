@@ -10,6 +10,7 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const huaweiClientId = Deno.env.get('HUAWEI_CLIENT_ID')
 const huaweiClientSecret = Deno.env.get('HUAWEI_CLIENT_SECRET')
+const huaweiAppId = Deno.env.get('HUAWEI_APP_ID')
 const admin = createClient(supabaseUrl, serviceRoleKey)
 
 function json(status: number, body: Record<string, unknown>) {
@@ -146,9 +147,9 @@ Deno.serve(async req => {
     return json(400, { error: 'Unsupported push type' })
   }
 
-  if (!huaweiClientId || !huaweiClientSecret) return json(503, {
+  if (!huaweiClientId || !huaweiClientSecret || !huaweiAppId) return json(503, {
     error: 'Huawei Push is not configured', nativeConfigured: false, nativeAttempted: false,
-    nativeSent: 0, nativeFailed: 0, nativeReason: 'HUAWEI_CLIENT_CREDENTIALS_MISSING',
+    nativeSent: 0, nativeFailed: 0, nativeReason: !huaweiAppId ? 'HUAWEI_APP_ID_MISSING' : 'HUAWEI_CLIENT_CREDENTIALS_MISSING',
     recipients: activeTargets.length,
   })
 
@@ -180,7 +181,7 @@ Deno.serve(async req => {
 
     for (const token of tokens) {
       const response = await fetch(
-        'https://push-api.cloud.huawei.com/v1/' + encodeURIComponent(huaweiClientId) + '/messages:send',
+        'https://push-api.cloud.huawei.com/v1/' + encodeURIComponent(huaweiAppId) + '/messages:send',
         {
           method: 'POST',
           headers: {
