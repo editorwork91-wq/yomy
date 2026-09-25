@@ -51,7 +51,28 @@ jobs:
 
       - name: Restore original YOMY Android resources and native sources
         run: |
-          cp -a /tmp/yomy-native-main/res/. android/app/src/main/res/
+          python3 - <<'PY'
+          from pathlib import Path
+
+          original = Path("/tmp/yomy-native-main/res")
+          generated = Path("android/app/src/main/res")
+
+          # Android resources are keyed by resource type + resource name, not file extension.
+          # Remove only generated files that would collide with an original YOMY resource name.
+          for src in original.rglob("*"):
+              if not src.is_file():
+                  continue
+              rel_parent = src.parent.relative_to(original)
+              dst_parent = generated / rel_parent
+              dst_parent.mkdir(parents=True, exist_ok=True)
+              for candidate in dst_parent.iterdir():
+                  if candidate.is_file() and candidate.name != src.name and candidate.stem == src.stem:
+                      candidate.unlink()
+
+          import shutil
+          shutil.copytree(original, generated, dirs_exist_ok=True)
+          PY
+
           cp -a /tmp/yomy-native-main/java/. android/app/src/main/java/
           if [ -d /tmp/yomy-native-main/jniLibs ]; then
             mkdir -p android/app/src/main/jniLibs
