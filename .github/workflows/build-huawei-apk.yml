@@ -90,7 +90,7 @@ jobs:
           if "apply plugin: 'com.huawei.agconnect'" not in a:
               a = a.replace("apply plugin: 'com.android.application'", "apply plugin: 'com.android.application'\napply plugin: 'com.huawei.agconnect'", 1)
           if "com.huawei.hms:push" not in a:
-              a = a.replace("dependencies {", "dependencies {\n    implementation 'com.huawei.hms:push:6.13.0.301'", 1)
+              a = a.replace("dependencies {", "dependencies {\n    implementation 'com.huawei.hms:push:6.13.0.301'\n    implementation 'com.huawei.agconnect:agconnect-core:1.9.6.300'", 1)
           a = a.replace("implementation platform('com.google.firebase:firebase-bom:34.18.0')\n", "")
           a = a.replace("implementation 'com.google.firebase:firebase-messaging'\n", "")
           a = a.replace("apply plugin: 'com.google.gms.google-services'\n", "")
@@ -164,7 +164,8 @@ jobs:
 
           main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
           ms = main.read_text()
-          if 'import com.huawei.hms.push.HmsInstanceId;' not in ms:
+          if 'import com.huawei.hms.push.HmsInstanceId;
+import com.huawei.agconnect.AGConnectOptionsBuilder;' not in ms:
               ms = ms.replace('import org.json.JSONObject;', 'import org.json.JSONObject;\nimport android.util.Log;\nimport com.huawei.hms.push.HmsInstanceId;', 1)
 
           if 'installHuaweiPushBridge();' not in ms:
@@ -180,7 +181,11 @@ jobs:
       private void requestHuaweiToken() {
           new Thread(() -> {
               try {
-                  String appId = BuildConfig.CLIENT_ID;
+                  String appId = new AGConnectOptionsBuilder().build(MainActivity.this).getString("client/app_id");
+                  if (appId == null || appId.trim().isEmpty()) {
+                      Log.w("YomyHuawei", "Huawei App ID missing from agconnect-services.json");
+                      return;
+                  }
                   String token = HmsInstanceId.getInstance(MainActivity.this).getToken(appId, "HCM");
                   if (token != null && !token.trim().isEmpty()) {
                       getSharedPreferences("yomy_huawei_push", Context.MODE_PRIVATE)
