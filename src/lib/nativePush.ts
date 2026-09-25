@@ -5,6 +5,22 @@ import { supabase } from '@/lib/supabase'
 let listenersInstalled = false
 let channelsCreated = false
 
+const NATIVE_PUSH_PERMISSION_REQUESTED_KEY = 'yomy:native-push-permission-requested'
+
+function wasPermissionRequested() {
+  try {
+    return localStorage.getItem(NATIVE_PUSH_PERMISSION_REQUESTED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markPermissionRequested() {
+  try {
+    localStorage.setItem(NATIVE_PUSH_PERMISSION_REQUESTED_KEY, '1')
+  } catch {}
+}
+
 function navigateInSpa(destination: string) {
   const safeDestination = destination && destination.startsWith('/') ? destination : '/notifications'
   try {
@@ -26,7 +42,18 @@ export async function registerNativePush(): Promise<boolean> {
 
   try {
     const permission = await PushNotifications.checkPermissions()
-    const finalPermission = permission.receive === 'granted' ? permission : await PushNotifications.requestPermissions()
+
+    // Do not automatically open Android/Huawei app settings.
+    // We only request a permission while the OS still exposes a prompt state.
+    let finalPermission = permission
+    if (permission.receive !== 'granted') {
+      const canPrompt = permission.receive === 'prompt' || permission.receive === 'prompt-with-rationale'
+      if (!canPrompt || wasPermissionRequested()) return false
+
+      markPermissionRequested()
+      finalPermission = await PushNotifications.requestPermissions()
+    }
+
     if (finalPermission.receive !== 'granted') return false
 
     if (Capacitor.getPlatform() === 'android' && !channelsCreated) {
