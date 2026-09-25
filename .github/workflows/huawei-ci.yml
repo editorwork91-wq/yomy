@@ -20,7 +20,7 @@ jobs:
           cache: 'npm'
 
       - name: Install locked dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Remove Google FCM Capacitor plugin from Huawei validation build
         run: npm uninstall @capacitor/push-notifications --no-audit --no-fund
