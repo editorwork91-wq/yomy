@@ -42,6 +42,7 @@ public class MainActivity extends BridgeActivity {
         installMediaPermissionBridge();
         installAudioRouteBridge();
         installLocalNotificationBridge();
+        installYomyBackgroundBridge();
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -53,7 +54,13 @@ public class MainActivity extends BridgeActivity {
 
     @Override public void onResume() {
         super.onResume();
+        YomyBackgroundService.setAppVisible(true);
         dispatchPendingCallActionWithRetry();
+    }
+
+    @Override public void onPause() {
+        YomyBackgroundService.setAppVisible(false);
+        super.onPause();
     }
 
     private void captureCallAction(Intent intent) {
@@ -194,6 +201,41 @@ public class MainActivity extends BridgeActivity {
             try {
                 getSharedPreferences(CALL_PREFS, Context.MODE_PRIVATE).edit().clear().apply();
             } catch (Exception ignored) {}
+        }
+    }
+
+    private void installYomyBackgroundBridge() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        getBridge().getWebView().addJavascriptInterface(new YomyBackgroundBridge(), "YomyBackground");
+    }
+
+    private final class YomyBackgroundBridge {
+        @JavascriptInterface
+        public boolean isAvailable() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public void start(String accessToken, String refreshToken, String userId,
+                          String supabaseUrl, String anonKey, long expiresAt) {
+            if (accessToken == null || refreshToken == null || userId == null
+                    || supabaseUrl == null || anonKey == null) return;
+            YomyBackgroundService.configure(
+                    MainActivity.this,
+                    accessToken,
+                    refreshToken,
+                    userId,
+                    supabaseUrl,
+                    anonKey,
+                    expiresAt
+            );
+            YomyBackgroundService.start(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public void stop() {
+            YomyBackgroundService.clearCredentials(MainActivity.this);
+            YomyBackgroundService.stop(MainActivity.this);
         }
     }
 
