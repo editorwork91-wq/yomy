@@ -10,7 +10,6 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const huaweiClientId = Deno.env.get('HUAWEI_CLIENT_ID')
 const huaweiClientSecret = Deno.env.get('HUAWEI_CLIENT_SECRET')
-const huaweiProjectId = Deno.env.get('HUAWEI_PROJECT_ID')
 const admin = createClient(supabaseUrl, serviceRoleKey)
 
 function json(status: number, body: Record<string, unknown>) {
@@ -120,7 +119,7 @@ Deno.serve(async req => {
 
   if (!activeTargets.length) return json(200, {
     webSent: 0, nativeSent: 0, nativeFailed: 0,
-    nativeConfigured: Boolean(huaweiClientId && huaweiClientSecret && huaweiProjectId),
+    nativeConfigured: Boolean(huaweiClientId && huaweiClientSecret),
     nativeAttempted: false, nativeReason: 'SLEEP_MODE', recipients: 0,
   })
 
@@ -147,9 +146,9 @@ Deno.serve(async req => {
     return json(400, { error: 'Unsupported push type' })
   }
 
-  if (!huaweiClientId || !huaweiClientSecret || !huaweiProjectId) return json(503, {
+  if (!huaweiClientId || !huaweiClientSecret) return json(503, {
     error: 'Huawei Push is not configured', nativeConfigured: false, nativeAttempted: false,
-    nativeSent: 0, nativeFailed: 0, nativeReason: 'HUAWEI_SECRETS_MISSING',
+    nativeSent: 0, nativeFailed: 0, nativeReason: 'HUAWEI_CLIENT_CREDENTIALS_MISSING',
     recipients: activeTargets.length,
   })
 
