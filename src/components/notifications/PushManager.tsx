@@ -15,6 +15,11 @@ export default function PushManager() {
       if (cancelled) return
 
       if (Capacitor.isNativePlatform()) {
+        // Huawei build intentionally does not invoke Capacitor's FCM-backed
+        // registration path. Rendering and foreground notification handling
+        // remain native-GMS independent; HMS/OneSignal credentials can be
+        // added later without changing the web application.
+        if (import.meta.env.VITE_HUAWEI_BUILD === 'true') return
         void registerNativePush().catch(error => {
           console.warn('Yomy native push registration skipped:', error instanceof Error ? error.message : error)
         })

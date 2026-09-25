@@ -348,3 +348,89 @@ html {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
+
+/* Huawei EMUI/Android 10 compatibility: standard color fallbacks before any
+   modern color function is needed by the browser. */
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --popover: #ffffff;
+  --popover-foreground: #171717;
+  --primary: #343434;
+  --primary-foreground: #fafafa;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #343434;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --accent: #f5f5f5;
+  --accent-foreground: #343434;
+  --destructive: #dc2626;
+  --destructive-foreground: #fafafa;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #a3a3a3;
+  --chart-1: #e97835;
+  --chart-2: #4da6a8;
+  --chart-3: #476b83;
+  --chart-4: #d9a93a;
+  --chart-5: #c99a48;
+  --sidebar: #fbfbfb;
+  --sidebar-foreground: #171717;
+  --sidebar-primary: #343434;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #f5f5f5;
+  --sidebar-accent-foreground: #343434;
+  --sidebar-border: #e5e5e5;
+  --sidebar-ring: #a3a3a3;
+}
+.dark {
+  --background: #252525;
+  --foreground: #fafafa;
+  --card: #343434;
+  --card-foreground: #fafafa;
+  --popover: #343434;
+  --popover-foreground: #fafafa;
+  --primary: #ededed;
+  --primary-foreground: #343434;
+  --secondary: #474747;
+  --secondary-foreground: #fafafa;
+  --muted: #474747;
+  --muted-foreground: #b7b7b7;
+  --accent: #474747;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: rgba(255,255,255,.13);
+  --input: rgba(255,255,255,.18);
+  --ring: #767676;
+  --sidebar: #343434;
+  --sidebar-foreground: #fafafa;
+  --sidebar-primary: #9a9a9a;
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #474747;
+  --sidebar-accent-foreground: #fafafa;
+  --sidebar-border: rgba(255,255,255,.13);
+  --sidebar-ring: #6f6f6f;
+}
+
+/* Older WebView fallback for YOMY glass surfaces. */
+.yomy-ios-glass,
+.yomy-ios-panel,
+.yomy-glass-bar,
+.yomy-feed-card {
+  background: rgba(255,255,255,.94);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.dark .yomy-ios-glass,
+.dark .yomy-ios-panel,
+.dark .yomy-glass-bar,
+.dark .yomy-feed-card {
+  background: rgba(37,37,37,.96);
+}
+.dark .yomy-glass-page,
+.dark .yomy-chat-shell {
+  background: #252525;
+}

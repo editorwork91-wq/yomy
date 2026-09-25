@@ -35,6 +35,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        configureHuaweiWebView();
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         captureCallAction(getIntent());
         captureDeepLink(getIntent());
@@ -120,6 +121,47 @@ public class MainActivity extends BridgeActivity {
                     null
             );
         }, 350);
+    }
+
+    /**
+     * Huawei/EMUI WebView compatibility profile.
+     * Keeps the Capacitor shell self-contained and avoids relying on
+     * Google Mobile Services for rendering the bundled web app.
+     */
+    private void configureHuaweiWebView() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        android.webkit.WebView webView = getBridge().getWebView();
+        android.webkit.WebSettings settings = webView.getSettings();
+
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+        settings.setLoadsImagesAutomatically(true);
+        settings.setBlockNetworkImage(false);
+        settings.setDefaultTextEncodingName("UTF-8");
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(false);
+        settings.setTextZoom(100);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+            android.webkit.CookieManager cookies = android.webkit.CookieManager.getInstance();
+            cookies.setAcceptCookie(true);
+            cookies.setAcceptThirdPartyCookies(webView, true);
+        }
+
+        webView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        webView.setOverScrollMode(android.view.View.OVER_SCROLL_NEVER);
+        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
     }
 
     private void requestYomyPermissions() {
