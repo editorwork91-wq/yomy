@@ -1,14 +1,17 @@
 import { useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { registerPushSubscription } from '@/lib/push'
-import { registerNativePush } from '@/lib/nativePush'
+import { registerNativePush, stopNativePush } from '@/lib/nativePush'
 import { Capacitor } from '@capacitor/core'
 
 export default function PushManager() {
   const { user } = useAuth()
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      if (Capacitor.isNativePlatform()) stopNativePush()
+      return
+    }
 
     let cancelled = false
     const timer = window.setTimeout(() => {
@@ -16,7 +19,7 @@ export default function PushManager() {
 
       if (Capacitor.isNativePlatform()) {
         void registerNativePush().catch(error => {
-          console.warn('Yomy native push registration skipped:', error instanceof Error ? error.message : error)
+          console.warn('Yomy native background registration skipped:', error instanceof Error ? error.message : error)
         })
       } else {
         void registerPushSubscription().catch(error => {
@@ -28,6 +31,7 @@ export default function PushManager() {
     return () => {
       cancelled = true
       window.clearTimeout(timer)
+      if (Capacitor.isNativePlatform()) stopNativePush()
     }
   }, [user])
 
