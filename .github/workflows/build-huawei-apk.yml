@@ -76,7 +76,7 @@ jobs:
           if "https://developer.huawei.com/repo/" not in s:
               s = s.replace("mavenCentral()", "mavenCentral()\n        maven { url 'https://developer.huawei.com/repo/' }")
           if "com.huawei.agconnect:agcp" not in s:
-              s = s.replace("dependencies {", "dependencies {\n        classpath 'com.huawei.agconnect:agcp:1.6.0.300'", 1)
+              s = s.replace("dependencies {", "dependencies {\n        classpath 'com.huawei.agconnect:agcp:1.9.6.300'", 1)
           root.write_text(s)
 
           settings = Path('android/settings.gradle')
