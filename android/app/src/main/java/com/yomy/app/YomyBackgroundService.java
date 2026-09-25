@@ -20,10 +20,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -78,6 +76,14 @@ public class YomyBackgroundService extends Service {
                 .apply();
     }
 
+    public static boolean hasCredentials(Context context) {
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE);
+        return !TextUtils.isEmpty(prefs.getString(KEY_REFRESH, ""))
+                && !TextUtils.isEmpty(prefs.getString(KEY_USER, ""))
+                && !TextUtils.isEmpty(prefs.getString(KEY_URL, ""))
+                && !TextUtils.isEmpty(prefs.getString(KEY_ANON, ""));
+    }
+
     public static void clearCredentials(Context context) {
         context.getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
     }
@@ -87,6 +93,7 @@ public class YomyBackgroundService extends Service {
     }
 
     public static void start(Context context) {
+        if (!hasCredentials(context)) return;
         Intent intent = new Intent(context, YomyBackgroundService.class).setAction(ACTION_START);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -123,6 +130,11 @@ public class YomyBackgroundService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
             stopping = true;
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+
+        if (!hasCredentials(this)) {
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -544,6 +556,15 @@ public class YomyBackgroundService extends Service {
         } catch (Exception e) {
             return value == null ? "" : value;
         }
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        if (!stopping && hasCredentials(this)) {
+            // Keep the resident foreground connection alive after the app task is swiped away.
+            // START_STICKY also asks the OS to recreate the service after process death.
+        }
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
