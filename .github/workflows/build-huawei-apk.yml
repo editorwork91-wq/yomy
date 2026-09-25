@@ -118,19 +118,47 @@ jobs:
               android:name="push_kit_auto_init_enabled"
               android:value="true" />''' + s[close + 1:]
 
-          if 'android.permission.POST_NOTIFICATIONS' not in s:
-              s = s.replace('    <uses-permission android:name="android.permission.INTERNET" />',
-                            '    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
+          marker = '    <uses-permission android:name="android.permission.INTERNET" />'
+          permissions = '''\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />'''
+          if 'android.permission.FOREGROUND_SERVICE_SPECIAL_USE' not in s:
+              s = s.replace(marker, marker + permissions)
 
-          if '.YomyHuaweiMessagingService' not in s:
-              s = s.replace('    </application>', '''        <service
+          native_services = '''\n        <service
+              android:name=".CallNotificationService"
+              android:exported="false"
+              android:stopWithTask="false"
+              android:foregroundServiceType="specialUse">
+              <property
+                  android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                  android:value="time-sensitive incoming call ringing and user call action handling" />
+          </service>
+
+          <service
               android:name=".YomyHuaweiMessagingService"
               android:exported="false">
               <intent-filter>
                   <action android:name="com.huawei.push.action.MESSAGING_EVENT" />
               </intent-filter>
           </service>
-          </application>''', 1)
+
+          <receiver
+              android:name=".CallActionReceiver"
+              android:exported="false" />
+'''
+          if '.CallNotificationService' not in s:
+              s = s.replace('    </application>', native_services + '    </application>', 1)
+
+          incoming = '''\n        <activity
+              android:name=".IncomingCallActivity"
+              android:exported="false"
+              android:excludeFromRecents="true"
+              android:launchMode="singleTop"
+              android:showWhenLocked="true"
+              android:turnScreenOn="true"
+              android:theme="@style/YomyIncomingCallTheme" />
+'''
+          if '.IncomingCallActivity' not in s:
+              s = s.replace('        <activity\n            android:configChanges=', incoming + '\n        <activity\n            android:configChanges=', 1)
 
           manifest.write_text(s)
 
