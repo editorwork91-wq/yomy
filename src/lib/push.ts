@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
+const PUSH_FUNCTION = (import.meta.env.VITE_PUSH_FUNCTION as string | undefined) || 'send-push'
 
 function base64UrlToUint8Array(value: string): Uint8Array {
   const padding = '='.repeat((4 - (value.length % 4)) % 4)
@@ -59,7 +60,7 @@ export async function sendPushEvent(input: {
         }
       : input.data
     const requestBody = { ...input, data: safeData }
-    const { data, error } = await supabase.functions.invoke('send-push', { body: requestBody })
+    const { data, error } = await supabase.functions.invoke(PUSH_FUNCTION, { body: requestBody })
     if (error) {
       console.warn('push delivery request failed:', error.message)
       return
