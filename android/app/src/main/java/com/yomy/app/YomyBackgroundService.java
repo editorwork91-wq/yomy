@@ -512,17 +512,19 @@ public class YomyBackgroundService extends Service {
     private boolean wasSeen(String id) {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         String raw = prefs.getString(KEY_SEEN, "");
-        Set<String> seen = new HashSet<>();
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
         if (!TextUtils.isEmpty(raw)) {
             String[] parts = raw.split("\\|", -1);
             for (String part : parts) if (!TextUtils.isEmpty(part)) seen.add(part);
         }
         if (seen.contains(id)) return true;
 
-        LinkedList<String> ordered = new LinkedList<>(seen);
-        ordered.add(id);
-        while (ordered.size() > 100) ordered.removeFirst();
-        prefs.edit().putString(KEY_SEEN, TextUtils.join("|", ordered)).apply();
+        seen.add(id);
+        while (seen.size() > 100) {
+            String oldest = seen.iterator().next();
+            seen.remove(oldest);
+        }
+        prefs.edit().putString(KEY_SEEN, TextUtils.join("|", seen)).apply();
         return false;
     }
 
