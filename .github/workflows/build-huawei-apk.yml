@@ -2,9 +2,6 @@ name: Build Huawei-only APK
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - huawei-only-fix-20260926
 
 jobs:
   build:
@@ -168,7 +165,7 @@ jobs:
           main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
           ms = main.read_text()
           if 'import com.huawei.hms.push.HmsInstanceId;
-import com.huawei.agconnect.AGConnectOptionsBuilder;' not in ms:
+import com.huawei.agconnect.config.AGConnectServicesConfig;' not in ms:
               ms = ms.replace('import org.json.JSONObject;', 'import org.json.JSONObject;\nimport android.util.Log;\nimport com.huawei.hms.push.HmsInstanceId;', 1)
 
           if 'installHuaweiPushBridge();' not in ms:
@@ -184,7 +181,7 @@ import com.huawei.agconnect.AGConnectOptionsBuilder;' not in ms:
       private void requestHuaweiToken() {
           new Thread(() -> {
               try {
-                  String appId = new AGConnectOptionsBuilder().build(MainActivity.this).getString("client/app_id");
+                  String appId = AGConnectServicesConfig.fromContext(MainActivity.this).getString("client/app_id");
                   if (appId == null || appId.trim().isEmpty()) {
                       Log.w("YomyHuawei", "Huawei App ID missing from agconnect-services.json");
                       return;
