@@ -2,6 +2,9 @@ name: Build Huawei-only APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - huawei-only-fix-20260926
 
 jobs:
   build:
