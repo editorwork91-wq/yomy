@@ -1,0 +1,217 @@
+name: Build Huawei-only APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Remove Capacitor FCM push plugin for Huawei build
+        run: npm uninstall @capacitor/push-notifications --no-audit --no-fund
+
+      - name: Build web app for Huawei
+        env:
+          VITE_PUSH_FUNCTION: send-push-huawei
+        run: npm run build
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Save native YOMY sources
+        run: |
+          mkdir -p /tmp/yomy-native
+          for file in MainActivity.java CallActionReceiver.java CallNotificationService.java IncomingCallActivity.java YomyHuaweiMessagingService.java; do
+            cp "android/app/src/main/java/com/yomy/app/$file" "/tmp/yomy-native/$file"
+          done
+          rm -rf /tmp/yomy-launcher
+          mkdir -p /tmp/yomy-launcher
+          find android/app/src/main/res -type f -name 'ic_launcher*' -print0 | while IFS= read -r -d '' file; do
+            rel="$(realpath --relative-to=android/app/src/main/res "$file")"
+            mkdir -p "/tmp/yomy-launcher/$(dirname "$rel")"
+            cp "$file" "/tmp/yomy-launcher/$rel"
+          done
+
+      - name: Generate fresh Capacitor Android project
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+
+      - name: Restore Huawei AppGallery Connect configuration
+        env:
+          HUAWEI_AGCONNECT_SERVICES_JSON_BASE64: ${{ secrets.HUAWEI_AGCONNECT_SERVICES_JSON_BASE64 }}
+        run: |
+          test -n "$HUAWEI_AGCONNECT_SERVICES_JSON_BASE64"
+          printf '%s' "$HUAWEI_AGCONNECT_SERVICES_JSON_BASE64" | base64 --decode > android/app/agconnect-services.json
+
+      - name: Restore native YOMY sources
+        run: |
+          for file in MainActivity.java CallActionReceiver.java CallNotificationService.java IncomingCallActivity.java YomyHuaweiMessagingService.java; do
+            cp "/tmp/yomy-native/$file" "android/app/src/main/java/com/yomy/app/$file"
+          done
+
+      - name: Configure Huawei Gradle
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('android/build.gradle')
+          s = root.read_text()
+          if "https://developer.huawei.com/repo/" not in s:
+              s = s.replace("mavenCentral()", "mavenCentral()\n        maven { url 'https://developer.huawei.com/repo/' }")
+          if "com.huawei.agconnect:agcp" not in s:
+              s = s.replace("dependencies {", "dependencies {\n        classpath 'com.huawei.agconnect:agcp:1.6.0.300'", 1)
+          root.write_text(s)
+
+          settings = Path('android/settings.gradle')
+          ss = settings.read_text()
+          if "https://developer.huawei.com/repo/" not in ss:
+              ss = ss.replace("google()", "google()\n        maven { url 'https://developer.huawei.com/repo/' }")
+          settings.write_text(ss)
+
+          app = Path('android/app/build.gradle')
+          a = app.read_text()
+          if "apply plugin: 'com.huawei.agconnect'" not in a:
+              a = a.replace("apply plugin: 'com.android.application'", "apply plugin: 'com.android.application'\napply plugin: 'com.huawei.agconnect'", 1)
+          if "com.huawei.hms:push" not in a:
+              a = a.replace("dependencies {", "dependencies {\n    implementation 'com.huawei.hms:push:6.13.0.301'", 1)
+          a = a.replace("implementation platform('com.google.firebase:firebase-bom:34.18.0')\n", "")
+          a = a.replace("implementation 'com.google.firebase:firebase-messaging'\n", "")
+          a = a.replace("apply plugin: 'com.google.gms.google-services'\n", "")
+          app.write_text(a)
+          PY
+
+      - name: Configure Huawei manifest and bridge
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          s = manifest.read_text()
+
+          if '<queries>' not in s:
+              s = s.replace('</manifest>', '''    <queries>
+              <package android:name="com.huawei.hwid" />
+          </queries>
+          </manifest>''')
+
+          if 'push_kit_auto_init_enabled' not in s:
+              start = s.index('<application')
+              close = s.index('>', start)
+              s = s[:close + 1] + '''\n        <meta-data
+              android:name="push_kit_auto_init_enabled"
+              android:value="true" />''' + s[close + 1:]
+
+          if 'android.permission.POST_NOTIFICATIONS' not in s:
+              s = s.replace('    <uses-permission android:name="android.permission.INTERNET" />',
+                            '    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />')
+
+          if '.YomyHuaweiMessagingService' not in s:
+              s = s.replace('    </application>', '''        <service
+              android:name=".YomyHuaweiMessagingService"
+              android:exported="false">
+              <intent-filter>
+                  <action android:name="com.huawei.push.action.MESSAGING_EVENT" />
+              </intent-filter>
+          </service>
+          </application>''', 1)
+
+          manifest.write_text(s)
+
+          main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
+          ms = main.read_text()
+          if 'import com.huawei.hms.push.HmsInstanceId;' not in ms:
+              ms = ms.replace('import org.json.JSONObject;', 'import org.json.JSONObject;\nimport android.util.Log;\nimport com.huawei.hms.push.HmsInstanceId;', 1)
+
+          if 'installHuaweiPushBridge();' not in ms:
+              ms = ms.replace('        installLocalNotificationBridge();', '        installLocalNotificationBridge();\n        installHuaweiPushBridge();', 1)
+
+          if 'private void installHuaweiPushBridge()' not in ms:
+              bridge = '''
+      private void installHuaweiPushBridge() {
+          if (getBridge() == null || getBridge().getWebView() == null) return;
+          getBridge().getWebView().addJavascriptInterface(new HuaweiPushBridge(), "YomyHuaweiPush");
+      }
+
+      private void requestHuaweiToken() {
+          new Thread(() -> {
+              try {
+                  String appId = BuildConfig.CLIENT_ID;
+                  String token = HmsInstanceId.getInstance(MainActivity.this).getToken(appId, "HCM");
+                  if (token != null && !token.trim().isEmpty()) {
+                      getSharedPreferences("yomy_huawei_push", Context.MODE_PRIVATE)
+                              .edit().putString("token", token.trim()).apply();
+                  }
+              } catch (Exception e) {
+                  Log.w("YomyHuawei", "getToken failed", e);
+              }
+          }).start();
+      }
+
+      private final class HuaweiPushBridge {
+          @android.webkit.JavascriptInterface
+          public boolean isAvailable() { return true; }
+
+          @android.webkit.JavascriptInterface
+          public void requestToken() { requestHuaweiToken(); }
+
+          @android.webkit.JavascriptInterface
+          public String getToken() {
+              return getSharedPreferences("yomy_huawei_push", Context.MODE_PRIVATE)
+                      .getString("token", "");
+          }
+      }
+'''
+              idx = ms.rfind('\n}')
+              ms = ms[:idx] + bridge + ms[idx:]
+
+          ms = ms.replace(
+              'public void stopCall() { runOnUiThread(() -> MainActivity.this.startService(new Intent(MainActivity.this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP))); }',
+              'public void stopCall() { runOnUiThread(() -> CallActionReceiver.cancelCallNotification(MainActivity.this)); }',
+              1
+          )
+          main.write_text(ms)
+
+          incoming = Path('android/app/src/main/java/com/yomy/app/IncomingCallActivity.java')
+          ins = incoming.read_text()
+          ins = ins.replace(
+              'startService(new Intent(this, CallNotificationService.class).setAction(CallNotificationService.ACTION_STOP));',
+              'CallActionReceiver.cancelCallNotification(this);',
+              1
+          )
+          incoming.write_text(ins)
+          PY
+
+      - name: Restore launcher resources
+        run: |
+          if [ -d /tmp/yomy-launcher ]; then
+            cp -a /tmp/yomy-launcher/. android/app/src/main/res/
+          fi
+
+      - name: Build Huawei debug APK
+        working-directory: ./android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Upload Huawei APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: yomy-huawei-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
