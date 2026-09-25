@@ -247,6 +247,7 @@ public class YomyBackgroundService extends Service {
                 reconnectDelayMs = RECONNECT_START_MS;
                 sendJoin(socket, userId, finalAccess);
                 scheduleHeartbeat(socket);
+                scheduleTokenRefresh(socket);
             }
 
             @Override
@@ -270,7 +271,8 @@ public class YomyBackgroundService extends Service {
         try {
             JSONObject config = new JSONObject()
                     .put("broadcast", new JSONObject().put("ack", false).put("self", false))
-                    .put("presence", new JSONObject().put("key", ""));
+                    .put("presence", new JSONObject().put("enabled", false).put("key", ""))
+                    .put("private", false);
 
             JSONArray postgresChanges = new JSONArray();
             postgresChanges.put(new JSONObject()
@@ -298,6 +300,51 @@ public class YomyBackgroundService extends Service {
                     .put(payload);
 
             socket.send(join.toString());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void scheduleTokenRefresh(WebSocket socket) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        long expiresAt = prefs.getLong(KEY_EXPIRES, 0L);
+        long nowSeconds = System.currentTimeMillis() / 1000L;
+        long delaySeconds = expiresAt > nowSeconds
+                ? Math.max(60L, expiresAt - nowSeconds - 120L)
+                : 60L;
+
+        mainHandler.postDelayed(() -> {
+            if (stopping || webSocket != socket) return;
+            worker.execute(() -> {
+                android.content.SharedPreferences current = getSharedPreferences(PREFS, MODE_PRIVATE);
+                String baseUrl = current.getString(KEY_URL, "");
+                String anonKey = current.getString(KEY_ANON, "");
+                String refreshToken = current.getString(KEY_REFRESH, "");
+                if (TextUtils.isEmpty(baseUrl) || TextUtils.isEmpty(anonKey) || TextUtils.isEmpty(refreshToken)) {
+                    return;
+                }
+
+                String[] refreshed = refreshSession(baseUrl, anonKey, refreshToken);
+                if (refreshed == null || TextUtils.isEmpty(refreshed[0])) {
+                    closeSocket();
+                    return;
+                }
+
+                sendAccessToken(socket, refreshed[0]);
+                scheduleTokenRefresh(socket);
+            });
+        }, delaySeconds * 1000L);
+    }
+
+    private void sendAccessToken(WebSocket socket, String accessToken) {
+        if (socket == null || TextUtils.isEmpty(accessToken)) return;
+        try {
+            JSONArray update = new JSONArray()
+                    .put("1")
+                    .put(String.valueOf(System.currentTimeMillis()))
+                    .put("realtime:yomy-background:" + getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_USER, ""))
+                    .put("access_token")
+                    .put(new JSONObject().put("access_token", accessToken));
+            socket.send(update.toString());
         } catch (Exception ignored) {
         }
     }
@@ -359,12 +406,14 @@ public class YomyBackgroundService extends Service {
         boolean isCall = "call".equalsIgnoreCase(messageType) || !TextUtils.isEmpty(callId);
 
         if (isCall) {
-            String title = "Incoming Yomy call";
-            String body = "Someone is calling you";
-            try {
-                CallNotificationService.start(this, callId, title, body, callKind);
-            } catch (Exception ignored) {
-                showLocalNotification(title, body, "/messages?call=" + encode(callId), Notification.CATEGORY_CALL);
+            if (!appVisible) {
+                String title = "Incoming Yomy call";
+                String body = "Someone is calling you";
+                try {
+                    CallNotificationService.start(this, callId, title, body, callKind);
+                } catch (Exception ignored) {
+                    showLocalNotification(title, body, "/messages?call=" + encode(callId), Notification.CATEGORY_CALL);
+                }
             }
         } else if (!appVisible) {
             String content = record.optString("content", "");
