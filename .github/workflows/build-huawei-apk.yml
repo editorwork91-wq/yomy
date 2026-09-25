@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - huawei-no-kit-resident-20260926
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
