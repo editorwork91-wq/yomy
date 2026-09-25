@@ -172,13 +172,61 @@ jobs:
           manifest.write_text(ms)
           PY
 
-      - name: Validate no Google/Huawei push SDKs are packaged
+      - name: Validate the no-Kit APK inputs
         run: |
-          ! grep -R "com.google.firebase:firebase-messaging\|com.huawei.hms\|com.huawei.agconnect\|@capacitor/push-notifications" android/app 2>/dev/null
-          test -f android/app/src/main/java/com/yomy/app/YomyBackgroundService.java
-          test -f android/app/src/main/java/com/yomy/app/YomyBootReceiver.java
-          grep -q 'android.intent.action.BOOT_COMPLETED' android/app/src/main/AndroidManifest.xml
-          grep -q 'android:name=".YomyBackgroundService"' android/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          from pathlib import Path
+
+          app = Path("android/app")
+          forbidden = []
+          for path in app.rglob("*"):
+              if not path.is_file():
+                  continue
+              try:
+                  text = path.read_text(errors="ignore")
+              except Exception:
+                  continue
+              for needle in (
+                  "com.google.firebase:firebase-messaging",
+                  "com.huawei.hms",
+                  "com.huawei.agconnect",
+                  "@capacitor/push-notifications",
+              ):
+                  if needle in text:
+                      forbidden.append((str(path), needle))
+
+          if forbidden:
+              print("Forbidden SDK references:")
+              for item in forbidden:
+                  print(" -", item[0], "=>", item[1])
+              raise SystemExit(1)
+
+          required = [
+              app / "src/main/java/com/yomy/app/YomyBackgroundService.java",
+              app / "src/main/java/com/yomy/app/YomyBootReceiver.java",
+              app / "src/main/AndroidManifest.xml",
+          ]
+          for path in required:
+              if not path.is_file():
+                  print("Missing:", path)
+                  raise SystemExit(1)
+
+          manifest = (app / "src/main/AndroidManifest.xml").read_text(errors="ignore")
+          required_manifest = (
+              "android.permission.RECEIVE_BOOT_COMPLETED",
+              'android:name=".YomyBootReceiver"',
+              "android.intent.action.BOOT_COMPLETED",
+              'android:name=".YomyBackgroundService"',
+          )
+          for needle in required_manifest:
+              if needle not in manifest:
+                  print("Missing manifest entry:", needle)
+                  print(manifest)
+                  raise SystemExit(1)
+
+          print("No-Kit validation passed.")
+          PY
+
 
       - name: Build Huawei no-Kit debug APK
         working-directory: ./android
