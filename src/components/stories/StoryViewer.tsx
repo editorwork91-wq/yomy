@@ -4,7 +4,7 @@ import type { Story, Profile } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { X, Send, Eye, Trash2, MoreVertical, Heart, MessageCircle, ChevronLeft } from 'lucide-react'
+import { X, Send, Eye, Trash2, MoreVertical, Heart, MessageCircle, ChevronLeft, Pencil, Globe, Users, Lock, Check } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -26,8 +26,16 @@ export default function StoryViewer({ groups, initialGroupIndex, onClose }: Stor
   const [likeCount, setLikeCount] = useState(0)
   const [showViewers, setShowViewers] = useState(false)
   const [viewers, setViewers] = useState<Profile[]>([])
+  const [storyMediaUrl, setStoryMediaUrl] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
+  const [editCaption, setEditCaption] = useState('')
+  const [editVisibility, setEditVisibility] = useState<'public'|'friends'|'private'>('public')
+  const [editDuration, setEditDuration] = useState('24')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const DURATION = 5000
+  const copyEdit = language === 'ar'
+    ? { edit:'تعديل الحالة', caption:'النص', audience:'الخصوصية', duration:'المدة', save:'حفظ' }
+    : { edit:'Edit story', caption:'Caption', audience:'Who can see it', duration:'Duration', save:'Save changes' }
   const language = document.documentElement.lang || 'en'
 
   const copy = useMemo(() => language === 'ar'
@@ -44,6 +52,29 @@ export default function StoryViewer({ groups, initialGroupIndex, onClose }: Stor
   const currentStory = currentGroup?.stories[storyIndex]
   const isOwner = currentGroup?.user.id === user?.id
 
+  const openEdit = () => {
+    if (!currentStory || !isOwner) return
+    setEditCaption(currentStory.caption || '')
+    setEditVisibility(currentStory.visibility || 'public')
+    const remaining = Math.max(1, (new Date(currentStory.expires_at).getTime() - Date.now()) / 3600000)
+    setEditDuration(Math.abs(remaining - 48) < 5 ? '48' : Math.abs(remaining - 5) < 2 ? '5' : '24')
+    setEditOpen(true)
+  }
+
+  const saveEdit = async () => {
+    if (!currentStory || !user || !isOwner) return
+    const hours = Number(editDuration)
+    const expiresAt = new Date(Date.now() + hours * 3600000).toISOString()
+    const { error } = await supabase.from('stories').update({
+      caption: editCaption.trim(),
+      visibility: editVisibility,
+      expires_at: expiresAt,
+    }).eq('id', currentStory.id).eq('user_id', user.id)
+    if (error) return toast.error(error.message)
+    setEditOpen(false)
+    toast.success(copyEdit.save)
+  }
+
   const loadInteractions = async (storyId: string) => {
     if (!user) return
     const [{ data: likes }, { data: rows }] = await Promise.all([
@@ -54,6 +85,22 @@ export default function StoryViewer({ groups, initialGroupIndex, onClose }: Stor
     setLiked(Boolean(likes?.some(l => l.user_id === user.id)))
     setComments((rows || []).map(row => ({ ...row, profiles: row.profiles as unknown as Profile })))
   }
+
+  useEffect(() => {
+    if (!currentStory || !user) return
+    let cancelled = false
+    const fallback = currentStory.media_url || ''
+    if (!currentStory.media_path) {
+      setStoryMediaUrl(fallback)
+      return
+    }
+    void supabase.functions.invoke('story-media-url', { body: { story_id: currentStory.id, expires_in: 900 } })
+      .then(({ data, error }) => {
+        if (!cancelled && !error && data?.url) setStoryMediaUrl(String(data.url))
+        else if (!cancelled) setStoryMediaUrl(fallback)
+      })
+    return () => { cancelled = true }
+  }, [currentStory?.id, currentStory?.media_path, currentStory?.media_url, user])
 
   useEffect(() => {
     if (!currentStory || !user) return
@@ -180,12 +227,12 @@ export default function StoryViewer({ groups, initialGroupIndex, onClose }: Stor
           <button type="button" className="grid size-9 place-items-center rounded-full bg-black/25 border border-white/10 backdrop-blur-xl" onClick={goBack} aria-label="Previous"><ChevronLeft className="size-5" /></button>
           <Avatar className="size-9 ring-2 ring-white/25 shadow-xl"><AvatarImage src={currentGroup.user.avatar_url} /><AvatarFallback>{currentGroup.user.username[0]?.toUpperCase()}</AvatarFallback></Avatar>
           <div className="min-w-0 flex-1"><p className="text-sm font-semibold truncate">{currentGroup.user.username}</p><p className="text-[10px] text-white/55">{new Date(currentStory.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</p></div>
-          {isOwner && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9 rounded-full text-white hover:bg-white/10"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="rounded-2xl"><DropdownMenuItem onClick={loadViewers}><Eye className="size-4 mr-2" />{copy.view}</DropdownMenuItem><DropdownMenuItem onClick={deleteStory} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />{copy.delete}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+          {isOwner && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9 rounded-full text-white hover:bg-white/10"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end" className="z-[120] w-52 rounded-2xl"><DropdownMenuItem onClick={openEdit}><Pencil className="size-4 mr-2" />{copyEdit.edit}</DropdownMenuItem><DropdownMenuItem onClick={loadViewers}><Eye className="size-4 mr-2" />{copy.view}</DropdownMenuItem><DropdownMenuItem onClick={deleteStory} className="text-destructive focus:text-destructive"><Trash2 className="size-4 mr-2" />{copy.delete}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
           <button type="button" className="grid size-9 place-items-center rounded-full bg-black/25 border border-white/10 backdrop-blur-xl" onClick={onClose} aria-label="Close"><X className="size-5" /></button>
         </header>
 
         <div className="absolute inset-0 z-0 flex items-center justify-center" onMouseDown={() => setPaused(true)} onMouseUp={() => setPaused(false)} onTouchStart={() => setPaused(true)} onTouchEnd={() => setPaused(false)}>
-          {currentStory.media_type === 'video' ? <video src={currentStory.media_url} className="w-full h-full object-cover" autoPlay muted playsInline loop /> : <img src={currentStory.media_url} className="w-full h-full object-cover" alt="" />}
+          {currentStory.media_type === 'video' ? <video src={storyMediaUrl} className="w-full h-full object-cover" autoPlay muted playsInline loop /> : <img src={storyMediaUrl} className="w-full h-full object-cover" alt="" />}
           <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/70 pointer-events-none" />
         </div>
 
@@ -202,6 +249,21 @@ export default function StoryViewer({ groups, initialGroupIndex, onClose }: Stor
             {isOwner && <Button variant="ghost" size="sm" className="rounded-full text-white hover:bg-white/10" onClick={loadViewers}><Eye className="size-4 mr-1" />{viewers.length || ''} {copy.viewers}</Button>}
           </div>
         </div>
+
+        {editOpen && <div className="absolute inset-x-3 bottom-3 z-[100] rounded-[28px] border border-white/15 bg-black/80 p-4 backdrop-blur-2xl shadow-[0_30px_100px_rgba(0,0,0,.55)]">
+          <div className="flex items-center gap-2 mb-3"><Pencil className="size-4" /><p className="font-semibold flex-1">{copyEdit.edit}</p><button type="button" onClick={() => setEditOpen(false)} className="grid size-8 place-items-center rounded-full bg-white/8"><X className="size-4" /></button></div>
+          <div className="space-y-3">
+            <Input value={editCaption} onChange={e => setEditCaption(e.target.value)} placeholder={copyEdit.caption} className="h-11 rounded-2xl border-white/15 bg-white/8 text-white" />
+            <div className="grid grid-cols-3 gap-2">
+              {(['public','friends','private'] as const).map(value => {
+                const Icon = value === 'public' ? Globe : value === 'friends' ? Users : Lock
+                return <button key={value} type="button" onClick={() => setEditVisibility(value)} className={'flex min-h-12 items-center justify-center gap-1.5 rounded-2xl border text-xs ' + (editVisibility === value ? 'border-white bg-white text-black' : 'border-white/15 bg-white/5 text-white/75')}><Icon className="size-4" />{value === 'public' ? 'Public' : value === 'friends' ? 'Friends' : 'Only me'}</button>
+              })}
+            </div>
+            <div className="flex gap-2">{['24','48','5'].map(value => <button key={value} type="button" onClick={() => setEditDuration(value)} className={'flex-1 min-h-11 rounded-2xl border text-xs font-semibold ' + (editDuration === value ? 'border-white bg-white text-black' : 'border-white/15 bg-white/5 text-white/75')}>{value}h</button>)}</div>
+            <Button className="w-full rounded-2xl" onClick={() => void saveEdit()}><Check className="size-4 mr-1" />{copyEdit.save}</Button>
+          </div>
+        </div>}
 
         {commentsOpen && <div className="absolute inset-x-2 bottom-2 z-40 max-h-[65dvh] overflow-hidden rounded-[1.6rem] border border-white/15 bg-black/78 backdrop-blur-2xl shadow-[0_25px_90px_rgba(0,0,0,.45)]" onTouchMove={e => e.stopPropagation()}>
           <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3"><MessageCircle className="size-4" /><p className="text-sm font-semibold flex-1">{copy.comments}</p><button type="button" onClick={() => { setCommentsOpen(false); setPaused(false) }} className="grid size-8 place-items-center rounded-full bg-white/8"><X className="size-4" /></button></div>
