@@ -159,7 +159,7 @@ Deno.serve(async req=>{
       const userId=typeof body?.user_id==='string'?body.user_id:''
       const verified=await consumeNonce(phone,'recovery',nonce)
       const {data:link}=await admin.from('account_phone_links').select('user_id').eq('phone_e164',phone).eq('user_id',userId).maybeSingle()
-      if(!link||link.user_id!==verified.user_id&&verified.user_id)return json(404,{error:'ACCOUNT_NOT_FOUND'})
+      if(!link)return json(404,{error:'ACCOUNT_NOT_FOUND'})
       const {data:u,error:ue}=await admin.auth.admin.getUserById(userId)
       if(ue||!u.user?.email)return json(404,{error:'ACCOUNT_EMAIL_NOT_FOUND'})
       const {data:generated,error:ge}=await admin.auth.admin.generateLink({type:'recovery',email:u.user.email})
