@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import PhoneNumberField, { isPossibleInternationalPhone } from '@/components/auth/PhoneNumberField'
 
 type RecoveryAccount = { id: string; username: string; avatar_url?: string; email: string }
 
@@ -62,6 +63,7 @@ export default function Login() {
   }
 
   const sendSmsRecovery = async () => {
+    if (!isPossibleInternationalPhone(recoveryPhone)) return toast.error('Enter a valid international phone number')
     setRecoveryBusy(true)
     try {
       await accountAuth({ action:'send_recovery_otp', phone:recoveryPhone })
@@ -122,7 +124,7 @@ export default function Login() {
             <div className="space-y-3"><p className="text-xs text-muted-foreground">We&apos;ll send a secure recovery email.</p><Input value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" /><Button className="w-full rounded-xl" disabled={recoveryBusy} onClick={()=>void sendEmailRecovery()}>{recoveryBusy?<Spinner className="size-4"/>:'Send recovery email'}</Button></div>
           ) : (
             <div className="space-y-3">
-              {recoveryStep==='phone' && <><p className="text-xs text-muted-foreground">Enter the verified YOMY phone number.</p><Input inputMode="tel" value={recoveryPhone} onChange={e=>setRecoveryPhone(e.target.value)} placeholder="+20..." /><Button className="w-full rounded-xl" disabled={recoveryBusy} onClick={()=>void sendSmsRecovery()}>{recoveryBusy?<Spinner className="size-4"/>:'Send SMS code'}</Button></>}
+              {recoveryStep==='phone' && <><p className="text-xs text-muted-foreground">Enter the verified YOMY phone number.</p><PhoneNumberField id="recovery-phone" value={recoveryPhone} onChange={setRecoveryPhone} defaultCountry="EG" placeholder="Phone number" /><Button className="w-full rounded-xl" disabled={recoveryBusy} onClick={()=>void sendSmsRecovery()}>{recoveryBusy?<Spinner className="size-4"/>:'Send SMS code'}</Button></>}
               {recoveryStep==='code' && <><p className="text-xs text-muted-foreground">Enter the SMS code we sent.</p><Input inputMode="numeric" autoComplete="one-time-code" value={recoveryCode} onChange={e=>setRecoveryCode(e.target.value.replace(/\D/g,'').slice(0,10))} placeholder="123456" /><Button className="w-full rounded-xl" disabled={recoveryBusy} onClick={()=>void verifySmsRecovery()}>{recoveryBusy?<Spinner className="size-4"/>:'Verify code'}</Button></>}
               {recoveryStep==='account' && <><p className="text-xs text-muted-foreground">Choose which YOMY account should receive the reset link.</p><div className="space-y-2">{recoveryAccounts.map(account=><button key={account.id} type="button" onClick={()=>void sendRecoveryLink(account)} className="flex w-full items-center gap-3 rounded-2xl border p-3 text-left hover:bg-muted/70"><span className="size-9 rounded-full bg-muted overflow-hidden shrink-0">{account.avatar_url?<img src={account.avatar_url} alt="" className="size-full object-cover"/>:null}</span><span className="min-w-0 flex-1"><b className="block text-sm truncate">@{account.username}</b><small className="text-xs text-muted-foreground">{account.email}</small></span></button>)}</div></>}
             </div>
