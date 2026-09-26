@@ -158,12 +158,3 @@ export default function FedoPreviewStrip() {
   )
 }
 
-<style data-yomy-fedo-strip="true">
-.yomy-fedo-strip {
-  border-top:1px solid color-mix(in srgb,var(--border) 50%,transparent);
-  border-bottom:1px solid color-mix(in srgb,var(--border) 45%,transparent);
-  background:color-mix(in srgb,var(--background) 70%,transparent);
-  backdrop-filter:blur(18px) saturate(150%);
-  -webkit-backdrop-filter:blur(18px) saturate(150%);
-}
-</style>
