@@ -371,7 +371,7 @@ export default function Fedo() {
           height,
           thumbnail_path: thumbnailTicket?.path || '',
           thumbnail_shard: thumbnailTicket?.shard ?? ticket.shard,
-          caption: caption.trim(),
+          caption: captionText,
         },
       })
 
