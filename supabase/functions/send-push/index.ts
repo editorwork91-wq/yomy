@@ -32,6 +32,74 @@ async function sendNative(tokens:string[],title:string,body:string,data:Record<s
     };
 const response=await fetch(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(service.project_id)}/messages:send`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json; charset=UTF-8'},body:JSON.stringify({message})});if(response.ok){sent++;continue}failed++;const errorBody=await response.json().catch(()=>({})) as Record<string,unknown>;if(!firstReason)firstReason=sanitizeFcmError(response.status,errorBody);const errText=JSON.stringify(errorBody);if(errText.includes('UNREGISTERED')||errText.includes('registration-token-not-registered'))await admin.from('native_push_tokens').delete().eq('token',token)}return{configured:true,attempted:true,sent,failed,reason:firstReason||undefined}}catch(error){const reason=error instanceof Error?error.message.slice(0,220):'NATIVE_FCM_EXCEPTION';console.warn(`native push delivery failed: ${reason}`);return{configured:true,attempted:true,sent:0,failed:tokens.length,reason}}
 }
+async function authorizeNotificationActivity(targetId:string, actorId:string, data:Record<string,unknown>) {
+  const activity = String(data.notification_type || '')
+
+  if (activity === 'follow' || activity === 'follow_request') {
+    const expectedStatus = activity === 'follow' ? 'accepted' : 'pending'
+    const { data: follow, error } = await admin.from('follows')
+      .select('id')
+      .eq('follower_id', actorId)
+      .eq('following_id', targetId)
+      .eq('status', expectedStatus)
+      .maybeSingle()
+    if (error) throw new Error('FOLLOW_AUTH_LOOKUP_FAILED:' + error.message.slice(0,140))
+    return Boolean(follow)
+  }
+
+  if (activity === 'like') {
+    const postId = String(data.post_id || '')
+    if (!postId) return false
+    const { data: like, error } = await admin.from('likes')
+      .select('id,posts!inner(user_id)')
+      .eq('post_id', postId)
+      .eq('user_id', actorId)
+      .maybeSingle()
+    if (error) throw new Error('LIKE_AUTH_LOOKUP_FAILED:' + error.message.slice(0,140))
+    return Boolean(like && (like.posts as { user_id?: string } | null)?.user_id === targetId)
+  }
+
+  if (activity === 'comment') {
+    const commentId = String(data.comment_id || '')
+    if (!commentId) return false
+    const { data: comment, error } = await admin.from('comments')
+      .select('id,user_id,post_id,posts!inner(user_id)')
+      .eq('id', commentId)
+      .eq('user_id', actorId)
+      .maybeSingle()
+    if (error) throw new Error('COMMENT_AUTH_LOOKUP_FAILED:' + error.message.slice(0,140))
+    return Boolean(comment && (comment.posts as { user_id?: string } | null)?.user_id === targetId)
+  }
+
+  if (activity === 'comment_like') {
+    const commentId = String(data.comment_id || '')
+    if (!commentId) return false
+    const { data: like, error } = await admin.from('comment_likes')
+      .select('id,comments!inner(user_id)')
+      .eq('comment_id', commentId)
+      .eq('user_id', actorId)
+      .maybeSingle()
+    if (error) throw new Error('COMMENT_LIKE_AUTH_LOOKUP_FAILED:' + error.message.slice(0,140))
+    return Boolean(like && (like.comments as { user_id?: string } | null)?.user_id === targetId)
+  }
+
+  if (activity === 'story_reply') {
+    const commentId = String(data.story_comment_id || data.comment_id || '')
+    const storyId = String(data.story_id || '')
+    if (!commentId || !storyId) return false
+    const { data: reply, error } = await admin.from('story_comments')
+      .select('id,user_id,story_id,stories!inner(user_id)')
+      .eq('id', commentId)
+      .eq('story_id', storyId)
+      .eq('user_id', actorId)
+      .maybeSingle()
+    if (error) throw new Error('STORY_REPLY_AUTH_LOOKUP_FAILED:' + error.message.slice(0,140))
+    return Boolean(reply && (reply.stories as { user_id?: string } | null)?.user_id === targetId)
+  }
+
+  return false
+}
+
 async function resolveTargets(type:string,targetId:string|null,data:Record<string,unknown>,actorId:string){if(targetId&&!['post','story'].includes(type))return[targetId];if(type==='post'&&data.post_id){const{data:post}=await admin.from('posts').select('id,user_id,status,visibility').eq('id',String(data.post_id)).maybeSingle();if(!post||post.user_id!==actorId||post.status!=='published')return[];const{data:followers}=await admin.from('follows').select('follower_id').eq('following_id',actorId).eq('status','accepted');return(followers||[]).map(row=>row.follower_id).filter((id:string)=>id!==actorId)}if(type==='story'&&data.story_id){const{data:story}=await admin.from('stories').select('id,user_id,expires_at,visibility').eq('id',String(data.story_id)).maybeSingle();if(!story||story.user_id!==actorId||new Date(story.expires_at).getTime()<=Date.now())return[];const{data:followers}=await admin.from('follows').select('follower_id').eq('following_id',actorId).eq('status','accepted');return(followers||[]).map(row=>row.follower_id).filter((id:string)=>id!==actorId)}return[]}
 Deno.serve(async req=>{if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json(405,{error:'Method not allowed'});const authHeader=req.headers.get('Authorization');if(!authHeader?.startsWith('Bearer '))return json(401,{error:'Missing authorization'});const token=authHeader.slice('Bearer '.length);const{data:{user},error:authError}=await admin.auth.getUser(token);if(authError||!user)return json(401,{error:'Invalid session'});const body=await req.json().catch(()=>null);if(!body?.type||!body?.title||!body?.body)return json(400,{error:'Invalid payload'});const type=String(body.type);const targetId=body.targetUserId?String(body.targetUserId):null;const data=body.data&&typeof body.data==='object'?body.data as Record<string,unknown>:{};const targets=await resolveTargets(type,targetId,data,user.id);
 if(!targets.length)return json(403,{error:'No authorized notification targets'});
@@ -48,12 +116,30 @@ const activeTargets=(profiles||[]).filter(profile => {
   } catch { return true }
 }).map(profile=>profile.id);
 if(type==='notification'){
-  if(!data.notification_id||!targetId)return json(400,{error:'NOTIFICATION_ID_AND_TARGET_REQUIRED',message:'notification_id and targetUserId are required'});
-  const{data:notification,error:notificationError}=await admin.from('notifications').select('id,actor_id,user_id').eq('id',String(data.notification_id)).maybeSingle();
-  if(notificationError)return json(500,{error:'NOTIFICATION_LOOKUP_FAILED',detail:notificationError.message.slice(0,180)});
-  if(!notification)return json(403,{error:'NOTIFICATION_NOT_FOUND',message:'The activity notification no longer exists'});
-  if(notification.actor_id!==user.id)return json(403,{error:'NOTIFICATION_ACTOR_MISMATCH',message:'This notification was not created by the current account'});
-  if(notification.user_id!==targetId)return json(403,{error:'NOTIFICATION_RECIPIENT_MISMATCH',message:'The notification recipient does not match the push target'});
+  if(!targetId)return json(400,{error:'NOTIFICATION_TARGET_REQUIRED',message:'targetUserId is required'});
+  const notificationId = String(data.notification_id || '');
+  let authorized = false;
+
+  if(notificationId){
+    const{data:notification,error:notificationError}=await admin.from('notifications').select('id,actor_id,user_id').eq('id',notificationId).maybeSingle();
+    if(notificationError)return json(500,{error:'NOTIFICATION_LOOKUP_FAILED',detail:notificationError.message.slice(0,180)});
+    if(notification && notification.actor_id===user.id && notification.user_id===targetId){
+      authorized = true;
+    } else if(notification) {
+      return json(403,{error:'NOTIFICATION_NOT_AUTHORIZED',message:'This notification is not owned by the current activity actor'});
+    }
+  }
+
+  if(!authorized){
+    try {
+      authorized = await authorizeNotificationActivity(targetId, user.id, data)
+    } catch(error) {
+      const reason = error instanceof Error ? error.message.slice(0,220) : 'NOTIFICATION_ACTIVITY_AUTH_FAILED'
+      return json(500,{error:'NOTIFICATION_ACTIVITY_AUTH_FAILED',detail:reason})
+    }
+  }
+
+  if(!authorized)return json(403,{error:'NOTIFICATION_ACTIVITY_NOT_AUTHORIZED',message:'No matching live activity was found for this push'});
 }else if(type==='message'){
   const{data:message,error:messageError}=await admin.from('messages').select('id,sender_id,receiver_id,deleted_for_everyone').eq('id',String(data.message_id||'')).maybeSingle();
   if(messageError)return json(500,{error:'MESSAGE_LOOKUP_FAILED',detail:messageError.message.slice(0,180)});
