@@ -137,6 +137,7 @@ export async function sendLatestActivityPush(input: {
   type?: 'like' | 'comment' | 'follow' | 'follow_request' | 'comment_like' | 'story_reply'
   postId?: string
   commentId?: string
+  storyId?: string
 }): Promise<PushDeliveryResult> {
   const query = supabase.from('notifications')
     .select('id,type')
@@ -147,13 +148,14 @@ export async function sendLatestActivityPush(input: {
 
   if (input.postId) query.eq('post_id', input.postId)
   if (input.commentId) query.eq('comment_id', input.commentId)
+  if (input.storyId) query.eq('story_id', input.storyId)
   if (input.type) query.eq('type', input.type)
 
   const { data, error } = await query
   if (error) return { ok: false, error: `NOTIFICATION_LOOKUP_FAILED:${error.message}` }
 
   const notification = data?.[0]
-  if (!notification) return { ok: false, error: 'NOTIFICATION_NOT_FOUND' }
+  const notificationType = input.type || notification?.type || ''
 
   return sendPushEvent({
     type: 'notification',
@@ -164,7 +166,15 @@ export async function sendLatestActivityPush(input: {
       : input.type === 'follow_request' ? 'sent you a follow request'
       : input.type === 'follow' ? 'started following you'
       : input.type === 'comment_like' ? 'liked your comment'
+      : input.type === 'story_reply' ? 'replied to your story'
       : 'new activity',
-    data: { notification_id: notification.id },
+    data: {
+      ...(notification?.id ? { notification_id: notification.id } : {}),
+      ...(notificationType ? { notification_type: notificationType } : {}),
+      ...(input.postId ? { post_id: input.postId } : {}),
+      ...(input.commentId ? { comment_id: input.commentId } : {}),
+      ...(input.storyId ? { story_id: input.storyId } : {}),
+      ...(input.type === 'story_reply' && input.commentId ? { story_comment_id: input.commentId } : {}),
+    },
   })
 }
