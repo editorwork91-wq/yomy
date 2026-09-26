@@ -4,7 +4,71 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
-export const supabase = createClient(supabaseUrl || 'https://preview-missing-supabase.invalid', supabaseAnonKey || 'preview-missing-key', { realtime: { params: { eventsPerSecond: 10 } } })
+const projectRef = supabaseUrl ? new URL(supabaseUrl).hostname.split('.')[0] : 'missing'
+const legacyAuthKey = 'sb-' + projectRef + '-auth-token'
+const activeAccountStorageKey = 'yomy-active-account'
+
+export function getActiveAccountId() {
+  return localStorage.getItem(activeAccountStorageKey)
+}
+
+export function setActiveAccountId(accountId: string | null) {
+  if (accountId) localStorage.setItem(activeAccountStorageKey, accountId)
+  else localStorage.removeItem(activeAccountStorageKey)
+}
+
+function accountScopedKey(key: string, accountId: string) {
+  return key + '::' + accountId
+}
+
+const yomyAuthStorage = {
+  async getItem(key: string) {
+    const active = getActiveAccountId()
+    if (active) {
+      const scoped = localStorage.getItem(accountScopedKey(key, active))
+      if (scoped) return scoped
+    }
+    if (key === 'yomy-auth-session') {
+      const legacy = localStorage.getItem(legacyAuthKey)
+      if (legacy) {
+        try {
+          const parsed = JSON.parse(legacy) as { user?: { id?: string } }
+          const userId = parsed.user?.id
+          if (userId) {
+            setActiveAccountId(userId)
+            localStorage.setItem(accountScopedKey(key, userId), legacy)
+            localStorage.removeItem(legacyAuthKey)
+            return legacy
+          }
+        } catch {}
+      }
+    }
+    return localStorage.getItem(accountScopedKey(key, active || 'bootstrap'))
+  },
+  async setItem(key: string, value: string) {
+    if (key === 'yomy-auth-session') {
+      try {
+        const parsed = JSON.parse(value) as { user?: { id?: string } }
+        const userId = parsed.user?.id
+        if (userId) {
+          setActiveAccountId(userId)
+          localStorage.setItem(accountScopedKey(key, userId), value)
+          return
+        }
+      } catch {}
+    }
+    localStorage.setItem(accountScopedKey(key, getActiveAccountId() || 'bootstrap'), value)
+  },
+  async removeItem(key: string) {
+    const active = getActiveAccountId()
+    localStorage.removeItem(accountScopedKey(key, active || 'bootstrap'))
+  },
+}
+
+export const supabase = createClient(supabaseUrl || 'https://preview-missing-supabase.invalid', supabaseAnonKey || 'preview-missing-key', {
+  realtime: { params: { eventsPerSecond: 10 } },
+  auth: { storageKey: 'yomy-auth-session', storage: yomyAuthStorage, autoRefreshToken: true, persistSession: true },
+})
 
 export type Profile = { id: string; username: string; full_name: string; avatar_url: string; bio: string; is_private: boolean; is_verified: boolean; show_followers_to: 'everyone' | 'followers' | 'nobody'; show_seen_receipts: boolean; who_can_message: 'everyone' | 'followers' | 'nobody'; created_at: string; language?: 'en' | 'ar' | 'de' | 'fr' | 'es'; font_scale?: number; sleep_mode_enabled?: boolean; sleep_start?: string; sleep_end?: string; timezone_name?: string }
 export type PostVisibility = 'public' | 'friends' | 'private'

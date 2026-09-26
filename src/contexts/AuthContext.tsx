@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { setActiveAccountId, supabase } from '@/lib/supabase'
 import type { Profile } from '@/lib/supabase'
 import { applyYomyFontScale, applyYomyLanguage, systemTimezone } from '@/lib/i18n'
 
@@ -48,6 +48,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .maybeSingle()
     setProfile(data)
     applyProfilePreferences(data)
+    if (data) {
+      try {
+        const current = JSON.parse(localStorage.getItem('yomy-account-list') || '[]') as Array<{ id: string; username: string; avatar_url?: string }>
+        const next = [...current.filter(item => item.id !== userId), { id: userId, username: data.username, avatar_url: data.avatar_url || '' }]
+        localStorage.setItem('yomy-account-list', JSON.stringify(next.slice(-4)))
+        window.dispatchEvent(new Event('yomy-account-list-changed'))
+      } catch {}
+    }
   }
 
   const refreshProfile = async () => {
@@ -83,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut()
+    setActiveAccountId(null)
     setProfile(null)
   }
 
