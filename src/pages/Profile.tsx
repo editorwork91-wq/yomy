@@ -127,8 +127,14 @@ export default function Profile() {
     if (error || !data) { setFollowStatus(previousStatus); setIsFollowing(previousFollowing); setActionMessage(error?.message || 'Could not send follow request'); return }
     const status = data as 'accepted' | 'pending'
     setFollowStatus(status); setIsFollowing(status === 'accepted')
-    if (status === 'accepted') { setFollowersCount(c => c + 1); void sendLatestActivityPush({ targetUserId: profile.id, actorId: user.id, type: 'follow' }) }
-    else { void sendLatestActivityPush({ targetUserId: profile.id, actorId: user.id, type: 'follow_request' }) }
+    if (status === 'accepted') {
+      setFollowersCount(c => c + 1)
+      const push = await sendLatestActivityPush({ targetUserId: profile.id, actorId: user.id, type: 'follow' })
+      if (!push.ok) console.warn('Follow notification delivery failed:', push.error)
+    } else {
+      const push = await sendLatestActivityPush({ targetUserId: profile.id, actorId: user.id, type: 'follow_request' })
+      if (!push.ok) console.warn('Follow request notification delivery failed:', push.error)
+    }
     setActionMessage(status === 'pending' ? 'Follow request sent' : 'Following')
   }
 
