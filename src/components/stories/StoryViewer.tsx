@@ -33,10 +33,10 @@ export default function StoryViewer({ groups, initialGroupIndex, onClose }: Stor
   const [editDuration, setEditDuration] = useState('24')
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const DURATION = 5000
+  const language = document.documentElement.lang || 'en'
   const copyEdit = language === 'ar'
     ? { edit:'تعديل الحالة', caption:'النص', audience:'الخصوصية', duration:'المدة', save:'حفظ' }
     : { edit:'Edit story', caption:'Caption', audience:'Who can see it', duration:'Duration', save:'Save changes' }
-  const language = document.documentElement.lang || 'en'
 
   const copy = useMemo(() => language === 'ar'
     ? { incoming:'قصة واردة', like:'إعجاب', liked:'تم الإعجاب', comments:'التعليقات', add:'أضف تعليقًا…', post:'إرسال', viewers:'المشاهدون', view:'عرض المشاهدين', story:'قصة', noComments:'لا توجد تعليقات بعد', delete:'حذف القصة' }

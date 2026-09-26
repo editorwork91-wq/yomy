@@ -1,6 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { Clapperboard, MessageCircle, Settings } from 'lucide-react'
+import { Clapperboard, MessageCircle, Settings, ChevronDown, Sparkles } from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
+import { setActiveAccountId } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import BrandMark from '@/components/layout/BrandMark'
 
