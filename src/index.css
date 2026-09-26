@@ -348,3 +348,69 @@ html {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
+
+/* YOMY glass v2 */
+.yomy-topbar {
+  background: color-mix(in srgb, var(--background) 72%, transparent);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 10px 32px rgba(0,0,0,.055), inset 0 1px 0 rgba(255,255,255,.22);
+}
+.yomy-topbar-brand {
+  display:flex; align-items:center; gap:.48rem;
+  padding:.32rem .62rem .32rem .42rem; border-radius:999px;
+  background:color-mix(in srgb,var(--card) 56%,transparent);
+  border:1px solid color-mix(in srgb,var(--border) 58%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 8px 28px rgba(0,0,0,.055);
+  transition:transform 180ms cubic-bezier(.2,.8,.2,1), box-shadow 180ms ease;
+}
+.yomy-topbar-brand:active { transform:translate(-50%,-50%) scale(.97); }
+.yomy-topbar-logo {
+  width:1.95rem;height:1.95rem;display:grid;place-items:center;overflow:hidden;border-radius:.72rem;
+  background:#06070a; box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 4px 14px rgba(0,0,0,.16);
+}
+.yomy-topbar-wordmark {
+  font-size:1.12rem; line-height:1; font-weight:800; letter-spacing:-.055em;
+  background:linear-gradient(100deg,#7c3aed 0%,#ec4899 54%,#f97316 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+.yomy-chat-header {
+  background:color-mix(in srgb,var(--background) 72%,transparent);
+  backdrop-filter:blur(24px) saturate(175%); -webkit-backdrop-filter:blur(24px) saturate(175%);
+}
+.yomy-chat-composer {
+  background:color-mix(in srgb,var(--background) 70%,transparent);
+  backdrop-filter:blur(24px) saturate(170%); -webkit-backdrop-filter:blur(24px) saturate(170%);
+  box-shadow:0 -12px 32px rgba(0,0,0,.045), inset 0 1px 0 rgba(255,255,255,.2);
+}
+.yomy-chat-control {
+  border:1px solid color-mix(in srgb,var(--border) 65%,transparent);
+  background:color-mix(in srgb,var(--card) 58%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 7px 20px rgba(0,0,0,.045);
+  backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%);
+}
+.yomy-message-bubble {
+  box-shadow:0 12px 30px rgba(0,0,0,.06), inset 0 1px 0 rgba(255,255,255,.18);
+  backdrop-filter:blur(12px) saturate(135%); -webkit-backdrop-filter:blur(12px) saturate(135%);
+}
+.yomy-transparent-stage {
+  background-image:
+    linear-gradient(45deg, rgba(127,127,127,.11) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(127,127,127,.11) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(127,127,127,.11) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(127,127,127,.11) 75%);
+  background-size:16px 16px;
+  background-position:0 0,0 8px,8px -8px,-8px 0;
+  background-color:rgba(127,127,127,.035);
+}
+.yomy-message-media {
+  display:block;
+  width:auto; height:auto; max-width:min(20rem,78vw); max-height:min(24rem,58vh);
+  object-fit:contain; border-radius:1rem; box-shadow:0 10px 28px rgba(0,0,0,.10);
+}
+.yomy-poll-card { width:min(20rem,82vw); border-radius:1.3rem; }
+.yomy-action-sheet button { min-height:3.05rem; border-radius:1rem; }
+@media (max-width:390px) {
+  .yomy-topbar-wordmark { font-size:1.02rem; }
+  .yomy-message-media { max-width:74vw; }
+}
