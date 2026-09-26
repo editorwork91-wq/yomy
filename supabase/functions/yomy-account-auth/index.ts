@@ -11,8 +11,14 @@ const json=(status:number,body:Record<string,unknown>)=>new Response(JSON.string
 const admin=createClient(mainUrl,serviceKey,{auth:{autoRefreshToken:false,persistSession:false}})
 
 function normalizePhone(value:string){
-  const phone=value.trim().replace(/[\s().-]/g,'')
-  return /^\+[1-9]\d{7,14}$/.test(phone)?phone:''
+  const digits = value
+    .trim()
+    .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 0x660))
+    .replace(/[۰-۹]/g, digit => String(digit.charCodeAt(0) - 0x6f0))
+  const phone = digits
+    .replace(/[\s().-]/g, '')
+    .replace(/[^+\d]/g, '')
+  return /^\+[1-9]\d{7,14}$/.test(phone) ? phone : ''
 }
 function requireTwilio(){
   const sid=Deno.env.get('TWILIO_ACCOUNT_SID')||''
@@ -28,7 +34,16 @@ async function twilioRequest(url:string,params:Record<string,string>){
   const auth=btoa(cfg.sid+':'+cfg.token)
   const response=await fetch(url,{method:'POST',headers:{'Authorization':'Basic '+auth,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(params)})
   const body=await response.text()
-  if(!response.ok)throw new Error('SMS_PROVIDER_ERROR:'+body.slice(0,220))
+  if(!response.ok){
+    let detail = body.slice(0,220)
+    try {
+      const parsed = JSON.parse(body) as Record<string,unknown>
+      const code = parsed.code ?? parsed.error_code
+      const message = parsed.message ?? parsed.error_message
+      if(code || message) detail = `${code ? String(code)+':' : ''}${message ? String(message) : ''}`.slice(0,220)
+    } catch {}
+    throw new Error('SMS_PROVIDER_ERROR:' + detail)
+  }
   return JSON.parse(body)
 }
 async function sendVerify(phone:string){
