@@ -9,6 +9,7 @@ import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
 import { CheckCircle2, Smartphone } from 'lucide-react'
+import PhoneNumberField, { isPossibleInternationalPhone } from '@/components/auth/PhoneNumberField'
 
 export default function SignUp() {
   const navigate = useNavigate()
@@ -32,7 +33,7 @@ export default function SignUp() {
   }
 
   const sendCode = async () => {
-    if (!phone.trim()) return toast.error('Enter your phone number with country code')
+    if (!isPossibleInternationalPhone(phone)) return toast.error('Enter a valid international phone number')
     setSendingCode(true)
     try {
       await callAccountAuth({ action:'send_signup_otp', phone })
@@ -107,12 +108,21 @@ export default function SignUp() {
             <form onSubmit={handleSignUp} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone number</Label>
-                <div className="flex gap-2">
-                  <Input id="phone" inputMode="tel" autoComplete="tel" placeholder="+20..." value={phone} onChange={e => { setPhone(e.target.value); setPhoneVerified(false); setPhoneNonce('') }} required />
-                  <Button type="button" variant="secondary" className="shrink-0 rounded-xl" onClick={() => void sendCode()} disabled={sendingCode || phoneVerified}>
+                <div className="flex items-center gap-2">
+                  <PhoneNumberField
+                    id="phone"
+                    value={phone}
+                    onChange={value => { setPhone(value); setPhoneVerified(false); setPhoneNonce('') }}
+                    defaultCountry="EG"
+                    placeholder="Phone number"
+                    className="flex-1"
+                    disabled={phoneVerified}
+                  />
+                  <Button type="button" variant="secondary" className="h-10 w-10 shrink-0 rounded-xl" onClick={() => void sendCode()} disabled={sendingCode || phoneVerified}>
                     {phoneVerified ? <CheckCircle2 className="size-4" /> : sendingCode ? <Spinner className="size-4" /> : <Smartphone className="size-4" />}
                   </Button>
                 </div>
+                <p className="text-[11px] text-muted-foreground">Choose the country, then enter the number without the country code.</p>
               </div>
 
               {codeSent && !phoneVerified && (
