@@ -36,8 +36,9 @@ export default function Notifications() {
     const { error } = await supabase.rpc('accept_follow_request', { p_follower_id: actorId })
     if (error) { console.error('Accept follow failed:', error.message); setActionMessage(`Could not accept request: ${error.message}`); setActionLoading(null); return }
     setNotifications(prev => prev.filter(n => n.id !== notificationId))
-    void sendLatestActivityPush({ targetUserId: actorId, actorId: user.id, type: 'follow' })
-    setActionMessage('Follow request accepted'); setActionLoading(null)
+    const push = await sendLatestActivityPush({ targetUserId: actorId, actorId: user.id, type: 'follow' })
+    setActionMessage(push.ok ? 'Follow request accepted' : `Follow request accepted • Push: ${push.error || 'delivery failed'}`)
+    setActionLoading(null)
   }
 
   const declineFollow = async (actorId: string, notificationId: string) => {
