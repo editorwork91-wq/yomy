@@ -77,8 +77,8 @@ export default function FedoPreviewStrip() {
   }, [items])
 
   return (
-    <section className="px-4 py-3" aria-label="Fedo">
-      <div className="mb-2.5 flex items-center justify-between">
+    <section className="yomy-fedo-strip px-3 py-3" aria-label="Fedo">
+      <div className="mb-2.5 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <span className="inline-flex size-8 items-center justify-center rounded-xl bg-primary/10 text-primary">
             <Clapperboard className="size-4" />
@@ -94,7 +94,7 @@ export default function FedoPreviewStrip() {
       <div className="flex gap-3 overflow-x-auto scrollbar-none pb-1">
         <Link
           to="/fedo"
-          className="relative w-24 aspect-[9/16] overflow-hidden rounded-2xl shrink-0 border border-primary/20 bg-primary/5 flex flex-col items-center justify-center gap-2 text-primary active:scale-[0.98] transition-transform"
+          className="relative w-[6.2rem] aspect-[9/16] overflow-hidden rounded-[1.35rem] shrink-0 border border-primary/20 bg-primary/5 flex flex-col items-center justify-center gap-2 text-primary shadow-[0_12px_30px_rgba(0,0,0,.06)] active:scale-[0.98] transition-transform"
         >
           <span className="inline-flex size-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
             <Plus className="size-5" />
@@ -113,7 +113,7 @@ export default function FedoPreviewStrip() {
                 <Link
                   key={item.id}
                   to={`/fedo?item=${item.id}`}
-                  className="relative w-24 aspect-[9/16] overflow-hidden rounded-2xl bg-muted shrink-0 group active:scale-[0.98] transition-transform"
+                  className="relative w-[6.2rem] aspect-[9/16] overflow-hidden rounded-[1.35rem] bg-muted shrink-0 group shadow-[0_12px_30px_rgba(0,0,0,.07)] active:scale-[0.98] transition-transform"
                 >
                   {src ? (
                     item.thumbnail_path || item.thumbnail_url ? (
@@ -157,3 +157,13 @@ export default function FedoPreviewStrip() {
     </section>
   )
 }
+
+<style data-yomy-fedo-strip="true">
+.yomy-fedo-strip {
+  border-top:1px solid color-mix(in srgb,var(--border) 50%,transparent);
+  border-bottom:1px solid color-mix(in srgb,var(--border) 45%,transparent);
+  background:color-mix(in srgb,var(--background) 70%,transparent);
+  backdrop-filter:blur(18px) saturate(150%);
+  -webkit-backdrop-filter:blur(18px) saturate(150%);
+}
+</style>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Heart, MessageCircle, Share2, Bookmark, Flag, Upload, ChevronUp, Play, Pause } from 'lucide-react'
+import { Heart, MessageCircle, Share2, Bookmark, Flag, Upload, ChevronUp, Play, Pause, X, Check } from 'lucide-react'
 import { Upload as TusUpload } from 'tus-js-client'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 type MediaTicket = {
   shard: number
@@ -95,10 +96,15 @@ export default function Fedo() {
   const [paused, setPaused] = useState(false)
   const [progress, setProgress] = useState(0)
   const [caption, setCaption] = useState('')
+  const [pendingFedo, setPendingFedo] = useState<{ file: File; previewUrl: string } | null>(null)
   const [playbackUrls, setPlaybackUrls] = useState<Record<string, string>>({})
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({})
   const fileRef = useRef<HTMLInputElement>(null)
   const startRef = useRef({ x: 0, y: 0 })
+
+  useEffect(() => () => {
+    if (pendingFedo) URL.revokeObjectURL(pendingFedo.previewUrl)
+  }, [pendingFedo])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -286,7 +292,7 @@ export default function Fedo() {
     return ticket as MediaTicket
   }
 
-  const uploadFedo = async (file: File) => {
+  const uploadFedo = async (file: File, captionText: string) => {
     if (!user || !file.type.startsWith('video/')) {
       toast.error('Choose a video for Fedo')
       return
@@ -384,6 +390,7 @@ export default function Fedo() {
       })
 
       setCaption('')
+      setPendingFedo(null)
       toast.success('Fedo published')
       await load()
     } catch (error) {
@@ -411,7 +418,14 @@ export default function Fedo() {
       className="hidden"
       onChange={e => {
         const file = e.target.files?.[0]
-        if (file) void uploadFedo(file)
+        if (file) {
+          if (file.size > 500 * 1024 * 1024) {
+            toast.error('Fedo videos are limited to 500 MB')
+          } else {
+            setPendingFedo({ file, previewUrl: URL.createObjectURL(file) })
+            setCaption('')
+          }
+        }
         e.currentTarget.value = ''
       }}
     />
@@ -504,15 +518,37 @@ export default function Fedo() {
               <div className="h-full bg-white transition-all" style={{ width: `${progress}%` }} />
             </div>
             <p className="mt-2 text-xs text-white/60">{progress}% · resumable upload</p>
-            <Input
-              className="mt-4 bg-white/5 border-white/10 text-white"
-              placeholder="Caption (optional)"
-              value={caption}
-              onChange={e => setCaption(e.target.value)}
-            />
+            <p className="mt-3 text-xs text-white/55">Private storage · resumable upload · signed playback</p>
           </div>
         </div>
       )}
+      <Dialog open={!!pendingFedo} onOpenChange={open => { if (!open && !uploading) setPendingFedo(null) }}>
+        <DialogContent className="w-[min(96vw,460px)] max-w-xl rounded-[30px] border-white/15 bg-zinc-950/92 p-3 text-white shadow-[0_30px_120px_rgba(0,0,0,.55)] backdrop-blur-2xl">
+          <DialogHeader className="px-2 pt-1">
+            <DialogTitle className="flex items-center gap-2"><span className="grid size-9 place-items-center rounded-xl bg-white/10"><Play className="size-4" /></span>Preview Fedo</DialogTitle>
+          </DialogHeader>
+          {pendingFedo && (
+            <div className="space-y-3">
+              <div className="relative overflow-hidden rounded-[24px] bg-black ring-1 ring-white/10">
+                <video src={pendingFedo.previewUrl} controls playsInline className="mx-auto max-h-[55vh] w-full object-contain" />
+              </div>
+              <Input
+                placeholder="Caption (optional)"
+                value={caption}
+                onChange={e => setCaption(e.target.value.slice(0, 2200))}
+                disabled={uploading}
+                className="h-11 rounded-2xl border-white/10 bg-white/5 text-white placeholder:text-white/35"
+              />
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" className="flex-1 rounded-2xl text-white hover:bg-white/10" disabled={uploading} onClick={() => setPendingFedo(null)}><X className="size-4 mr-1" />Cancel</Button>
+                <Button className="flex-1 rounded-2xl" disabled={uploading} onClick={() => { if (pendingFedo) void uploadFedo(pendingFedo.file, caption.trim()) }}>
+                  <Check className="size-4 mr-1" />Publish
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   </div>
 }

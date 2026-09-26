@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master", "feat/android-incoming-call-ringing", "feat/yomy-chat-offline-ux-v5", "feat/ios-chat-viewonce-v6-final" ]
+    branches: [ "main", "master", "feat/android-incoming-call-ringing", "feat/yomy-chat-offline-ux-v5", "feat/ios-chat-viewonce-v6-final", "dev/yomy-glass-v2-from-522" ]
 
 jobs:
   build:
