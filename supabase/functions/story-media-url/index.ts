@@ -21,19 +21,23 @@ async function canView(client: ReturnType<typeof createClient>, viewerId: string
   const { data: author } = await client.from('profiles').select('id,is_private').eq('id', story.user_id).maybeSingle()
   if (!author) return false
 
-  if (author.is_private) {
+  if (story.visibility === 'private') return false
+
+  if (story.visibility === 'public') {
+    if (!author.is_private) return true
     const { data: follow } = await client.from('follows').select('id').eq('follower_id', viewerId).eq('following_id', story.user_id).eq('status','accepted').maybeSingle()
     return Boolean(follow)
   }
 
-  if (story.visibility === 'public') return true
-  if (story.visibility === 'private') return false
+  if (story.visibility === 'friends') {
+    const [{ data: one }, { data: two }] = await Promise.all([
+      client.from('follows').select('id').eq('follower_id', viewerId).eq('following_id', story.user_id).eq('status','accepted').maybeSingle(),
+      client.from('follows').select('id').eq('follower_id', story.user_id).eq('following_id', viewerId).eq('status','accepted').maybeSingle(),
+    ])
+    return Boolean(one && two)
+  }
 
-  const [{ data: one }, { data: two }] = await Promise.all([
-    client.from('follows').select('id').eq('follower_id', viewerId).eq('following_id', story.user_id).eq('status','accepted').maybeSingle(),
-    client.from('follows').select('id').eq('follower_id', story.user_id).eq('following_id', viewerId).eq('status','accepted').maybeSingle(),
-  ])
-  return Boolean(one && two)
+  return false
 }
 
 Deno.serve(async req => {
