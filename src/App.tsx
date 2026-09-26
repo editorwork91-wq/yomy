@@ -19,6 +19,7 @@ import CreateStory from '@/pages/CreateStory'
 import Notifications from '@/pages/Notifications'
 import Profile from '@/pages/Profile'
 import EditProfile from '@/pages/EditProfile'
+import ResetPassword from '@/pages/auth/ResetPassword'
 import Settings from '@/pages/Settings'
 import ChatPro from '@/pages/ChatPro'
 import MessagesPro from '@/pages/MessagesPro'
@@ -43,6 +44,7 @@ function AppRoutes() {
   return <Routes>
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+    <Route path="/reset-password" element={<ResetPassword />} />
     <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
     <Route path="/fedo" element={<ProtectedRoute><Fedo /></ProtectedRoute>} />
     <Route path="/creator-analytics" element={<ProtectedRoute><CreatorAnalytics /></ProtectedRoute>} />
