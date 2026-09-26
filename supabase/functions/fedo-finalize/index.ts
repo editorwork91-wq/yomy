@@ -124,6 +124,33 @@ Deno.serve(async req => {
       return json(502, { error: 'Could not register video on storage node' })
     }
 
+    if (!thumbnailPath) {
+      await nodeClient.from('fedo_video_objects').delete().eq('id', fedoId)
+      return json(400, { error: 'Fedo thumbnail is required' })
+    }
+
+    const thumbnailNode = shards[thumbnailShard]
+    const thumbnailClient = createClient(thumbnailNode.url, thumbnailNode.service_role_key)
+    const { error: thumbnailMetaError } = await thumbnailClient
+      .from('fedo_thumbnail_objects')
+      .insert({
+        fedo_id: fedoId,
+        user_id: user.id,
+        bucket: thumbnailNode.thumbnail_bucket || 'fedo-thumbnails',
+        object_path: thumbnailPath,
+        content_type: 'image/jpeg',
+        file_size_bytes: 0,
+        storage_node: thumbnailNode.name || `fedo-video-node-${String(thumbnailShard + 1).padStart(2, '0')}`,
+        status: 'ready',
+      })
+
+    if (thumbnailMetaError) {
+      console.error('Fedo thumbnail metadata insert failed:', thumbnailMetaError.message)
+      await nodeClient.from('fedo_video_objects').delete().eq('id', fedoId)
+      await thumbnailClient.storage.from(thumbnailNode.thumbnail_bucket || 'fedo-thumbnails').remove([thumbnailPath])
+      return json(502, { error: 'Could not register Fedo thumbnail' })
+    }
+
     const mainClient = createClient(mainUrl, mainServiceKey)
     const { data: fedo, error: mainError } = await mainClient
       .from('fedos')
@@ -151,6 +178,8 @@ Deno.serve(async req => {
     if (mainError || !fedo) {
       console.error('Main Fedo metadata insert failed:', mainError?.message || 'missing row')
       await nodeClient.from('fedo_video_objects').delete().eq('id', fedoId)
+      await thumbnailClient.from('fedo_thumbnail_objects').delete().eq('fedo_id', fedoId)
+      await thumbnailClient.storage.from(thumbnailNode.thumbnail_bucket || 'fedo-thumbnails').remove([thumbnailPath])
       return json(502, { error: 'Could not publish Fedo metadata' })
     }
 
