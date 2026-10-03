@@ -1,0 +1,392 @@
+/*
+ * YOMY Universal WebView Bootstrap + Legacy Compatibility
+ * Purpose: keep the application usable when an older Android/Huawei WebView
+ * cannot parse the modern Tailwind/CSS layer used by the enhanced renderer.
+ *
+ * This file intentionally uses conservative CSS only:
+ * - no @layer
+ * - no color-mix()
+ * - no oklch()
+ * - no backdrop-filter dependency
+ * - no CSS nesting
+ * - no modern viewport functions
+ */
+
+html, body, #root {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #050507;
+  color: #f5f5f7;
+}
+
+html {
+  background: #050507;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+*, *:before, *:after {
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+
+button, input, textarea, select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+img, video {
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+}
+
+/* Safe baseline that remains active on every WebView. */
+.yomy-ios {
+  min-height: 100vh;
+  background: #050507;
+  color: #f5f5f7;
+}
+
+/* The detailed renderer is activated only when the runtime detector marks
+ * the WebView as legacy/incompatible. */
+.yomy-webview-legacy {
+  background: #050507;
+  color: #f5f5f7;
+}
+
+.yomy-webview-legacy,
+.yomy-webview-legacy body {
+  background: #050507;
+}
+
+/* Core layout utilities used throughout YOMY. */
+.yomy-webview-legacy [class~="min-h-screen"] { min-height: 100vh; }
+.yomy-webview-legacy [class~="w-full"] { width: 100%; }
+.yomy-webview-legacy [class~="h-full"] { height: 100%; }
+.yomy-webview-legacy [class~="block"] { display: block; }
+.yomy-webview-legacy [class~="inline-block"] { display: inline-block; }
+.yomy-webview-legacy [class~="flex"] { display: -webkit-box; display: -ms-flexbox; display: flex; }
+.yomy-webview-legacy [class~="inline-flex"] { display: -webkit-inline-box; display: -ms-inline-flexbox; display: inline-flex; }
+.yomy-webview-legacy [class~="grid"] { display: grid; }
+.yomy-webview-legacy [class~="hidden"] { display: none; }
+.yomy-webview-legacy [class~="relative"] { position: relative; }
+.yomy-webview-legacy [class~="absolute"] { position: absolute; }
+.yomy-webview-legacy [class~="fixed"] { position: fixed; }
+.yomy-webview-legacy [class~="inset-0"] { top: 0; right: 0; bottom: 0; left: 0; }
+.yomy-webview-legacy [class~="overflow-hidden"] { overflow: hidden; }
+.yomy-webview-legacy [class~="overflow-auto"] { overflow: auto; }
+.yomy-webview-legacy [class~="overflow-y-auto"] { overflow-y: auto; }
+.yomy-webview-legacy [class~="text-center"] { text-align: center; }
+.yomy-webview-legacy [class~="text-left"] { text-align: left; }
+.yomy-webview-legacy [class~="truncate"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yomy-webview-legacy [class~="whitespace-nowrap"] { white-space: nowrap; }
+.yomy-webview-legacy [class~="whitespace-pre-wrap"] { white-space: pre-wrap; }
+
+.yomy-webview-legacy [class~="flex-col"] { -webkit-box-orient: vertical; -webkit-box-direction: normal; -ms-flex-direction: column; flex-direction: column; }
+.yomy-webview-legacy [class~="flex-row"] { -webkit-box-orient: horizontal; -webkit-box-direction: normal; -ms-flex-direction: row; flex-direction: row; }
+.yomy-webview-legacy [class~="flex-1"] { -webkit-box-flex: 1; -ms-flex: 1 1 0%; flex: 1 1 0%; }
+.yomy-webview-legacy [class~="shrink-0"] { -ms-flex-negative: 0; flex-shrink: 0; }
+.yomy-webview-legacy [class~="items-center"] { -webkit-box-align: center; -ms-flex-align: center; align-items: center; }
+.yomy-webview-legacy [class~="items-start"] { -webkit-box-align: start; -ms-flex-align: start; align-items: flex-start; }
+.yomy-webview-legacy [class~="justify-center"] { -webkit-box-pack: center; -ms-flex-pack: center; justify-content: center; }
+.yomy-webview-legacy [class~="justify-between"] { -webkit-box-pack: justify; -ms-flex-pack: justify; justify-content: space-between; }
+
+.yomy-webview-legacy [class~="mx-auto"] { margin-left: auto; margin-right: auto; }
+.yomy-webview-legacy [class~="mt-1"] { margin-top: 4px; }
+.yomy-webview-legacy [class~="mt-2"] { margin-top: 8px; }
+.yomy-webview-legacy [class~="mt-3"] { margin-top: 12px; }
+.yomy-webview-legacy [class~="mt-4"] { margin-top: 16px; }
+.yomy-webview-legacy [class~="mt-5"] { margin-top: 20px; }
+.yomy-webview-legacy [class~="mt-6"] { margin-top: 24px; }
+.yomy-webview-legacy [class~="mb-2"] { margin-bottom: 8px; }
+.yomy-webview-legacy [class~="mb-4"] { margin-bottom: 16px; }
+
+.yomy-webview-legacy [class~="p-1"] { padding: 4px; }
+.yomy-webview-legacy [class~="p-2"] { padding: 8px; }
+.yomy-webview-legacy [class~="p-3"] { padding: 12px; }
+.yomy-webview-legacy [class~="p-4"] { padding: 16px; }
+.yomy-webview-legacy [class~="p-6"] { padding: 24px; }
+.yomy-webview-legacy [class~="px-3"] { padding-left: 12px; padding-right: 12px; }
+.yomy-webview-legacy [class~="px-4"] { padding-left: 16px; padding-right: 16px; }
+.yomy-webview-legacy [class~="px-6"] { padding-left: 24px; padding-right: 24px; }
+.yomy-webview-legacy [class~="py-1"] { padding-top: 4px; padding-bottom: 4px; }
+.yomy-webview-legacy [class~="py-2"] { padding-top: 8px; padding-bottom: 8px; }
+.yomy-webview-legacy [class~="py-3"] { padding-top: 12px; padding-bottom: 12px; }
+.yomy-webview-legacy [class~="py-4"] { padding-top: 16px; padding-bottom: 16px; }
+.yomy-webview-legacy [class~="py-6"] { padding-top: 24px; padding-bottom: 24px; }
+
+.yomy-webview-legacy [class~="space-y-2"] > * + * { margin-top: 8px; }
+.yomy-webview-legacy [class~="space-y-3"] > * + * { margin-top: 12px; }
+.yomy-webview-legacy [class~="space-y-4"] > * + * { margin-top: 16px; }
+.yomy-webview-legacy [class~="space-y-5"] > * + * { margin-top: 20px; }
+.yomy-webview-legacy [class~="gap-2"] > * + * { margin-left: 8px; }
+.yomy-webview-legacy [class~="gap-3"] > * + * { margin-left: 12px; }
+
+/* Common widths/heights from YOMY's mobile UI. */
+.yomy-webview-legacy [class~="max-w-sm"] { max-width: 384px; }
+.yomy-webview-legacy [class~="max-w-md"] { max-width: 448px; }
+.yomy-webview-legacy [class~="max-w-lg"] { max-width: 512px; }
+.yomy-webview-legacy [class~="h-8"] { height: 32px; }
+.yomy-webview-legacy [class~="h-9"] { height: 36px; }
+.yomy-webview-legacy [class~="h-10"] { height: 40px; }
+.yomy-webview-legacy [class~="h-12"] { height: 48px; }
+.yomy-webview-legacy [class~="w-8"] { width: 32px; }
+.yomy-webview-legacy [class~="w-9"] { width: 36px; }
+.yomy-webview-legacy [class~="w-10"] { width: 40px; }
+.yomy-webview-legacy [class~="w-12"] { width: 48px; }
+
+/* Typography. */
+.yomy-webview-legacy [class~="text-xs"] { font-size: 12px; line-height: 1.35; }
+.yomy-webview-legacy [class~="text-sm"] { font-size: 14px; line-height: 1.4; }
+.yomy-webview-legacy [class~="text-base"] { font-size: 16px; line-height: 1.45; }
+.yomy-webview-legacy [class~="text-lg"] { font-size: 18px; line-height: 1.4; }
+.yomy-webview-legacy [class~="text-xl"] { font-size: 20px; line-height: 1.3; }
+.yomy-webview-legacy [class~="text-2xl"] { font-size: 24px; line-height: 1.25; }
+.yomy-webview-legacy [class~="text-4xl"] { font-size: 36px; line-height: 1.1; }
+.yomy-webview-legacy [class~="font-medium"] { font-weight: 500; }
+.yomy-webview-legacy [class~="font-semibold"] { font-weight: 600; }
+.yomy-webview-legacy [class~="font-bold"] { font-weight: 700; }
+
+.yomy-webview-legacy [class~="text-muted-foreground"] { color: #a1a1aa; }
+.yomy-webview-legacy [class~="text-card-foreground"] { color: #f5f5f7; }
+.yomy-webview-legacy [class~="text-primary-foreground"] { color: #050507; }
+.yomy-webview-legacy [class~="text-white"] { color: #ffffff; }
+.yomy-webview-legacy [class~="text-primary"] { color: #f5f5f7; }
+
+.yomy-webview-legacy [class*="text-emerald-"] { color: #34d399; }
+.yomy-webview-legacy [class*="text-blue-"] { color: #60a5fa; }
+
+/* Dark UI surfaces. */
+.yomy-webview-legacy [class~="bg-background"] { background: #050507; }
+.yomy-webview-legacy [class~="bg-card"] { background: #111217; }
+.yomy-webview-legacy [class~="bg-muted"] { background: #1a1b21; }
+.yomy-webview-legacy [class~="bg-secondary"] { background: #202127; }
+.yomy-webview-legacy [class~="bg-primary"] { background: #f2f2f5; }
+.yomy-webview-legacy [class~="bg-transparent"] { background: transparent; }
+
+/* Borders/radii/shadows without relying on Tailwind layers. */
+.yomy-webview-legacy [class~="border"] { border: 1px solid #2a2b31; }
+.yomy-webview-legacy [class~="border-input"] { border-color: #34353c; }
+.yomy-webview-legacy [class~="border-primary"] { border-color: rgba(255,255,255,.25); }
+.yomy-webview-legacy [class*="border-emerald-"] { border-color: rgba(52,211,153,.25); }
+.yomy-webview-legacy [class*="border-blue-"] { border-color: rgba(96,165,250,.25); }
+
+.yomy-webview-legacy [class~="rounded-md"] { border-radius: 8px; }
+.yomy-webview-legacy [class~="rounded-lg"] { border-radius: 12px; }
+.yomy-webview-legacy [class~="rounded-xl"] { border-radius: 16px; }
+.yomy-webview-legacy [class~="rounded-2xl"] { border-radius: 22px; }
+.yomy-webview-legacy [class~="rounded-full"] { border-radius: 999px; }
+
+.yomy-webview-legacy [class~="shadow-sm"] { -webkit-box-shadow: 0 8px 28px rgba(0,0,0,.18); box-shadow: 0 8px 28px rgba(0,0,0,.18); }
+.yomy-webview-legacy [class~="shadow-lg"] { -webkit-box-shadow: 0 18px 48px rgba(0,0,0,.28); box-shadow: 0 18px 48px rgba(0,0,0,.28); }
+
+/* Modern wordmark fallback: the colors are defined without relying on
+ * color-mix() or OKLCH. */
+.yomy-webview-legacy [class*="bg-gradient-to-r"][class*="bg-clip-text"] {
+  background: -webkit-linear-gradient(100deg, #8b5cf6 0%, #ec4899 55%, #f97316 100%);
+  background: linear-gradient(100deg, #8b5cf6 0%, #ec4899 55%, #f97316 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: #ec4899;
+  -webkit-text-fill-color: transparent;
+}
+
+/* YOMY primitives are anchored to data-slot attributes so they remain
+ * styled even when the Tailwind utility stylesheet was skipped. */
+.yomy-webview-legacy [data-slot="card"] {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -ms-flex-direction: column;
+  flex-direction: column;
+  background: #111217;
+  color: #f5f5f7;
+  border: 1px solid #2a2b31;
+  border-radius: 18px;
+  -webkit-box-shadow: 0 14px 42px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow: 0 14px 42px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04);
+  overflow: hidden;
+}
+
+.yomy-webview-legacy [data-slot="card-content"] { padding-left: 24px; padding-right: 24px; padding-top: 24px; padding-bottom: 24px; }
+.yomy-webview-legacy [data-slot="card-header"] { padding: 18px 24px; }
+.yomy-webview-legacy [data-slot="card-header"] p { margin: 0; }
+
+.yomy-webview-legacy [data-slot="input"] {
+  display: block;
+  width: 100%;
+  height: 40px;
+  min-width: 0;
+  padding: 8px 12px;
+  color: #f5f5f7;
+  background: #0b0c10;
+  border: 1px solid #34353c;
+  border-radius: 12px;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+}
+
+.yomy-webview-legacy [data-slot="input"]::-webkit-input-placeholder { color: #777983; }
+.yomy-webview-legacy [data-slot="input"]::-moz-placeholder { color: #777983; }
+.yomy-webview-legacy [data-slot="input"]:-ms-input-placeholder { color: #777983; }
+.yomy-webview-legacy [data-slot="input"]::placeholder { color: #777983; }
+.yomy-webview-legacy [data-slot="input"]:focus {
+  border-color: #8b5cf6;
+  -webkit-box-shadow: 0 0 0 3px rgba(139,92,246,.18);
+  box-shadow: 0 0 0 3px rgba(139,92,246,.18);
+}
+
+.yomy-webview-legacy [data-slot="button"] {
+  display: -webkit-inline-box;
+  display: -ms-inline-flexbox;
+  display: inline-flex;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 16px;
+  -webkit-box-align: center;
+  -ms-flex-align: center;
+  align-items: center;
+  -webkit-box-pack: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+  color: #050507;
+  background: #f2f2f5;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-box-shadow: 0 8px 22px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.35);
+  box-shadow: 0 8px 22px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.35);
+}
+
+.yomy-webview-legacy [data-slot="button"]:active { -webkit-transform: scale(.98); transform: scale(.98); }
+.yomy-webview-legacy [data-slot="button"][data-variant="ghost"] {
+  background: transparent;
+  color: #e5e7eb;
+  -webkit-box-shadow: none;
+  box-shadow: none;
+}
+.yomy-webview-legacy [data-slot="button"][data-variant="secondary"] {
+  color: #f5f5f7;
+  background: #22242a;
+}
+.yomy-webview-legacy [data-slot="button"][data-variant="outline"] {
+  color: #f5f5f7;
+  background: #0d0e12;
+  border: 1px solid #3a3b42;
+}
+.yomy-webview-legacy [data-slot="button"][data-variant="destructive"] {
+  color: #fff;
+  background: #dc3545;
+}
+.yomy-webview-legacy [data-slot="button"][data-variant="link"] {
+  color: #a78bfa;
+  background: transparent;
+  -webkit-box-shadow: none;
+  box-shadow: none;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.yomy-webview-legacy [data-slot="label"] {
+  display: block;
+  margin-bottom: 7px;
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Auth shell: the first screen should never fall back to browser defaults. */
+.yomy-webview-legacy .yomy-auth-shell {
+  min-height: 100vh;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(139,92,246,.12), transparent 34%),
+    radial-gradient(circle at 90% 18%, rgba(236,72,153,.08), transparent 30%),
+    #050507;
+}
+
+.yomy-webview-legacy [data-slot="separator"] {
+  height: 1px;
+  width: 100%;
+  background: #2d2e35;
+}
+
+/* Generic SVG sizing used by lucide icons. */
+.yomy-webview-legacy [data-slot="button"] svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  -ms-flex-negative: 0;
+  flex-shrink: 0;
+}
+
+/* Glass becomes progressive enhancement rather than a prerequisite. */
+.yomy-webview-legacy .yomy-glass-bar,
+.yomy-webview-legacy .yomy-ios-glass,
+.yomy-webview-legacy .yomy-ios-panel,
+.yomy-webview-legacy .yomy-topbar,
+.yomy-webview-legacy .yomy-chat-header,
+.yomy-webview-legacy .yomy-chat-composer,
+.yomy-webview-legacy .yomy-chat-control,
+.yomy-webview-legacy .yomy-message-bubble {
+  background: #111217 !important;
+  border: 1px solid #2a2b31;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Preserve safe interaction behavior. */
+.yomy-webview-legacy button,
+.yomy-webview-legacy a,
+.yomy-webview-legacy input,
+.yomy-webview-legacy textarea,
+.yomy-webview-legacy select {
+  -webkit-touch-callout: none;
+}
+
+.yomy-webview-legacy input,
+.yomy-webview-legacy textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* RTL support. */
+[dir="rtl"] .yomy-webview-legacy [class~="gap-2"] > * + * { margin-left: 0; margin-right: 8px; }
+[dir="rtl"] .yomy-webview-legacy [class~="gap-3"] > * + * { margin-left: 0; margin-right: 12px; }
+
+/* Large-screen containment; safe on old WebViews. */
+.yomy-webview-legacy .yomy-page-container {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (max-width: 420px) {
+  .yomy-webview-legacy [data-slot="card-content"] { padding-left: 16px; padding-right: 16px; }
+  .yomy-webview-legacy [data-slot="card-header"] { padding-left: 16px; padding-right: 16px; }
+}
