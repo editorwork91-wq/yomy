@@ -428,3 +428,176 @@ html {
 .story-tool:active{transform:scale(.94)}
 .story-choice{display:inline-flex;height:38px;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:0 14px;background:rgba(0,0,0,.34);color:rgba(255,255,255,.82);backdrop-filter:blur(18px) saturate(150%);-webkit-backdrop-filter:blur(18px) saturate(150%);white-space:nowrap;font-size:11px;font-weight:600}
 .story-choice-active{border-color:rgba(255,255,255,.9);background:rgba(255,255,255,.92);color:#090909}
+
+
+/* ============================================================
+   YOMY ADAPTIVE DEVICE DENSITY
+   One responsive geometry system for phones, tablets, split-screen,
+   rotation, keyboard-open states and Huawei/Android WebViews.
+   It scales the existing rem-based design without changing business
+   logic or deleting existing components.
+   ============================================================ */
+
+:root {
+  --yomy-ui-scale: 1;
+  --yomy-vw: 100vw;
+  --yomy-vh: 100vh;
+  --yomy-safe-top: 0px;
+  --yomy-safe-bottom: 0px;
+}
+
+html {
+  font-size: calc(16px * var(--yomy-font-scale, 1) * var(--yomy-ui-scale, 1));
+}
+
+body,
+#root,
+.yomy-ios {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: var(--yomy-vh, 100vh);
+  overflow-x: hidden;
+}
+
+.yomy-ios {
+  position: relative;
+  isolation: isolate;
+}
+
+/* Never allow media/UI primitives to force horizontal overflow. */
+.yomy-ios img,
+.yomy-ios video,
+.yomy-ios canvas,
+.yomy-ios svg {
+  max-width: 100%;
+}
+
+.yomy-ios input,
+.yomy-ios textarea,
+.yomy-ios select,
+.yomy-ios button {
+  max-width: 100%;
+}
+
+/* Keep the app centered while remaining fluid on every width. */
+.yomy-glass-page,
+.yomy-chat-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: var(--yomy-vh, 100vh);
+  overflow-x: hidden;
+}
+
+.yomy-glass-page > .max-w-lg,
+.yomy-chat-shell > .max-w-lg,
+.yomy-ios .yomy-page-container {
+  width: 100%;
+  max-width: 512px;
+  min-width: 0;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Adaptive edge spacing: smaller screens get less chrome, larger screens
+   gain breathing room without creating fixed-size layouts. */
+@media (max-width: 359px) {
+  .yomy-glass-page > .max-w-lg,
+  .yomy-chat-shell > .max-w-lg {
+    max-width: 100%;
+  }
+
+  .yomy-ios .max-w-lg {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+}
+
+@media (min-width: 600px) {
+  .yomy-glass-page > .max-w-lg,
+  .yomy-chat-shell > .max-w-lg,
+  .yomy-ios .yomy-page-container {
+    max-width: 560px;
+  }
+}
+
+@media (min-width: 900px) {
+  .yomy-glass-page > .max-w-lg,
+  .yomy-chat-shell > .max-w-lg,
+  .yomy-ios .yomy-page-container {
+    max-width: 640px;
+  }
+}
+
+/* Compact navigation controls on very narrow phones. */
+@media (max-width: 359px) {
+  .yomy-topbar > div {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .yomy-topbar .yomy-topbar-brand {
+    padding-left: 5px;
+    padding-right: 7px;
+  }
+
+  .yomy-topbar .yomy-topbar-wordmark {
+    font-size: 0.98rem;
+  }
+
+  .yomy-topbar .yomy-topbar-logo {
+    width: 1.72rem;
+    height: 1.72rem;
+  }
+}
+
+/* Prevent fixed bottom navigation from covering the final line of content. */
+.yomy-glass-page.pb-20,
+.yomy-chat-shell.pb-20 {
+  padding-bottom: max(5rem, calc(4.5rem + var(--yomy-safe-bottom, 0px)));
+}
+
+/* Better touch sizing on compact phones without forcing a minimum width. */
+@media (max-width: 359px) {
+  .yomy-ios [data-slot="button"].size-9,
+  .yomy-ios [data-slot="button"].h-9 {
+    min-width: 34px;
+  }
+}
+
+/* Landscape phones: reduce vertical chrome while keeping readable controls. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .yomy-topbar > div {
+    height: 48px;
+  }
+
+  .yomy-topbar .yomy-topbar-logo {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .yomy-topbar .yomy-topbar-wordmark {
+    font-size: 1rem;
+  }
+
+  .yomy-ios .pb-20 {
+    padding-bottom: 4.25rem;
+  }
+}
+
+/* When a software keyboard changes visualViewport height, avoid forcing
+   dialogs and fixed surfaces beyond the visible area. */
+.yomy-dialog-scroll,
+[data-radix-dialog-content],
+[role="dialog"] {
+  max-height: calc(var(--yomy-vh, 100vh) - 24px);
+}
+
+@media (max-width: 420px) {
+  .yomy-ios .yomy-settings-header {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}
