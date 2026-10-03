@@ -20,6 +20,30 @@
       (function () {
         try {
           var root = document.documentElement;
+
+          /* Adaptive geometry is driven from the visual viewport, not a
+             hard-coded device size. The existing rem-based YOMY UI therefore
+             scales naturally across small phones, large phones, tablets,
+             split-screen and rotation. */
+          var updateViewport = function () {
+            try {
+              var vv = window.visualViewport;
+              var width = Math.max(1, Math.round((vv && vv.width) || window.innerWidth || 390));
+              var height = Math.max(1, Math.round((vv && vv.height) || window.innerHeight || 844));
+              var scale = width / 390;
+              if (scale < 0.82) scale = 0.82;
+              if (scale > 1.12) scale = 1.12;
+              root.style.setProperty("--yomy-ui-scale", String(scale));
+              root.style.setProperty("--yomy-vw", width + "px");
+              root.style.setProperty("--yomy-vh", height + "px");
+            } catch (_) {}
+          };
+          updateViewport();
+          window.addEventListener("resize", updateViewport, false);
+          window.addEventListener("orientationchange", updateViewport, false);
+          if (window.visualViewport) {
+            window.visualViewport.addEventListener("resize", updateViewport, false);
+          }
           var css = window.CSS;
           var supports = css && typeof css.supports === "function";
           var modern =
