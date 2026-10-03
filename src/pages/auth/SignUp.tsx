@@ -96,7 +96,7 @@ export default function SignUp() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="yomy-auth-shell min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-5">
         <div className="text-center space-y-2">
           <h1 className="text-4xl font-bold tracking-tighter bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 bg-clip-text text-transparent">YOMY</h1>
