@@ -4,15 +4,54 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/jpeg" href="/YOMY-LOGO.jpeg" />
     <link rel="apple-touch-icon" href="/YOMY-LOGO.jpeg" />
+    <link rel="stylesheet" href="./yomy-compat.css" />
     <meta name="theme-color" content="#050507" />
+    <meta name="color-scheme" content="dark" />
     <meta property="og:title" content="Yomy" />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/YOMY-LOGO.jpeg" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Yomy" />
     <meta name="twitter:image" content="/YOMY-LOGO.jpeg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Yomy</title>
+
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var css = window.CSS;
+          var supports = css && typeof css.supports === "function";
+          var modern =
+            supports &&
+            css.supports("display", "grid") &&
+            css.supports("color", "color-mix(in srgb, black 50%, white)") &&
+            css.supports("color", "oklch(0.5 0 0)");
+          var ua = navigator.userAgent || "";
+          var android = /Android/i.test(ua);
+          var huawei = /Huawei|HUAWEI/i.test(ua);
+          var oldAndroid = android && /Android\s(?:[4-9]|10)/i.test(ua);
+          var legacy = !modern || oldAndroid || huawei;
+          root.classList.add(legacy ? "yomy-webview-legacy" : "yomy-webview-modern");
+          root.setAttribute("data-yomy-renderer", legacy ? "legacy" : "modern");
+          window.__YOMY_RENDER_DIAGNOSTICS__ = {
+            legacy: legacy,
+            modernCss: !!modern,
+            android: android,
+            huawei: huawei,
+            userAgent: ua
+          };
+        } catch (error) {
+          document.documentElement.classList.add("yomy-webview-legacy");
+          document.documentElement.setAttribute("data-yomy-renderer", "legacy");
+          window.__YOMY_RENDER_DIAGNOSTICS__ = {
+            legacy: true,
+            modernCss: false,
+            error: String(error)
+          };
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
