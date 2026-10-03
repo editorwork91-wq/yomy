@@ -390,3 +390,102 @@ a {
   .yomy-webview-legacy [data-slot="card-content"] { padding-left: 16px; padding-right: 16px; }
   .yomy-webview-legacy [data-slot="card-header"] { padding-left: 16px; padding-right: 16px; }
 }
+
+
+/* Adaptive geometry for legacy Huawei/Android WebViews.
+   Uses the viewport values prepared by index.html and never depends on
+   modern CSS functions for the core layout. */
+html {
+  font-size: calc(16px * var(--yomy-font-scale, 1) * var(--yomy-ui-scale, 1));
+}
+
+html, body, #root, .yomy-ios {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 100vh;
+  min-height: var(--yomy-vh, 100vh);
+  overflow-x: hidden;
+}
+
+.yomy-ios {
+  position: relative;
+}
+
+.yomy-ios img,
+.yomy-ios video,
+.yomy-ios canvas,
+.yomy-ios svg {
+  max-width: 100%;
+}
+
+.yomy-glass-page,
+.yomy-chat-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: var(--yomy-vh, 100vh);
+  overflow-x: hidden;
+}
+
+.yomy-glass-page > .max-w-lg,
+.yomy-chat-shell > .max-w-lg,
+.yomy-ios .yomy-page-container {
+  width: 100%;
+  max-width: 512px;
+  min-width: 0;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+@media (min-width: 600px) {
+  .yomy-glass-page > .max-w-lg,
+  .yomy-chat-shell > .max-w-lg,
+  .yomy-ios .yomy-page-container {
+    max-width: 560px;
+  }
+}
+
+@media (min-width: 900px) {
+  .yomy-glass-page > .max-w-lg,
+  .yomy-chat-shell > .max-w-lg,
+  .yomy-ios .yomy-page-container {
+    max-width: 640px;
+  }
+}
+
+@media (max-width: 359px) {
+  .yomy-topbar > div {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .yomy-topbar .yomy-topbar-wordmark {
+    font-size: 0.98rem;
+  }
+
+  .yomy-topbar .yomy-topbar-logo {
+    width: 1.72rem;
+    height: 1.72rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .yomy-topbar > div {
+    height: 48px;
+  }
+
+  .yomy-topbar .yomy-topbar-logo {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+}
+
+/* Do not let the fixed navigation consume the last interaction row. */
+.yomy-glass-page.pb-20 {
+  padding-bottom: 5rem;
+}
+
+[role="dialog"] {
+  max-height: calc(var(--yomy-vh, 100vh) - 24px);
+}
