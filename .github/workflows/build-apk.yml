@@ -44,6 +44,12 @@ jobs:
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY || secrets.VAPID_PUBLIC_KEY }}
         run: npm run build
 
+      - name: Verify universal web assets
+        run: |
+          test -s dist/yomy-compat.css
+          grep -q "yomy-compat.css" dist/index.html
+          echo "Universal compatibility CSS is present in the web bundle."
+
       - name: Save repository native Android configuration
         run: |
           cp android/app/src/main/java/com/yomy/app/MainActivity.java /tmp/YomyMainActivity.java
@@ -75,6 +81,12 @@ jobs:
           rm -rf android
           npx cap add android
           npx cap sync android
+
+      - name: Verify compatibility assets inside Android WebView bundle
+        run: |
+          test -s android/app/src/main/assets/public/yomy-compat.css
+          grep -R -q "yomy-compat.css" android/app/src/main/assets/public/index.html
+          echo "Compatibility CSS is packaged into the Android WebView assets."
 
       - name: Restore Firebase Android configuration
         env:
