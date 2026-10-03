@@ -26,6 +26,7 @@ import NewChat from '@/pages/NewChat'
 import NetworkStatus from '@/components/system/NetworkStatus'
 import OfflineSyncEngine from '@/components/system/OfflineSyncEngine'
 import RealtimeInbox from '@/components/realtime/RealtimeInbox'
+import Legal from '@/pages/Legal'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -43,6 +44,9 @@ function AppRoutes() {
   return <Routes>
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+    <Route path="/terms" element={<Legal document="terms" />} />
+    <Route path="/privacy" element={<Legal document="privacy" />} />
+    <Route path="/community-guidelines" element={<Legal document="community" />} />
     <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
     <Route path="/fedo" element={<ProtectedRoute><Fedo /></ProtectedRoute>} />
     <Route path="/creator-analytics" element={<ProtectedRoute><CreatorAnalytics /></ProtectedRoute>} />
