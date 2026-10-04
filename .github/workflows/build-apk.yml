@@ -48,7 +48,7 @@ jobs:
         run: |
           cp android/app/src/main/java/com/yomy/app/MainActivity.java /tmp/YomyMainActivity.java
           mkdir -p /tmp/YomyNativeJava
-          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java IncomingCallActivity.java; do
+          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java YomyHuaweiMessagingService.java IncomingCallActivity.java; do
             if [ -f "android/app/src/main/java/com/yomy/app/$file" ]; then
               cp "android/app/src/main/java/com/yomy/app/$file" "/tmp/YomyNativeJava/$file"
             fi
@@ -163,6 +163,78 @@ jobs:
           values = Path('android/app/src/main/res/values')
           values.mkdir(parents=True, exist_ok=True)
           (values / 'yomy_call_styles.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <style name="YomyIncomingCallTheme" parent="@android:style/Theme.Material.NoActionBar">\n        <item name="android:windowNoTitle">true</item>\n        <item name="android:windowActionModeOverlay">true</item>\n        <item name="android:windowBackground">#081210</item>\n        <item name="android:colorAccent">#20B666</item>\n        <item name="android:fontFamily">sans</item>\n        <item name="android:windowDisablePreview">true</item>\n        <item name="android:windowIsTranslucent">false</item>\n        <item name="android:windowLightStatusBar">false</item>\n        <item name="android:windowLightNavigationBar">false</item>\n    </style>\n</resources>\n''')
+          PY
+
+      - name: Configure optional Huawei HMS compatibility
+        env:
+          HUAWEI_AGCONNECT_JSON_BASE64: ${{ secrets.HUAWEI_AGCONNECT_JSON_BASE64 }}
+          HUAWEI_APP_ID: ${{ secrets.HUAWEI_APP_ID }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, os
+
+          app = Path('android/app')
+          build = app / 'build.gradle'
+          bs = build.read_text()
+
+          if "com.huawei.hms:push:" not in bs:
+              needle = "    implementation project(':capacitor-android')"
+              if needle in bs:
+                  bs = bs.replace(
+                      needle,
+                      needle + "\n    implementation 'com.huawei.hms:push:6.3.0.302'",
+                      1
+                  )
+              else:
+                  raise SystemExit('Unable to locate Capacitor dependency anchor for Huawei Push Kit')
+              build.write_text(bs)
+
+          settings = Path('android/settings.gradle')
+          if settings.exists():
+              ss = settings.read_text()
+              if 'developer.huawei.com/repo' not in ss:
+                  anchor = 'mavenCentral()'
+                  if anchor in ss:
+                      ss = ss.replace(anchor, anchor + "\n            maven { url 'https://developer.huawei.com/repo/' }", 1)
+                  else:
+                      ss = ss.replace('repositories {', "repositories {\n            maven { url 'https://developer.huawei.com/repo/' }", 1)
+                  settings.write_text(ss)
+
+          manifest = app / 'src/main/AndroidManifest.xml'
+          ms = manifest.read_text()
+
+          queries = '''\n    <queries>\n        <package android:name="com.huawei.hwid" />\n    </queries>\n'''
+          if '<queries>' not in ms:
+              ms = ms.replace('</manifest>', queries + '</manifest>')
+
+          service = '''\n        <service\n            android:name=".YomyHuaweiMessagingService"\n            android:exported="false">\n            <intent-filter>\n                <action android:name="com.huawei.push.action.MESSAGING_EVENT" />\n            </intent-filter>\n        </service>\n'''
+          if '.YomyHuaweiMessagingService' not in ms:
+              ms = ms.replace('    </application>', service + '    </application>')
+
+          metadata = '''\n        <meta-data\n            android:name="push_kit_auto_init_enabled"\n            android:value="true" />\n'''
+          if 'push_kit_auto_init_enabled' not in ms:
+              ms = ms.replace('    </application>', metadata + '    </application>')
+
+          manifest.write_text(ms)
+
+          agc = os.environ.get('HUAWEI_AGCONNECT_JSON_BASE64','').strip()
+          if agc:
+              try:
+                  (app / 'agconnect-services.json').write_bytes(base64.b64decode(agc))
+              except Exception as exc:
+                  raise SystemExit(f'Invalid HUAWEI_AGCONNECT_JSON_BASE64: {exc}')
+
+          app_id = os.environ.get('HUAWEI_APP_ID','').strip()
+          if app_id:
+              values = app / 'src/main/res/values'
+              values.mkdir(parents=True, exist_ok=True)
+              safe = app_id.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
+              (values / 'huawei_config.xml').write_text(
+                  '<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n'
+                  '    <string name="huawei_app_id" translatable="false">' + safe + '</string>\\n'
+                  '</resources>\\n'
+              )
           PY
 
       - name: Apply official Yomy launcher icon
