@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,11 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { CheckCircle2, ShieldCheck } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
+import {
+  confirmFirebasePhoneVerification,
+  resetFirebasePhoneVerification,
+  startFirebasePhoneVerification,
+} from '@/lib/firebasePhone'
 
 const LEGAL_VERSION = '2026-10-03'
 
@@ -23,11 +28,34 @@ function normalizePhone(value: string) {
   return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : ''
 }
 
+function phoneAuthErrorMessage(error: unknown) {
+  const code = typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code?: unknown }).code || '')
+    : ''
+  switch (code) {
+    case 'auth/invalid-phone-number':
+      return 'The phone number is not valid.'
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait and try again later.'
+    case 'auth/quota-exceeded':
+      return 'Phone verification quota has been reached. Try again later.'
+    case 'auth/captcha-check-failed':
+      return 'reCAPTCHA could not verify this request. Try again.'
+    case 'auth/operation-not-allowed':
+      return 'Phone authentication is not enabled in Firebase yet.'
+    case 'auth/app-not-authorized':
+      return 'This Yomy domain is not authorized in Firebase Authentication.'
+    default:
+      return error instanceof Error ? error.message : 'Phone verification failed.'
+  }
+}
+
 type VerificationState = 'idle' | 'sending' | 'code' | 'verifying' | 'verified'
 
 export default function SignUp() {
   const navigate = useNavigate()
-  const { copy } = useYomyLanguage()
+  const { language, copy } = useYomyLanguage()
+  const sendPhoneButtonRef = useRef<HTMLButtonElement>(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -51,32 +79,35 @@ export default function SignUp() {
     return () => window.clearInterval(timer)
   }, [resendAt])
 
+  useEffect(() => () => resetFirebasePhoneVerification(), [])
+
   const normalizedPhone = normalizePhone(phone)
-  const phoneChanged = verificationState === 'verified' && !normalizedPhone
+  const waitingForCode = verificationState === 'code' || verificationState === 'verifying'
+  const verified = verificationState === 'verified' && Boolean(normalizedPhone)
 
   const sendPhoneOtp = async () => {
     if (!normalizedPhone) {
       toast.error('Enter a valid phone number in international format, for example +2010...')
       return false
     }
+    if (!sendPhoneButtonRef.current) {
+      toast.error('Phone verification UI is not ready yet. Please try again.')
+      return false
+    }
     if (countdownNow < resendAt) return false
+
     setVerificationState('sending')
     try {
-      const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
-        body: { action: 'send_signup_otp', phone: normalizedPhone },
-      })
-      if (error || data?.error) throw new Error(data?.error || error?.message || 'PHONE_VERIFICATION_UNAVAILABLE')
+      await startFirebasePhoneVerification(normalizedPhone, sendPhoneButtonRef.current, language)
       setVerificationState('code')
       setVerificationCode('')
       setResendAt(Date.now() + 45_000)
       toast.success(copy('codeSent'))
       return true
-    } catch (err) {
+    } catch (error) {
+      resetFirebasePhoneVerification()
       setVerificationState('idle')
-      const message = err instanceof Error ? err.message : 'PHONE_VERIFICATION_UNAVAILABLE'
-      if (message.includes('SMS_PROVIDER')) toast.error(copy('phoneVerificationUnavailable'))
-      else if (message === 'OTP_COOLDOWN') toast.error(copy('resendIn') + ' 45s')
-      else toast.error(message)
+      toast.error(phoneAuthErrorMessage(error))
       return false
     }
   }
@@ -86,34 +117,32 @@ export default function SignUp() {
       toast.error(copy('verificationCode'))
       return false
     }
+
     setVerificationState('verifying')
     try {
-      const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
-        body: { action: 'verify_signup_otp', phone: normalizedPhone, code: verificationCode.trim() },
-      })
-      if (error || data?.error || !data?.nonce) throw new Error(data?.error || error?.message || 'OTP_NOT_APPROVED')
-      setPhoneNonce(String(data.nonce))
+      const result = await confirmFirebasePhoneVerification(verificationCode.trim(), normalizedPhone)
+      setPhoneNonce(result.nonce)
       setVerificationState('verified')
       toast.success(copy('phoneVerified'))
       return true
-    } catch (err) {
+    } catch (error) {
       setVerificationState('code')
-      toast.error(err instanceof Error ? err.message : 'OTP_NOT_APPROVED')
+      toast.error(phoneAuthErrorMessage(error))
       return false
     }
   }
 
   const updatePhone = (value: string) => {
+    resetFirebasePhoneVerification()
     setPhone(value)
-    if (verificationState !== 'idle') {
-      setVerificationState('idle')
-      setVerificationCode('')
-      setPhoneNonce('')
-    }
+    setVerificationState('idle')
+    setVerificationCode('')
+    setPhoneNonce('')
   }
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
+
     if (username.length < 3) {
       toast.error('Username must be at least 3 characters')
       return
@@ -196,10 +225,6 @@ export default function SignUp() {
     }
   }
 
-  const cleanPhone = normalizePhone(phone)
-  const waitingForCode = verificationState === 'code' || verificationState === 'verifying'
-  const verified = verificationState === 'verified' && Boolean(cleanPhone) && !phoneChanged
-
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
@@ -269,12 +294,12 @@ export default function SignUp() {
                       </Button>
                     </div>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground">{resendAt > countdownNow ? copy('resendIn') + ' ' + Math.ceil((resendAt - Date.now()) / 1000) + copy('seconds') : ''}</span>
-                      <button type="button" disabled={countdownNow < resendAt || verificationState === 'verifying'} className="font-semibold text-primary disabled:opacity-40" onClick={() => void sendPhoneOtp()}>{copy('resendCode')}</button>
+                      <span className="text-muted-foreground">{resendAt > countdownNow ? copy('resendIn') + ' ' + Math.ceil((resendAt - countdownNow) / 1000) + copy('seconds') : ''}</span>
+                      <button type="button" ref={sendPhoneButtonRef} disabled={countdownNow < resendAt || verificationState === 'verifying'} className="font-semibold text-primary disabled:opacity-40" onClick={() => void sendPhoneOtp()}>{copy('resendCode')}</button>
                     </div>
                   </div>
                 ) : (
-                  <Button type="button" variant="outline" className="w-full rounded-xl" disabled={!normalizedPhone || verificationState === 'sending' || loading} onClick={() => void sendPhoneOtp()}>
+                  <Button type="button" ref={sendPhoneButtonRef} variant="outline" className="w-full rounded-xl" disabled={!normalizedPhone || verificationState === 'sending' || loading} onClick={() => void sendPhoneOtp()}>
                     {verificationState === 'sending' ? '…' : copy('phoneVerify')}
                   </Button>
                 )}
