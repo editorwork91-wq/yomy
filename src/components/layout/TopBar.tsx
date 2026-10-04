@@ -41,7 +41,7 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
       <div className="flex items-center justify-between h-[3.35rem] px-3 sm:px-4 max-w-lg mx-auto yomy-ios-press">
         <div className="flex items-center gap-2.5 min-w-0">
           {showBack && (
-            <Button variant="ghost" size="icon" className="size-8.5 rounded-full hover:bg-muted/70" onClick={() => navigate(-1)} aria-label={copy.back}>
+            <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" onClick={() => navigate(-1)} aria-label={copy.back}>
               <ChevronLeft className={isArabic ? 'size-5 rotate-180' : 'size-5'} />
             </Button>
           )}
