@@ -259,4 +259,4 @@ jobs:
           name: yomy-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
-# Full-build verification: run the complete web + Android APK pipeline for this branch.
+# Full-build verification: corrected i18n/auth/platform QA; build the complete web + Android APK pipeline.
