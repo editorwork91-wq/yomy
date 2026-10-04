@@ -61,7 +61,7 @@ export const translations = {
     agreeTo: 'I agree to Yomy\'s', terms: 'Terms of Service', privacyPolicy: 'Privacy Policy',
     communityGuidelines: 'Community Guidelines', legalConsentNotice: 'You must accept the Terms of Service and Privacy Policy to create a Yomy account.',
     consentRecorded: 'Your acceptance is recorded with the current legal document version.',
-    back: 'Back', exploreAccounts: 'Explore',
+    back: 'Back', exploreAccounts: 'Explore', you: 'You', messageDeleted: 'Message deleted', poll: 'Poll', photo: 'Photo', voiceMessage: 'Voice message', video: 'Video', file: 'File', previewing: 'Previewing',
   },
   ar: {
     settings: 'الإعدادات', privacy: 'الخصوصية', appearance: 'المظهر', language: 'اللغة',
@@ -91,7 +91,7 @@ export const translations = {
     agreeTo: 'أوافق على', terms: 'شروط الخدمة', privacyPolicy: 'سياسة الخصوصية',
     communityGuidelines: 'إرشادات المجتمع', legalConsentNotice: 'يجب الموافقة على شروط الخدمة وسياسة الخصوصية لإنشاء حساب YOMY.',
     consentRecorded: 'يتم حفظ موافقتك مع إصدار المستندات القانونية الحالي.',
-    back: 'رجوع', exploreAccounts: 'استكشاف',
+    back: 'رجوع', exploreAccounts: 'استكشاف', you: 'أنت', messageDeleted: 'تم حذف الرسالة', poll: 'استطلاع', photo: 'صورة', voiceMessage: 'رسالة صوتية', video: 'فيديو', file: 'ملف', previewing: 'معاينة',
   },
   de: {
     settings: 'Einstellungen', privacy: 'Datenschutz', appearance: 'Darstellung', language: 'Sprache',
@@ -121,7 +121,7 @@ export const translations = {
     agreeTo: 'Ich stimme den', terms: 'Nutzungsbedingungen', privacyPolicy: 'Datenschutzrichtlinie',
     communityGuidelines: 'Community-Richtlinien', legalConsentNotice: 'Du musst den Nutzungsbedingungen und der Datenschutzrichtlinie zustimmen, um ein Yomy-Konto zu erstellen.',
     consentRecorded: 'Deine Zustimmung wird mit der aktuellen Dokumentversion gespeichert.',
-    back: 'Zurück', exploreAccounts: 'Entdecken',
+    back: 'Zurück', exploreAccounts: 'Entdecken', you: 'Du', messageDeleted: 'Nachricht gelöscht', poll: 'Umfrage', photo: 'Foto', voiceMessage: 'Sprachnachricht', video: 'Video', file: 'Datei', previewing: 'Vorschau',
   },
   fr: {
     settings: 'Réglages', privacy: 'Confidentialité', appearance: 'Apparence', language: 'Langue',
@@ -151,7 +151,7 @@ export const translations = {
     agreeTo: 'J’accepte les', terms: 'Conditions d’utilisation', privacyPolicy: 'Politique de confidentialité',
     communityGuidelines: 'Règles de la communauté', legalConsentNotice: 'Vous devez accepter les Conditions d’utilisation et la Politique de confidentialité pour créer un compte Yomy.',
     consentRecorded: 'Votre consentement est enregistré avec la version actuelle des documents.',
-    back: 'Retour', exploreAccounts: 'Explorer',
+    back: 'Retour', exploreAccounts: 'Explorer', you: 'Vous', messageDeleted: 'Message supprimé', poll: 'Sondage', photo: 'Photo', voiceMessage: 'Message vocal', video: 'Vidéo', file: 'Fichier', previewing: 'Aperçu',
   },
   es: {
     settings: 'Ajustes', privacy: 'Privacidad', appearance: 'Apariencia', language: 'Idioma',
@@ -181,7 +181,7 @@ export const translations = {
     agreeTo: 'Acepto los', terms: 'Términos del servicio', privacyPolicy: 'Política de privacidad',
     communityGuidelines: 'Normas de la comunidad', legalConsentNotice: 'Debes aceptar los Términos del servicio y la Política de privacidad para crear una cuenta de Yomy.',
     consentRecorded: 'Tu aceptación se registra con la versión actual de los documentos legales.',
-    back: 'Atrás', exploreAccounts: 'Explorar',
+    back: 'Atrás', exploreAccounts: 'Explorar', you: 'Tú', messageDeleted: 'Mensaje eliminado', poll: 'Encuesta', photo: 'Foto', voiceMessage: 'Mensaje de voz', video: 'Vídeo', file: 'Archivo', previewing: 'Vista previa',
   },
 } as const
 
