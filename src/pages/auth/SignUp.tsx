@@ -45,6 +45,10 @@ function phoneAuthErrorMessage(error: unknown) {
       return 'Phone authentication is not enabled in Firebase yet.'
     case 'auth/app-not-authorized':
       return 'This Yomy domain is not authorized in Firebase Authentication.'
+    case 'auth/network-request-failed':
+      return 'Network connection failed. Please check your internet connection and try again.'
+    case 'auth/api-key-not-valid':
+      return 'Firebase configuration is invalid. Check the Yomy Firebase settings.'
     default:
       return error instanceof Error ? error.message : 'Phone verification failed.'
   }
@@ -114,7 +118,12 @@ export default function SignUp() {
     } catch (error) {
       resetFirebasePhoneVerification()
       setVerificationState('idle')
-      toast.error(phoneAuthErrorMessage(error))
+      const message = phoneAuthErrorMessage(error)
+      if (message === 'FIREBASE_PHONE_AUTH_NOT_CONFIGURED') {
+        toast.error(copy('phoneVerificationUnavailable'))
+      } else {
+        toast.error(message)
+      }
       return false
     }
   }
