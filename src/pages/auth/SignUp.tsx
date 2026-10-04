@@ -8,10 +8,22 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { ShieldCheck } from 'lucide-react'
+import { CheckCircle2, ShieldCheck } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
 
 const LEGAL_VERSION = '2026-10-03'
+
+function normalizePhone(value: string) {
+  const normalized = value
+    .trim()
+    .replace(/[٠-٩]/g, digit => String(digit.charCodeAt(0) - 0x660))
+    .replace(/[۰-۹]/g, digit => String(digit.charCodeAt(0) - 0x6f0))
+    .replace(/[\s().-]/g, '')
+    .replace(/[^+\d]/g, '')
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : ''
+}
+
+type VerificationState = 'idle' | 'sending' | 'code' | 'verifying' | 'verified'
 
 export default function SignUp() {
   const navigate = useNavigate()
@@ -21,8 +33,73 @@ export default function SignUp() {
   const [username, setUsername] = useState('')
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
+  const [phoneNonce, setPhoneNonce] = useState('')
+  const [verificationState, setVerificationState] = useState<VerificationState>('idle')
+  const [resendAt, setResendAt] = useState(0)
   const [acceptedPolicies, setAcceptedPolicies] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  const normalizedPhone = normalizePhone(phone)
+  const phoneChanged = verificationState === 'verified' && !normalizedPhone
+
+  const sendPhoneOtp = async () => {
+    if (!normalizedPhone) {
+      toast.error('Enter a valid phone number in international format, for example +2010...')
+      return false
+    }
+    if (Date.now() < resendAt) return false
+    setVerificationState('sending')
+    try {
+      const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
+        body: { action: 'send_signup_otp', phone: normalizedPhone },
+      })
+      if (error || data?.error) throw new Error(data?.error || error?.message || 'PHONE_VERIFICATION_UNAVAILABLE')
+      setVerificationState('code')
+      setVerificationCode('')
+      setResendAt(Date.now() + 45_000)
+      toast.success(copy('codeSent'))
+      return true
+    } catch (err) {
+      setVerificationState('idle')
+      const message = err instanceof Error ? err.message : 'PHONE_VERIFICATION_UNAVAILABLE'
+      if (message.includes('SMS_PROVIDER')) toast.error(copy('phoneVerificationUnavailable'))
+      else if (message === 'OTP_COOLDOWN') toast.error(copy('resendIn') + ' 45s')
+      else toast.error(message)
+      return false
+    }
+  }
+
+  const verifyPhoneOtp = async () => {
+    if (!normalizedPhone || !/^\d{4,10}$/.test(verificationCode.trim())) {
+      toast.error(copy('verificationCode'))
+      return false
+    }
+    setVerificationState('verifying')
+    try {
+      const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
+        body: { action: 'verify_signup_otp', phone: normalizedPhone, code: verificationCode.trim() },
+      })
+      if (error || data?.error || !data?.nonce) throw new Error(data?.error || error?.message || 'OTP_NOT_APPROVED')
+      setPhoneNonce(String(data.nonce))
+      setVerificationState('verified')
+      toast.success(copy('phoneVerified'))
+      return true
+    } catch (err) {
+      setVerificationState('code')
+      toast.error(err instanceof Error ? err.message : 'OTP_NOT_APPROVED')
+      return false
+    }
+  }
+
+  const updatePhone = (value: string) => {
+    setPhone(value)
+    if (verificationState !== 'idle') {
+      setVerificationState('idle')
+      setVerificationCode('')
+      setPhoneNonce('')
+    }
+  }
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -32,6 +109,16 @@ export default function SignUp() {
     }
     if (!acceptedPolicies) {
       toast.error(copy('legalConsentNotice'))
+      return
+    }
+
+    const cleanPhone = normalizePhone(phone)
+    if (phone.trim() && !cleanPhone) {
+      toast.error('Use an international phone format such as +2010...')
+      return
+    }
+    if (cleanPhone && verificationState !== 'verified') {
+      await sendPhoneOtp()
       return
     }
 
@@ -45,28 +132,50 @@ export default function SignUp() {
 
       if (existing) {
         toast.error('Username already taken')
-        setLoading(false)
         return
       }
 
       const acceptedAt = new Date().toISOString()
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
+
+      if (cleanPhone) {
+        const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
+          body: {
+            action: 'create_account',
+            phone: cleanPhone,
+            nonce: phoneNonce,
+            email,
+            password,
             username: username.toLowerCase(),
             full_name: fullName,
-            phone_number: phone.trim() || null,
             legal_terms_accepted: true,
             legal_privacy_accepted: true,
             legal_version: LEGAL_VERSION,
             legal_accepted_at: acceptedAt,
           },
-        },
-      })
+        })
+        if (error || data?.error) throw new Error(data?.error || error?.message || 'ACCOUNT_CREATE_FAILED')
 
-      if (error) throw error
+        const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+        if (signInError) throw signInError
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              username: username.toLowerCase(),
+              full_name: fullName,
+              phone_number: null,
+              legal_terms_accepted: true,
+              legal_privacy_accepted: true,
+              legal_version: LEGAL_VERSION,
+              legal_accepted_at: acceptedAt,
+            },
+          },
+        })
+        if (error) throw error
+      }
+
       toast.success('Account created! Welcome to Yomy!')
       navigate('/')
     } catch (err: unknown) {
@@ -75,6 +184,9 @@ export default function SignUp() {
       setLoading(false)
     }
   }
+
+  const waitingForCode = verificationState === 'code' || verificationState === 'verifying'
+  const verified = verificationState === 'verified' && !phoneChanged
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -112,8 +224,48 @@ export default function SignUp() {
                   <span>{copy('phoneNumber')}</span>
                   <span className="text-[11px] font-normal text-muted-foreground">{copy('optional')}</span>
                 </Label>
-                <Input id="phone" type="tel" inputMode="tel" placeholder="+20 1XXXXXXXXX" value={phone} onChange={e => setPhone(e.target.value)} autoComplete="tel" />
-                <p className="text-[11px] leading-relaxed text-muted-foreground">{copy('noPhoneNote')}</p>
+                <Input id="phone" type="tel" inputMode="tel" placeholder="+20 1XXXXXXXXX" value={phone} onChange={e => updatePhone(e.target.value)} autoComplete="tel" />
+                <p className="text-[11px] leading-relaxed text-muted-foreground">{copy('phoneOptionalVerified')}</p>
+
+                {phone.trim() && !normalizedPhone && (
+                  <p className="text-[11px] text-destructive">Use an international format such as +2010...</p>
+                )}
+
+                {verified ? (
+                  <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/8 px-3 py-2.5">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="size-4 text-emerald-600 shrink-0" />
+                      <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 truncate">{copy('phoneVerified')}</span>
+                    </div>
+                    <button type="button" className="text-[11px] font-semibold text-primary" onClick={() => updatePhone('')}>{copy('changeNumber')}</button>
+                  </div>
+                ) : waitingForCode ? (
+                  <div className="rounded-2xl border bg-muted/25 p-3 space-y-2.5">
+                    <p className="text-xs font-medium">{copy('verificationCode')}</p>
+                    <p className="text-[11px] text-muted-foreground">{copy('codeSent')}</p>
+                    <div className="flex gap-2">
+                      <Input
+                        value={verificationCode}
+                        onChange={e => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="123456"
+                        className="rounded-xl"
+                      />
+                      <Button type="button" className="rounded-xl shrink-0" disabled={verificationState === 'verifying' || verificationCode.length < 4} onClick={() => void verifyPhoneOtp()}>
+                        {verificationState === 'verifying' ? '…' : copy('verifyCode')}
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-muted-foreground">{resendAt > Date.now() ? copy('resendIn') + ' ' + Math.ceil((resendAt - Date.now()) / 1000) + copy('seconds') : ''}</span>
+                      <button type="button" disabled={Date.now() < resendAt || verificationState === 'verifying'} className="font-semibold text-primary disabled:opacity-40" onClick={() => void sendPhoneOtp()}>{copy('resendCode')}</button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button type="button" variant="outline" className="w-full rounded-xl" disabled={!normalizedPhone || verificationState === 'sending' || loading} onClick={() => void sendPhoneOtp()}>
+                    {verificationState === 'sending' ? '…' : copy('phoneVerify')}
+                  </Button>
+                )}
               </div>
 
               <div className="rounded-2xl border bg-muted/30 p-3.5">
@@ -135,8 +287,8 @@ export default function SignUp() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading || !acceptedPolicies}>
-                {loading ? copy('creatingAccount') : copy('createAccount')}
+              <Button type="submit" className="w-full" disabled={loading || !acceptedPolicies || verificationState === 'sending'}>
+                {loading ? copy('creatingAccount') : cleanPhone && !verified ? copy('phoneVerify') : copy('createAccount')}
               </Button>
 
               <p className="text-[11px] leading-relaxed text-center text-muted-foreground">{copy('legalConsentNotice')}</p>
