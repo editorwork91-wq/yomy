@@ -2,6 +2,7 @@ import { StrictMode, Component, type ErrorInfo, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
 
 import "./index.css"
+import { applyYomyPlatformAttributes, detectYomyPlatform } from "@/lib/platform"
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   window.addEventListener("load", () => {
@@ -24,6 +25,7 @@ function prepareInitialLanguage() {
 }
 
 prepareInitialLanguage()
+applyYomyPlatformAttributes(detectYomyPlatform())
 
 import App from "./App.tsx"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
