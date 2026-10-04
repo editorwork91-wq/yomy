@@ -172,7 +172,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import base64, os
+          import base64, os, re
 
           app = Path('android/app')
           build = app / 'build.gradle'
@@ -180,25 +180,48 @@ jobs:
 
           if "com.huawei.hms:push:" not in bs:
               needle = "    implementation project(':capacitor-android')"
-              if needle in bs:
-                  bs = bs.replace(
-                      needle,
-                      needle + "\n    implementation 'com.huawei.hms:push:6.3.0.302'",
-                      1
-                  )
-              else:
+              if needle not in bs:
                   raise SystemExit('Unable to locate Capacitor dependency anchor for Huawei Push Kit')
+              bs = bs.replace(
+                  needle,
+                  needle + "\n    implementation 'com.huawei.hms:push:6.3.0.302'",
+                  1
+              )
               build.write_text(bs)
 
-          settings = Path('android/settings.gradle')
-          if settings.exists():
+          # Capacitor regenerates Android on every CI run. Use an init script in
+          # the Gradle invocation as the hard guarantee that the Huawei Maven
+          # repository is available, regardless of the generated settings layout.
+          init = Path('/tmp/yomy-huawei.init.gradle')
+          init.write_text("""
+          settingsEvaluated { settings ->
+              try {
+                  settings.pluginManagement.repositories {
+                      maven { url = uri('https://developer.huawei.com/repo/') }
+                  }
+              } catch (Exception ignored) {}
+              try {
+                  settings.dependencyResolutionManagement.repositories {
+                      maven { url = uri('https://developer.huawei.com/repo/') }
+                  }
+              } catch (Exception ignored) {}
+          }
+          allprojects {
+              repositories {
+                  maven { url 'https://developer.huawei.com/repo/' }
+              }
+          }
+          """.strip() + "\n")
+
+          # Keep a visible dependency-repository hint in generated settings too.
+          settings_candidates = [Path('android/settings.gradle'), Path('android/settings.gradle.kts')]
+          settings = next((p for p in settings_candidates if p.exists()), None)
+          if settings:
               ss = settings.read_text()
               if 'developer.huawei.com/repo' not in ss:
-                  anchor = 'mavenCentral()'
-                  if anchor in ss:
-                      ss = ss.replace(anchor, anchor + "\n            maven { url 'https://developer.huawei.com/repo/' }", 1)
-                  else:
-                      ss = ss.replace('repositories {', "repositories {\n            maven { url 'https://developer.huawei.com/repo/' }", 1)
+                  marker = 'dependencyResolutionManagement {'
+                  if marker in ss:
+                      ss = ss.replace(marker, marker + "\n    repositories { maven { url = uri('https://developer.huawei.com/repo/') } }", 1)
                   settings.write_text(ss)
 
           manifest = app / 'src/main/AndroidManifest.xml'
@@ -231,9 +254,9 @@ jobs:
               values.mkdir(parents=True, exist_ok=True)
               safe = app_id.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;').replace('"','&quot;').replace("'",'&apos;')
               (values / 'huawei_config.xml').write_text(
-                  '<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n'
-                  '    <string name="huawei_app_id" translatable="false">' + safe + '</string>\\n'
-                  '</resources>\\n'
+                  '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n'
+                  '    <string name="huawei_app_id" translatable="false">' + safe + '</string>\n'
+                  '</resources>\n'
               )
           PY
 
@@ -251,7 +274,7 @@ jobs:
         working-directory: ./android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew --init-script /tmp/yomy-huawei.init.gradle assembleDebug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
