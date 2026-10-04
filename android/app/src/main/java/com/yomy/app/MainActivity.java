@@ -42,6 +42,7 @@ public class MainActivity extends BridgeActivity {
         installMediaPermissionBridge();
         installAudioRouteBridge();
         installLocalNotificationBridge();
+        installSystemBarInsetsBridge();
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -175,6 +176,24 @@ public class MainActivity extends BridgeActivity {
 
     private final class AudioRouteBridge {
         @JavascriptInterface public void setSpeaker(boolean enabled) { runOnUiThread(() -> setSpeakerRoute(enabled)); }
+    }
+
+    private void installSystemBarInsetsBridge() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        final android.webkit.WebView webView = getBridge().getWebView();
+        ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
+            int topPx = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top;
+            int bottomPx = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom;
+            float density = getResources().getDisplayMetrics().density;
+            float topCss = density > 0f ? topPx / density : topPx;
+            float bottomCss = density > 0f ? bottomPx / density : bottomPx;
+            String js = "document.documentElement.style.setProperty('--yomy-statusbar-top','"
+                    + topCss + "px');document.documentElement.style.setProperty('--yomy-nav-bottom','"
+                    + bottomCss + "px');";
+            webView.evaluateJavascript(js, null);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(webView);
     }
 
     private void installLocalNotificationBridge() {
