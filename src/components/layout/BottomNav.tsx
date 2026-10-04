@@ -18,7 +18,7 @@ export default function BottomNav() {
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-[max(0.45rem,env(safe-area-inset-bottom))] pointer-events-none">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 px-3 yomy-bottom-safe pointer-events-none">
       <div className="pointer-events-auto flex items-center justify-around max-w-lg mx-auto h-[3.75rem] px-2 rounded-[1.55rem] border border-border/45 yomy-glass-bar">
         {navItems.map(({ to, icon: Icon, key }) => {
           const label = copy(key)
