@@ -98,6 +98,13 @@ export default function SignUp() {
 
     setVerificationState('sending')
     try {
+      const { data: preflight, error: preflightError } = await supabase.functions.invoke('yomy-account-auth', {
+        body: { action: 'check_phone_signup', phone: normalizedPhone },
+      })
+      if (preflightError || preflight?.error) {
+        throw new Error(preflight?.error || preflightError?.message || 'PHONE_VERIFICATION_UNAVAILABLE')
+      }
+
       await startFirebasePhoneVerification(normalizedPhone, sendPhoneButtonRef.current, language)
       setVerificationState('code')
       setVerificationCode('')
