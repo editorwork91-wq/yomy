@@ -96,7 +96,7 @@ jobs:
             cp -a /tmp/YomyLauncherResources/. android/app/src/main/res/
           fi
           cp /tmp/YomyMainActivity.java android/app/src/main/java/com/yomy/app/MainActivity.java
-          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java IncomingCallActivity.java; do
+          for file in CallActionReceiver.java CallNotificationService.java YomyFirebaseMessagingService.java YomyHuaweiMessagingService.java IncomingCallActivity.java; do
             if [ -f "/tmp/YomyNativeJava/$file" ]; then
               cp "/tmp/YomyNativeJava/$file" "android/app/src/main/java/com/yomy/app/$file"
             fi
