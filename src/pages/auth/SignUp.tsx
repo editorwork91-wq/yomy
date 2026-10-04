@@ -185,8 +185,9 @@ export default function SignUp() {
     }
   }
 
+  const cleanPhone = normalizePhone(phone)
   const waitingForCode = verificationState === 'code' || verificationState === 'verifying'
-  const verified = verificationState === 'verified' && !phoneChanged
+  const verified = verificationState === 'verified' && Boolean(cleanPhone) && !phoneChanged
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
