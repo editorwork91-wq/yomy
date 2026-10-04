@@ -34,32 +34,35 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/55 bg-background/72 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_8px_30px_rgba(0,0,0,.045)]">
-      <div className="flex items-center justify-between h-14 px-4 max-w-lg mx-auto yomy-ios-press">
+    <header
+      className="sticky top-0 z-40 border-b border-border/55 bg-background/72 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_8px_30px_rgba(0,0,0,.045)]"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
+      <div className="flex items-center justify-between h-[3.35rem] px-3 sm:px-4 max-w-lg mx-auto yomy-ios-press">
         <div className="flex items-center gap-2.5 min-w-0">
           {showBack && (
-            <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" onClick={() => navigate(-1)} aria-label={copy.back}>
+            <Button variant="ghost" size="icon" className="size-8.5 rounded-full hover:bg-muted/70" onClick={() => navigate(-1)} aria-label={copy.back}>
               <ChevronLeft className={isArabic ? 'size-5 rotate-180' : 'size-5'} />
             </Button>
           )}
           {showLogo && (
-            <Link to="/" className="group inline-flex items-center gap-2.5 rounded-xl px-1.5 py-1 transition-transform duration-200 active:scale-[0.98]" aria-label="Yomy">
-              <span className="relative inline-flex size-8 items-center justify-center overflow-hidden rounded-[10px] bg-black ring-1 ring-white/10 shadow-[0_0_20px_rgba(168,85,247,0.22)]">
-                <BrandMark size={28} className="scale-[1.16]" />
+            <Link to="/" className="group inline-flex items-center gap-2 rounded-xl px-1 py-1 transition-transform duration-200 active:scale-[0.98]" aria-label="Yomy">
+              <span className="relative inline-flex size-7 items-center justify-center overflow-hidden rounded-[9px] bg-black ring-1 ring-white/10 shadow-[0_0_20px_rgba(168,85,247,0.22)]">
+                <BrandMark size={24} className="scale-[1.08]" />
               </span>
-              <span className="text-[1.55rem] leading-none font-semibold tracking-[-0.055em] bg-gradient-to-r from-violet-500 via-pink-500 to-orange-400 bg-clip-text text-transparent">
+              <span className="text-[1.35rem] leading-none font-semibold tracking-[-0.055em] bg-gradient-to-r from-violet-500 via-pink-500 to-orange-400 bg-clip-text text-transparent">
                 {language === 'ar' ? 'يومي' : 'Yomy'}
               </span>
             </Link>
           )}
           {title && !showLogo && <h1 className="text-lg font-semibold truncate">{title}</h1>}
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 shrink-0">
           {right || (
             showLogo && (
               <>
                 <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" asChild>
-                  <Link to="/fedo" aria-label={copy.fedo} title={copy.fedo}><Clapperboard className="size-5 stroke-[1.7]" /></Link>
+                  <Link to="/fedo" aria-label={copy.fedo} title={copy.fedo}><Clapperboard className="size-[1.15rem] stroke-[1.65]" /></Link>
                 </Button>
                 <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" asChild>
                   <Link to="/settings" aria-label={copy.settings} title={copy.settings}><Settings className="size-5 stroke-[1.7]" /></Link>
