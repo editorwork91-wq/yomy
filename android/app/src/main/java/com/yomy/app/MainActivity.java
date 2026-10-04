@@ -47,6 +47,7 @@ public class MainActivity extends BridgeActivity {
         installLocalNotificationBridge();
         installSystemBarInsetsBridge();
         installDeviceBridge();
+        installHuaweiPushBridge();
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -225,6 +226,26 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface public boolean hasHuaweiMobileServices() {
             return hasPackage("com.huawei.hwid") || hasPackage("com.huawei.hms");
+        }
+    }
+
+    private void installHuaweiPushBridge() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        getBridge().getWebView().addJavascriptInterface(new HuaweiPushBridge(), "YomyHuaweiPush");
+    }
+
+    private final class HuaweiPushBridge {
+        @JavascriptInterface public boolean isAvailable() {
+            return hasPackage("com.huawei.hwid") || hasPackage("com.huawei.hms");
+        }
+
+        @JavascriptInterface public String getToken() {
+            try {
+                android.content.SharedPreferences prefs = getSharedPreferences("yomy_huawei_push", Context.MODE_PRIVATE);
+                return prefs.getString("token", "");
+            } catch (Exception ignored) {
+                return "";
+            }
         }
     }
 
