@@ -341,7 +341,7 @@ export default function SignUp() {
               </div>
 
               <Button type="submit" className="w-full" disabled={loading || !acceptedPolicies || verificationState === 'sending'}>
-                {loading ? copy('creatingAccount') : cleanPhone && !verified ? copy('phoneVerify') : copy('createAccount')}
+                {loading ? copy('creatingAccount') : normalizedPhone && !verified ? copy('phoneVerify') : copy('createAccount')}
               </Button>
 
               <p className="text-[11px] leading-relaxed text-center text-muted-foreground">{copy('legalConsentNotice')}</p>
