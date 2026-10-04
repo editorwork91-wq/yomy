@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTheme } from '@/components/theme-provider'
-import { LANGUAGE_LABELS, type YomyLanguage, applyYomyFontScale, applyYomyLanguage, systemTimezone, t } from '@/lib/i18n'
+import { LANGUAGE_LABELS, type YomyLanguage, applyYomyFontScale, applyYomyLanguage, systemTimezone, t, useYomyLanguage } from '@/lib/i18n'
 import TopBar from '@/components/layout/TopBar'
 import BottomNav from '@/components/layout/BottomNav'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ export default function Settings() {
   const { theme, setTheme } = useTheme()
   const navigate = useNavigate()
 
-  const language = (profile?.language || (document.documentElement.lang as YomyLanguage) || 'en') as YomyLanguage
+  const { language, copy } = useYomyLanguage()
   const [isPrivate, setIsPrivate] = useState(false)
   const [showSeenReceipts, setShowSeenReceipts] = useState(true)
   const [showFollowersTo, setShowFollowersTo] = useState<'everyone' | 'followers' | 'nobody'>('everyone')
@@ -36,7 +36,6 @@ export default function Settings() {
   const [blocked, setBlocked] = useState<BlockedUser[]>([])
   const [blockedLoading, setBlockedLoading] = useState(false)
 
-  const copy = useMemo(() => (key: keyof typeof import('@/lib/i18n').translations.en) => t(language, key), [language])
 
   useEffect(() => {
     if (profile) {
