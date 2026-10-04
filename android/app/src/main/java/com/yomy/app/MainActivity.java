@@ -19,6 +19,9 @@ import org.json.JSONObject;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.BridgeWebChromeClient;
 
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
 public class MainActivity extends BridgeActivity {
     private static final int YOMY_PERMISSIONS = 7001;
     private static final int YOMY_WEB_PERMISSION_REQUEST = 7002;
