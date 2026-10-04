@@ -46,6 +46,7 @@ public class MainActivity extends BridgeActivity {
         installAudioRouteBridge();
         installLocalNotificationBridge();
         installSystemBarInsetsBridge();
+        installDeviceBridge();
     }
 
     @Override protected void onNewIntent(Intent intent) {
@@ -197,6 +198,34 @@ public class MainActivity extends BridgeActivity {
             return insets;
         });
         ViewCompat.requestApplyInsets(webView);
+    }
+
+    private boolean hasPackage(String packageName) {
+        try {
+            getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void installDeviceBridge() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        getBridge().getWebView().addJavascriptInterface(new DeviceBridge(), "YomyDevice");
+    }
+
+    private final class DeviceBridge {
+        @JavascriptInterface public boolean isHuawei() {
+            return Build.MANUFACTURER != null && Build.MANUFACTURER.toLowerCase(java.util.Locale.ROOT).contains("huawei");
+        }
+
+        @JavascriptInterface public boolean hasGooglePlayServices() {
+            return hasPackage("com.google.android.gms");
+        }
+
+        @JavascriptInterface public boolean hasHuaweiMobileServices() {
+            return hasPackage("com.huawei.hwid") || hasPackage("com.huawei.hms");
+        }
     }
 
     private void installLocalNotificationBridge() {
