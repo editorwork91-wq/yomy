@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { supabase } from '@/lib/supabase'
 import type { Message, Note, Profile as ProfileType } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useYomyLanguage } from '@/lib/i18n'
 import { useNetworkStatus } from '@/hooks/useNetworkStatus'
 import { cacheConversations, readCachedConversations } from '@/lib/offlineStore'
 import TopBar from '@/components/layout/TopBar'
@@ -24,6 +25,7 @@ type Conversation = {
 
 export default function MessagesPro() {
   const { user } = useAuth()
+  const { copy } = useYomyLanguage()
   const online = useNetworkStatus()
   const navigate = useNavigate()
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -125,7 +127,27 @@ export default function MessagesPro() {
     window.addEventListener('online', onOnline)
     window.addEventListener('yomy-sync-complete', onSync)
     window.addEventListener('yomy-chat-settings-changed', onChatSettings)
-    return () => {
+    const languagePlural = (count: number, lang: string) => {
+    if (lang === 'ar') return count === 1 ? 'محادثة مؤرشفة' : 'محادثات مؤرشفة'
+    if (lang === 'de') return count === 1 ? 'archivierter Chat' : 'archivierte Chats'
+    if (lang === 'fr') return count === 1 ? 'discussion archivée' : 'discussions archivées'
+    if (lang === 'es') return count === 1 ? 'chat archivado' : 'chats archivados'
+    return count === 1 ? 'archived chat' : 'archived chats'
+  }
+
+  const messagePreview = (message: Message | null) => {
+    if (!message) return ''
+    const prefix = message.sender_id === user?.id ? copy('you') + ': ' : ''
+    if (message.deleted_for_everyone) return prefix + copy('messageDeleted')
+    if (message.message_type === 'poll') return prefix + '📊 ' + copy('poll')
+    if (message.view_once) return prefix + '📷 ' + copy('photo')
+    if (message.media_type === 'audio') return prefix + '🎤 ' + copy('voiceMessage')
+    if (message.media_type === 'video') return prefix + '🎬 ' + copy('video')
+    if (message.media_type === 'file') return prefix + '📎 ' + copy('file')
+    return prefix + (message.content || '')
+  }
+
+  return () => {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('yomy-sync-complete', onSync)
       window.removeEventListener('yomy-chat-settings-changed', onChatSettings)
@@ -156,29 +178,29 @@ export default function MessagesPro() {
 
   return (
     <div className="yomy-glass-page min-h-screen pb-20">
-      <TopBar title="Messages" right={<Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate('/messages/new')}><Plus className="size-5" /></Button>} />
+      <TopBar title={copy('messages')} right={<Button variant="ghost" size="icon" className="rounded-full" onClick={() => navigate('/messages/new')}><Plus className="size-5" /></Button>} />
       {!online && <div className="px-4 py-2 border-b border-amber-500/20 bg-amber-500/10 text-[11px] flex items-center gap-2"><WifiOff className="size-3.5 text-amber-600" /><span>Offline mode • conversations are available from this device</span></div>}
 
       <div className="max-w-lg mx-auto">
-        {notes.length > 0 && <div className="px-4 py-3 border-b border-border"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">Notes</p><div className="flex gap-4 overflow-x-auto scrollbar-hide">{notes.map(note => <Link key={note.id} to={'/profile/' + note.profiles?.username} className="w-16 shrink-0 text-center"><Avatar className="size-12 mx-auto"><AvatarImage src={note.profiles?.avatar_url} /><AvatarFallback>{note.profiles?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><p className="text-[11px] truncate mt-1">{note.content}</p></Link>)}</div></div>}
+        {notes.length > 0 && <div className="px-4 py-3 border-b border-border"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">{copy('notes')}</p><div className="flex gap-4 overflow-x-auto scrollbar-hide">{notes.map(note => <Link key={note.id} to={'/profile/' + note.profiles?.username} className="w-16 shrink-0 text-center"><Avatar className="size-12 mx-auto"><AvatarImage src={note.profiles?.avatar_url} /><AvatarFallback>{note.profiles?.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><p className="text-[11px] truncate mt-1">{note.content}</p></Link>)}</div></div>}
 
         <div className="px-4 py-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-            <Input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void searchPeople() }} placeholder="Search people…" className="pl-9 rounded-2xl bg-muted/55 border-transparent" />
+            <Input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') void searchPeople() }} placeholder={copy('searchPeople')} className="ps-9 rounded-2xl bg-muted/55 border-transparent" />
           </div>
           {results.length > 0 && <div className="mt-2 rounded-2xl border border-border/45 yomy-ios-panel overflow-hidden">{results.map(p => <Link key={p.id} to={'/messages/' + p.username} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50"><Avatar className="size-10"><AvatarImage src={p.avatar_url} /><AvatarFallback>{p.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium">{p.username}</p><p className="text-xs text-muted-foreground truncate">{p.full_name}</p></div></Link>)}</div>}
         </div>
 
-        {archivedCount > 0 && <button onClick={() => setShowArchived(value => !value)} className="w-full flex items-center gap-3 px-4 py-3 border-y border-border bg-card/60 hover:bg-muted/40 transition-colors"><div className="size-10 rounded-full bg-muted flex items-center justify-center"><Archive className="size-5" /></div><div className="flex-1 text-left"><p className="text-sm font-semibold">{showArchived ? 'Back to chats' : 'Archived'}</p><p className="text-xs text-muted-foreground">{archivedCount} archived chat{archivedCount === 1 ? '' : 's'}</p></div><span className="text-muted-foreground">›</span></button>}
+        {archivedCount > 0 && <button onClick={() => setShowArchived(value => !value)} className="w-full flex items-center gap-3 px-4 py-3 border-y border-border bg-card/60 hover:bg-muted/40 transition-colors"><div className="size-10 rounded-full bg-muted flex items-center justify-center"><Archive className="size-5" /></div><div className="flex-1 text-left"><p className="text-sm font-semibold">{showArchived ? copy('backToChats') : copy('archived')}</p><p className="text-xs text-muted-foreground">{archivedCount} {languagePlural(archivedCount, language)}</p></div><span className="text-muted-foreground">›</span></button>}
 
         {loading && conversations.length === 0
           ? <div className="h-56 flex items-center justify-center"><Spinner className="size-6" /></div>
           : visible.length === 0
-            ? <div className="py-20 text-center text-muted-foreground"><div className="size-14 rounded-full bg-muted mx-auto flex items-center justify-center"><Inbox className="size-6" /></div><p className="mt-3 text-sm font-medium">{showArchived ? 'No archived chats' : 'No conversations yet'}</p><p className="mt-1 text-xs">{showArchived ? 'Chats you archive appear here.' : 'Search for a person above to start chatting.'}</p></div>
+            ? <div className="py-20 text-center text-muted-foreground"><div className="size-14 rounded-full bg-muted mx-auto flex items-center justify-center"><Inbox className="size-6" /></div><p className="mt-3 text-sm font-medium">{showArchived ? copy('noArchivedChats') : copy('noConversations')}</p><p className="mt-1 text-xs">{showArchived ? copy('chatsArchiveHint') : copy('startChatHint')}</p></div>
             : <div className="yomy-ios-panel overflow-hidden">{visible.map(conv => <Link key={conv.user.id} to={'/messages/' + conv.user.username} className="flex items-center gap-3 px-4 py-3.5 hover:bg-muted/45 active:bg-muted/65 transition-colors">
               <div className="relative"><Avatar className="size-12"><AvatarImage src={conv.user.avatar_url} /><AvatarFallback>{conv.user.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar>{conv.unreadCount > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-5 h-5 px-1 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center">{conv.unreadCount}</span>}</div>
-              <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><p className={'text-sm truncate ' + (conv.unreadCount ? 'font-semibold' : 'font-medium')}>{conv.user.username}</p>{conv.muted && <span className="text-[10px]">🔕</span>}</div><p className={'text-[13px] truncate mt-0.5 ' + (conv.unreadCount ? 'text-foreground' : 'text-muted-foreground')}>{conv.lastMessage?.sender_id === user?.id ? 'You: ' : ''}{conv.lastMessage?.deleted_for_everyone ? 'Message deleted' : conv.lastMessage?.message_type === 'poll' ? '📊 Poll' : conv.lastMessage?.view_once ? '📷 Photo' : conv.lastMessage?.media_type === 'audio' ? '🎤 Voice message' : conv.lastMessage?.media_type === 'video' ? '🎬 Video' : conv.lastMessage?.media_type === 'file' ? '📎 File' : conv.lastMessage?.content || ''}</p></div>
+              <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><p className={'text-sm truncate ' + (conv.unreadCount ? 'font-semibold' : 'font-medium')}>{conv.user.username}</p>{conv.muted && <span className="text-[10px]">🔕</span>}</div><p className={'text-[13px] truncate mt-0.5 ' + (conv.unreadCount ? 'text-foreground' : 'text-muted-foreground')}>{messagePreview(conv.lastMessage)}</p></div>
               <span className="text-[10px] text-muted-foreground shrink-0">{conv.lastMessage && formatDistanceToNow(new Date(conv.lastMessage.created_at), { addSuffix: false })}</span>
             </Link>)}</div>
         }
