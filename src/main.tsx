@@ -8,6 +8,23 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register("/sw.js").catch(error => console.warn("Yomy service worker unavailable:", error))
   })
 }
+const SUPPORTED_LANGUAGES = new Set(['en', 'ar', 'de', 'fr', 'es'])
+
+function prepareInitialLanguage() {
+  try {
+    const stored = localStorage.getItem('yomy-language') || ''
+    const browser = (navigator.language || '').slice(0, 2).toLowerCase()
+    const language = SUPPORTED_LANGUAGES.has(stored) ? stored : SUPPORTED_LANGUAGES.has(browser) ? browser : 'en'
+    document.documentElement.lang = language
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+  } catch {
+    document.documentElement.lang = 'en'
+    document.documentElement.dir = 'ltr'
+  }
+}
+
+prepareInitialLanguage()
+
 import App from "./App.tsx"
 import { ThemeProvider } from "@/components/theme-provider.tsx"
 
