@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -37,8 +37,19 @@ export default function SignUp() {
   const [phoneNonce, setPhoneNonce] = useState('')
   const [verificationState, setVerificationState] = useState<VerificationState>('idle')
   const [resendAt, setResendAt] = useState(0)
+  const [countdownNow, setCountdownNow] = useState(() => Date.now())
   const [acceptedPolicies, setAcceptedPolicies] = useState(false)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (resendAt <= Date.now()) return
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      setCountdownNow(now)
+      if (now >= resendAt) window.clearInterval(timer)
+    }, 250)
+    return () => window.clearInterval(timer)
+  }, [resendAt])
 
   const normalizedPhone = normalizePhone(phone)
   const phoneChanged = verificationState === 'verified' && !normalizedPhone
@@ -48,7 +59,7 @@ export default function SignUp() {
       toast.error('Enter a valid phone number in international format, for example +2010...')
       return false
     }
-    if (Date.now() < resendAt) return false
+    if (countdownNow < resendAt) return false
     setVerificationState('sending')
     try {
       const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
@@ -258,8 +269,8 @@ export default function SignUp() {
                       </Button>
                     </div>
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-muted-foreground">{resendAt > Date.now() ? copy('resendIn') + ' ' + Math.ceil((resendAt - Date.now()) / 1000) + copy('seconds') : ''}</span>
-                      <button type="button" disabled={Date.now() < resendAt || verificationState === 'verifying'} className="font-semibold text-primary disabled:opacity-40" onClick={() => void sendPhoneOtp()}>{copy('resendCode')}</button>
+                      <span className="text-muted-foreground">{resendAt > countdownNow ? copy('resendIn') + ' ' + Math.ceil((resendAt - Date.now()) / 1000) + copy('seconds') : ''}</span>
+                      <button type="button" disabled={countdownNow < resendAt || verificationState === 'verifying'} className="font-semibold text-primary disabled:opacity-40" onClick={() => void sendPhoneOtp()}>{copy('resendCode')}</button>
                     </div>
                   </div>
                 ) : (
