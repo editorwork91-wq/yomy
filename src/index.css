@@ -192,6 +192,16 @@ button, input, textarea, select {
 
 :root {
   --yomy-font-scale: 1;
+  --yomy-statusbar-top: env(safe-area-inset-top, 0px);
+  --yomy-nav-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.yomy-topbar {
+  padding-top: max(var(--yomy-statusbar-top, 0px), env(safe-area-inset-top, 0px));
+}
+
+.yomy-bottom-safe {
+  padding-bottom: max(.45rem, var(--yomy-nav-bottom, 0px), env(safe-area-inset-bottom, 0px));
 }
 
 html {
