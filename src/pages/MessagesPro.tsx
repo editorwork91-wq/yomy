@@ -25,7 +25,7 @@ type Conversation = {
 
 export default function MessagesPro() {
   const { user } = useAuth()
-  const { copy } = useYomyLanguage()
+  const { copy, language } = useYomyLanguage()
   const online = useNetworkStatus()
   const navigate = useNavigate()
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -127,27 +127,7 @@ export default function MessagesPro() {
     window.addEventListener('online', onOnline)
     window.addEventListener('yomy-sync-complete', onSync)
     window.addEventListener('yomy-chat-settings-changed', onChatSettings)
-    const languagePlural = (count: number, lang: string) => {
-    if (lang === 'ar') return count === 1 ? 'محادثة مؤرشفة' : 'محادثات مؤرشفة'
-    if (lang === 'de') return count === 1 ? 'archivierter Chat' : 'archivierte Chats'
-    if (lang === 'fr') return count === 1 ? 'discussion archivée' : 'discussions archivées'
-    if (lang === 'es') return count === 1 ? 'chat archivado' : 'chats archivados'
-    return count === 1 ? 'archived chat' : 'archived chats'
-  }
-
-  const messagePreview = (message: Message | null) => {
-    if (!message) return ''
-    const prefix = message.sender_id === user?.id ? copy('you') + ': ' : ''
-    if (message.deleted_for_everyone) return prefix + copy('messageDeleted')
-    if (message.message_type === 'poll') return prefix + '📊 ' + copy('poll')
-    if (message.view_once) return prefix + '📷 ' + copy('photo')
-    if (message.media_type === 'audio') return prefix + '🎤 ' + copy('voiceMessage')
-    if (message.media_type === 'video') return prefix + '🎬 ' + copy('video')
-    if (message.media_type === 'file') return prefix + '📎 ' + copy('file')
-    return prefix + (message.content || '')
-  }
-
-  return () => {
+    return () => {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('yomy-sync-complete', onSync)
       window.removeEventListener('yomy-chat-settings-changed', onChatSettings)
@@ -171,6 +151,25 @@ export default function MessagesPro() {
   }
 
   const archivedCount = conversations.filter(item => item.archived).length
+  const languagePlural = (count: number) => {
+    if (language === 'ar') return count === 1 ? 'محادثة مؤرشفة' : 'محادثات مؤرشفة'
+    if (language === 'de') return count === 1 ? 'archivierter Chat' : 'archivierte Chats'
+    if (language === 'fr') return count === 1 ? 'discussion archivée' : 'discussions archivées'
+    if (language === 'es') return count === 1 ? 'chat archivado' : 'chats archivados'
+    return count === 1 ? 'archived chat' : 'archived chats'
+  }
+
+  const messagePreview = (message: Message | null) => {
+    if (!message) return ''
+    const prefix = message.sender_id === user?.id ? copy('you') + ': ' : ''
+    if (message.deleted_for_everyone) return prefix + copy('messageDeleted')
+    if (message.message_type === 'poll') return prefix + '📊 ' + copy('poll')
+    if (message.view_once) return prefix + '📷 ' + copy('photo')
+    if (message.media_type === 'audio') return prefix + '🎤 ' + copy('voiceMessage')
+    if (message.media_type === 'video') return prefix + '🎬 ' + copy('video')
+    if (message.media_type === 'file') return prefix + '📎 ' + copy('file')
+    return prefix + (message.content || '')
+  }
   const visible = useMemo(
     () => conversations.filter(item => item.archived === showArchived),
     [conversations, showArchived]
@@ -192,7 +191,7 @@ export default function MessagesPro() {
           {results.length > 0 && <div className="mt-2 rounded-2xl border border-border/45 yomy-ios-panel overflow-hidden">{results.map(p => <Link key={p.id} to={'/messages/' + p.username} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/50"><Avatar className="size-10"><AvatarImage src={p.avatar_url} /><AvatarFallback>{p.username?.[0]?.toUpperCase()}</AvatarFallback></Avatar><div className="min-w-0"><p className="text-sm font-medium">{p.username}</p><p className="text-xs text-muted-foreground truncate">{p.full_name}</p></div></Link>)}</div>}
         </div>
 
-        {archivedCount > 0 && <button onClick={() => setShowArchived(value => !value)} className="w-full flex items-center gap-3 px-4 py-3 border-y border-border bg-card/60 hover:bg-muted/40 transition-colors"><div className="size-10 rounded-full bg-muted flex items-center justify-center"><Archive className="size-5" /></div><div className="flex-1 text-left"><p className="text-sm font-semibold">{showArchived ? copy('backToChats') : copy('archived')}</p><p className="text-xs text-muted-foreground">{archivedCount} {languagePlural(archivedCount, language)}</p></div><span className="text-muted-foreground">›</span></button>}
+        {archivedCount > 0 && <button onClick={() => setShowArchived(value => !value)} className="w-full flex items-center gap-3 px-4 py-3 border-y border-border bg-card/60 hover:bg-muted/40 transition-colors"><div className="size-10 rounded-full bg-muted flex items-center justify-center"><Archive className="size-5" /></div><div className="flex-1 text-left"><p className="text-sm font-semibold">{showArchived ? copy('backToChats') : copy('archived')}</p><p className="text-xs text-muted-foreground">{archivedCount} {languagePlural(archivedCount)}</p></div><span className="text-muted-foreground">›</span></button>}
 
         {loading && conversations.length === 0
           ? <div className="h-56 flex items-center justify-center"><Spinner className="size-6" /></div>
