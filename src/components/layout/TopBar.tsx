@@ -1,8 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { Clapperboard, MessageCircle, Settings } from 'lucide-react'
+import { Clapperboard, MessageCircle, Settings, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import BrandMark from '@/components/layout/BrandMark'
+import { LANGUAGE_LABELS, type YomyLanguage } from '@/lib/i18n'
 
 type TopBarProps = {
   title?: string
@@ -13,32 +14,36 @@ type TopBarProps = {
 
 export default function TopBar({ title, showBack, showLogo = false, right }: TopBarProps) {
   const navigate = useNavigate()
-  const [language, setLanguage] = useState(document.documentElement.lang || 'en')
+  const [language, setLanguage] = useState<YomyLanguage>((document.documentElement.lang as YomyLanguage) || 'en')
+
   useEffect(() => {
-    const sync = () => setLanguage(document.documentElement.lang || 'en')
+    const sync = () => {
+      const next = (document.documentElement.lang || 'en') as YomyLanguage
+      if (LANGUAGE_LABELS[next]) setLanguage(next)
+    }
     window.addEventListener('yomy-language-changed', sync)
     return () => window.removeEventListener('yomy-language-changed', sync)
   }, [])
+
+  const isArabic = language === 'ar'
+  const copy = {
+    back: { en:'Back', ar:'رجوع', de:'Zurück', fr:'Retour', es:'Atrás' }[language],
+    fedo: { en:'Fedo', ar:'فيديو', de:'Fedo', fr:'Fedo', es:'Fedo' }[language],
+    settings: { en:'Settings', ar:'الإعدادات', de:'Einstellungen', fr:'Réglages', es:'Ajustes' }[language],
+    messages: { en:'Messages', ar:'الرسائل', de:'Nachrichten', fr:'Messages', es:'Mensajes' }[language],
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/55 bg-background/72 backdrop-blur-2xl supports-[backdrop-filter]:bg-background/65 shadow-[0_8px_30px_rgba(0,0,0,.045)]">
       <div className="flex items-center justify-between h-14 px-4 max-w-lg mx-auto yomy-ios-press">
         <div className="flex items-center gap-2.5 min-w-0">
           {showBack && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-9 rounded-full hover:bg-muted/70"
-              onClick={() => navigate(-1)}
-              aria-label="Back"
-            >
-              <svg className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
+            <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" onClick={() => navigate(-1)} aria-label={copy.back}>
+              <ChevronLeft className={isArabic ? 'size-5 rotate-180' : 'size-5'} />
             </Button>
           )}
           {showLogo && (
-            <Link to="/" className="group inline-flex items-center gap-2.5 rounded-xl px-1.5 py-1 transition-transform duration-200 active:scale-[0.98]">
+            <Link to="/" className="group inline-flex items-center gap-2.5 rounded-xl px-1.5 py-1 transition-transform duration-200 active:scale-[0.98]" aria-label="Yomy">
               <span className="relative inline-flex size-8 items-center justify-center overflow-hidden rounded-[10px] bg-black ring-1 ring-white/10 shadow-[0_0_20px_rgba(168,85,247,0.22)]">
                 <BrandMark size={28} className="scale-[1.16]" />
               </span>
@@ -47,28 +52,20 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
               </span>
             </Link>
           )}
-          {title && !showLogo && (
-            <h1 className="text-lg font-semibold truncate">{title}</h1>
-          )}
+          {title && !showLogo && <h1 className="text-lg font-semibold truncate">{title}</h1>}
         </div>
         <div className="flex items-center gap-0.5">
           {right || (
             showLogo && (
               <>
                 <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" asChild>
-                  <Link to="/fedo" aria-label="Fedo" title="Fedo">
-                    <Clapperboard className="size-5 stroke-[1.7]" />
-                  </Link>
+                  <Link to="/fedo" aria-label={copy.fedo} title={copy.fedo}><Clapperboard className="size-5 stroke-[1.7]" /></Link>
                 </Button>
                 <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" asChild>
-                  <Link to="/settings" aria-label="Settings">
-                    <Settings className="size-5 stroke-[1.7]" />
-                  </Link>
+                  <Link to="/settings" aria-label={copy.settings} title={copy.settings}><Settings className="size-5 stroke-[1.7]" /></Link>
                 </Button>
                 <Button variant="ghost" size="icon" className="size-9 rounded-full hover:bg-muted/70" asChild>
-                  <Link to="/messages" aria-label="Messages">
-                    <MessageCircle className="size-5 stroke-[1.7]" />
-                  </Link>
+                  <Link to="/messages" aria-label={copy.messages} title={copy.messages}><MessageCircle className="size-5 stroke-[1.7]" /></Link>
                 </Button>
               </>
             )
