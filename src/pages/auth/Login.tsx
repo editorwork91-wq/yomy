@@ -8,13 +8,15 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { useYomyLanguage } from '@/lib/i18n'
+import { signInWithGoogle } from '@/lib/googleAuth'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { copy } = useYomyLanguage()
+  const { copy, language } = useYomyLanguage()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,6 +29,19 @@ export default function Login() {
       toast.error(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true)
+    try {
+      await signInWithGoogle()
+      toast.success(language === 'ar' ? 'تم تسجيل الدخول باستخدام Google' : 'Signed in with Google')
+      navigate('/')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Google sign-in failed')
+    } finally {
+      setGoogleLoading(false)
     }
   }
 
@@ -58,6 +73,19 @@ export default function Login() {
               <Separator />
               <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">OR</span>
             </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 w-full rounded-xl"
+              disabled={loading || googleLoading}
+              onClick={() => void handleGoogleSignIn()}
+            >
+              <span className="mr-2 text-base font-bold leading-none">G</span>
+              {googleLoading
+                ? (language === 'ar' ? 'جارٍ الاتصال بـ Google…' : 'Connecting to Google…')
+                : (language === 'ar' ? 'المتابعة باستخدام Google' : 'Continue with Google')}
+            </Button>
           </CardContent>
         </Card>
 
