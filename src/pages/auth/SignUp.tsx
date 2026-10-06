@@ -10,6 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { CheckCircle2, ShieldCheck } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
+import { signInWithGoogle } from '@/lib/googleAuth'
 import {
   confirmFirebasePhoneVerification,
   resetFirebasePhoneVerification,
@@ -72,6 +73,7 @@ export default function SignUp() {
   const [countdownNow, setCountdownNow] = useState(() => Date.now())
   const [acceptedPolicies, setAcceptedPolicies] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   useEffect(() => {
     if (resendAt <= Date.now()) return
@@ -154,6 +156,24 @@ export default function SignUp() {
     setVerificationState('idle')
     setVerificationCode('')
     setPhoneNonce('')
+  }
+
+  const handleGoogleSignUp = async () => {
+    if (!acceptedPolicies) {
+      toast.error(copy('legalConsentNotice'))
+      return
+    }
+
+    setGoogleLoading(true)
+    try {
+      await signInWithGoogle()
+      toast.success(language === 'ar' ? 'تم إنشاء الحساب باستخدام Google' : 'Account created with Google')
+      navigate('/')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Google sign-up failed')
+    } finally {
+      setGoogleLoading(false)
+    }
   }
 
   const handleSignUp = async (e: React.FormEvent) => {
@@ -340,14 +360,30 @@ export default function SignUp() {
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={loading || !acceptedPolicies || verificationState === 'sending'}>
+              <Button type="submit" className="w-full" disabled={loading || googleLoading || !acceptedPolicies || verificationState === 'sending'}>
                 {loading ? copy('creatingAccount') : normalizedPhone && !verified ? copy('phoneVerify') : copy('createAccount')}
               </Button>
 
               <p className="text-[11px] leading-relaxed text-center text-muted-foreground">{copy('legalConsentNotice')}</p>
             </form>
 
-            <div className="mt-5 relative"><Separator /></div>
+            <div className="mt-5 relative">
+              <Separator />
+              <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">OR</span>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 w-full rounded-xl"
+              disabled={loading || googleLoading || !acceptedPolicies}
+              onClick={() => void handleGoogleSignUp()}
+            >
+              <span className="mr-2 text-base font-bold leading-none">G</span>
+              {googleLoading
+                ? (language === 'ar' ? 'جارٍ إنشاء الحساب…' : 'Creating with Google…')
+                : (language === 'ar' ? 'التسجيل باستخدام Google' : 'Sign up with Google')}
+            </Button>
           </CardContent>
         </Card>
 
