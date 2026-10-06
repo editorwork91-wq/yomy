@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main", "master", "feat/android-incoming-call-ringing", "feat/yomy-chat-offline-ux-v5", "feat/ios-chat-viewonce-v6-final", "feat/optional-phone-legal-consent-from-522", "feat/first-launch-language-i18n", "fix/pro-review-header-safe-area-nav", "feat/huawei-no-gms-twilio-optional-phone", "feat/firebase-phone-auth-no-twilio" ]
+    branches: [ "main", "master", "feat/android-incoming-call-ringing", "feat/yomy-chat-offline-ux-v5", "feat/ios-chat-viewonce-v6-final", "feat/optional-phone-legal-consent-from-522", "feat/first-launch-language-i18n", "fix/pro-review-header-safe-area-nav", "feat/huawei-no-gms-twilio-optional-phone", "feat/firebase-phone-auth-no-twilio", "feat/google-signin-phone-qa-2026-10-06" ]
 
 jobs:
   build:
