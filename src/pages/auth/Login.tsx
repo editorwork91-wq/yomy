@@ -32,34 +32,30 @@ export default function Login() {
     const params = new URLSearchParams(location.search)
     const autoGoogle = params.get('google') === '1'
 
-    if (autoGoogle) {
-      window.history.replaceState({}, '', location.pathname)
-      setGoogleLoading(true)
-      void signInWithGoogle()
-        .then(async result => {
-          if (active && result) {
-            toast.success(rtl ? 'تم تسجيل الدخول باستخدام Google.' : 'Signed in with Google.')
-            await finishAuth()
-          }
-        })
-        .catch(error => {
-          if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-        })
-        .finally(() => {
-          if (active) setGoogleLoading(false)
-        })
-    } else {
-      void completeGoogleRedirect()
-        .then(async result => {
-          if (active && result) {
-            toast.success(rtl ? 'تم تسجيل الدخول باستخدام Google.' : 'Signed in with Google.')
-            await finishAuth()
-          }
-        })
-        .catch(error => {
-          if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-        })
-    }
+    // Always consume an existing Firebase redirect result first. This is
+    // important on mobile, where Google returns to this page after redirect.
+    void completeGoogleRedirect()
+      .then(async result => {
+        if (!active) return
+        if (result) {
+          window.history.replaceState({}, '', location.pathname)
+          toast.success(rtl ? 'تم تسجيل الدخول باستخدام Google.' : 'Signed in with Google.')
+          await finishAuth()
+          return
+        }
+
+        if (autoGoogle) {
+          window.history.replaceState({}, '', location.pathname)
+          setGoogleLoading(true)
+          await signInWithGoogle()
+        }
+      })
+      .catch(error => {
+        if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
+      })
+      .finally(() => {
+        if (active) setGoogleLoading(false)
+      })
 
     return () => { active = false }
   }, [location.pathname, location.search, rtl])
