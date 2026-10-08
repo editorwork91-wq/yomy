@@ -12,6 +12,7 @@ import { ArrowRight, ShieldCheck } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
 import { completeGoogleRedirect, signInWithGoogle } from '@/lib/googleAuth'
 import { getPostAuthRoute } from '@/lib/authRouting'
+import { getPublicAppUrl } from '@/lib/appOrigin'
 
 const ACCOUNT_LEGAL_VERSION = '2026-10-08'
 
@@ -121,7 +122,7 @@ export default function SignUp() {
         email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/verify-email?email=${encodeURIComponent(normalizedEmail)}`,
+          emailRedirectTo: getPublicAppUrl(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`),
           data: {
             username: normalizedUsername,
             full_name: '',
