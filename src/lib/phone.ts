@@ -58,15 +58,17 @@ export function normalizePhoneInput(value: string, defaultCountry: CountryCode) 
   const international = cleaned.startsWith('00') ? '+' + cleaned.slice(2) : cleaned
   const parsed = parsePhoneNumberFromString(international, defaultCountry)
 
-  if (!parsed || !SUPPORTED_SET.has(parsed.country || '')) {
+  const parsedCountry = parsed?.country
+
+  if (!parsed || !parsedCountry || !SUPPORTED_SET.has(parsedCountry)) {
     return { e164: '', country: defaultCountry, display: formatPhoneDisplay(value, defaultCountry) }
   }
 
   const valid = parsed.isPossible() && parsed.isValid()
   return {
     e164: valid ? parsed.number : '',
-    country: parsed.country,
-    display: formatPhoneDisplay(value, parsed.country),
+    country: parsedCountry,
+    display: formatPhoneDisplay(value, parsedCountry),
   }
 }
 
