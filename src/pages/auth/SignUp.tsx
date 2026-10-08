@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { CheckCircle2, ShieldCheck } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
-import { signInWithGoogle } from '@/lib/googleAuth'
+import { completeGoogleRedirect, signInWithGoogle } from '@/lib/googleAuth'
 import {
   confirmFirebasePhoneVerification,
   resetFirebasePhoneVerification,
@@ -74,6 +74,21 @@ export default function SignUp() {
   const [acceptedPolicies, setAcceptedPolicies] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void completeGoogleRedirect()
+      .then(result => {
+        if (active && result) {
+          toast.success(language === 'ar' ? 'تم إنشاء الحساب باستخدام Google' : 'Account created with Google')
+          navigate('/')
+        }
+      })
+      .catch(error => {
+        if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
+      })
+    return () => { active = false }
+  }, [language, navigate])
 
   useEffect(() => {
     if (resendAt <= Date.now()) return
@@ -166,9 +181,11 @@ export default function SignUp() {
 
     setGoogleLoading(true)
     try {
-      await signInWithGoogle()
-      toast.success(language === 'ar' ? 'تم إنشاء الحساب باستخدام Google' : 'Account created with Google')
-      navigate('/')
+      const result = await signInWithGoogle({ signup: true })
+      if (result) {
+        toast.success(language === 'ar' ? 'تم إنشاء الحساب باستخدام Google' : 'Account created with Google')
+        navigate('/')
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Google sign-up failed')
     } finally {
