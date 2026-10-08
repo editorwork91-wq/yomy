@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { useYomyLanguage } from '@/lib/i18n'
-import { signInWithGoogle } from '@/lib/googleAuth'
+import { completeGoogleRedirect, signInWithGoogle } from '@/lib/googleAuth'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -17,6 +17,21 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void completeGoogleRedirect()
+      .then(result => {
+        if (active && result) {
+          toast.success('Signed in with Google')
+          navigate('/')
+        }
+      })
+      .catch(error => {
+        if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
+      })
+    return () => { active = false }
+  }, [navigate])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,9 +50,11 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true)
     try {
-      await signInWithGoogle()
-      toast.success(language === 'ar' ? 'تم تسجيل الدخول باستخدام Google' : 'Signed in with Google')
-      navigate('/')
+      const result = await signInWithGoogle()
+      if (result) {
+        toast.success(language === 'ar' ? 'تم تسجيل الدخول باستخدام Google' : 'Signed in with Google')
+        navigate('/')
+      }
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Google sign-in failed')
     } finally {
