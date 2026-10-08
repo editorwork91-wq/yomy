@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { useAuth } from '@/contexts/AuthContext'
+import { getPublicAppUrl } from '@/lib/appOrigin'
 
 export default function VerifyEmail() {
   const navigate = useNavigate()
