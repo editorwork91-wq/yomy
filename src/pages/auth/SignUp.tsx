@@ -40,34 +40,28 @@ export default function SignUp() {
     const params = new URLSearchParams(location.search)
     const autoGoogle = params.get('google') === '1'
 
-    if (autoGoogle) {
-      window.history.replaceState({}, '', location.pathname)
-      setGoogleLoading(true)
-      void signInWithGoogle({ signup: true })
-        .then(async result => {
-          if (!active || !result) return
+    void completeGoogleRedirect()
+      .then(async result => {
+        if (!active) return
+        if (result) {
+          window.history.replaceState({}, '', location.pathname)
           const destination = await getPostAuthRoute()
           toast.success(rtl ? 'تم إنشاء الحساب باستخدام Google.' : 'Account connected with Google.')
           navigate(destination, { replace: true })
-        })
-        .catch(error => {
-          if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-        })
-        .finally(() => {
-          if (active) setGoogleLoading(false)
-        })
-    } else {
-      void completeGoogleRedirect()
-        .then(async result => {
-          if (!active || !result) return
-          const destination = await getPostAuthRoute()
-          toast.success(rtl ? 'تم إنشاء الحساب باستخدام Google.' : 'Account connected with Google.')
-          navigate(destination, { replace: true })
-        })
-        .catch(error => {
-          if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-        })
-    }
+          return
+        }
+        if (autoGoogle) {
+          window.history.replaceState({}, '', location.pathname)
+          setGoogleLoading(true)
+          await signInWithGoogle({ signup: true })
+        }
+      })
+      .catch(error => {
+        if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
+      })
+      .finally(() => {
+        if (active) setGoogleLoading(false)
+      })
 
     return () => { active = false }
   }, [location.pathname, location.search, navigate, rtl])
