@@ -10,7 +10,6 @@ import {
   ImagePlus,
   MapPin,
   ShieldCheck,
-  Sparkles,
   Users,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
@@ -21,6 +20,7 @@ import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Spinner } from '@/components/ui/spinner'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import {
   COUNTRY_CODES,
@@ -114,6 +114,7 @@ export default function Onboarding() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
 
   const [agreement, setAgreement] = useState(false)
+  const [readMoreOpen, setReadMoreOpen] = useState(false)
 
   useEffect(() => {
     setStep(initialStep)
@@ -181,6 +182,12 @@ export default function Onboarding() {
       uploadFailed: 'Photo upload failed.',
       saved: 'Saved',
       ready: 'You’re all set.',
+      agreementLead: 'Please take a moment to review what YOMY is asking you to accept and what you can expect from the service.',
+      readMore: 'Read more',
+      readMoreTitle: 'Before you agree to YOMY',
+      readMoreBody: 'YOMY is built around clear communication, privacy, account security, and respectful participation. By continuing, you confirm that you have reviewed the Terms of Service, Privacy Policy, and Community Guidelines in the version shown below.',
+      reviewTerms: 'Open the full documents',
+      close: 'Close',
     },
     ar: {
       welcome: 'أهلًا بك في YOMY',
@@ -221,6 +228,12 @@ export default function Onboarding() {
       uploadFailed: 'تعذر رفع الصورة.',
       saved: 'تم الحفظ',
       ready: 'أنت جاهز الآن.',
+      agreementLead: 'قبل الموافقة، خذ لحظة لمراجعة ما تطلبه منك YOMY وما يمكنك توقعه من الخدمة.',
+      readMore: 'اقرأ المزيد',
+      readMoreTitle: 'قبل أن توافق على YOMY',
+      readMoreBody: 'صمّمنا YOMY ليقوم على وضوح التواصل والخصوصية وأمان الحساب والاستخدام المحترم. بمتابعة التسجيل، تؤكد أنك راجعت شروط الاستخدام وسياسة الخصوصية وإرشادات المجتمع وفق الإصدار الموضح أدناه.',
+      reviewTerms: 'فتح المستندات الكاملة',
+      close: 'إغلاق',
     },
   }[rtl ? 'ar' : 'en']
 
@@ -427,7 +440,7 @@ export default function Onboarding() {
 
           <div className="text-center">
             <div className="flex items-center justify-center gap-1.5">
-              <Sparkles className="size-3.5 text-primary" />
+              <ShieldCheck className="size-3.5 text-primary" />
               <span className="text-[11px] font-bold tracking-[.28em] text-primary">YOMY</span>
             </div>
             <p className="mt-0.5 text-[10px] text-muted-foreground">{index + 1} / {STEP_ORDER.length}</p>
@@ -680,6 +693,24 @@ export default function Onboarding() {
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{t.agreementSub}</p>
               </div>
 
+              <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{t.agreementTitle}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{t.agreementLead}</p>
+                    <button
+                      type="button"
+                      className="mt-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/55 px-3.5 py-2 text-xs font-semibold text-primary shadow-sm transition-colors hover:bg-background/75"
+                      onClick={() => setReadMoreOpen(true)}
+                    >
+                      <FileText className="size-3.5" />
+                      {t.readMore}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex-1 space-y-3 overflow-y-auto px-6 pb-5">
                 {[
                   { icon: FileText, title: t.terms, body: rtl ? 'استخدم YOMY بشكل قانوني، واحترم حسابات الآخرين ومحتواهم وحقوقهم.' : 'Use YOMY lawfully and respect other people, their accounts, content, and rights.', href: '/terms' },
@@ -709,7 +740,7 @@ export default function Onboarding() {
                 <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Sparkles className="size-4" />
+                      <ShieldCheck className="size-4" />
                     </div>
                     <div>
                       <p className="text-sm font-semibold">{t.trust}</p>
@@ -739,6 +770,45 @@ export default function Onboarding() {
               </div>
             </section>
           )}
+        <Dialog open={readMoreOpen} onOpenChange={setReadMoreOpen}>
+          <DialogContent dir={rtl ? "rtl" : "ltr"} className="yomy-ios-panel max-h-[82dvh] overflow-y-auto border-white/10 p-0 sm:max-w-lg">
+            <DialogHeader className="px-6 pb-2 pt-6">
+              <DialogTitle className="text-xl tracking-tight">{t.readMoreTitle}</DialogTitle>
+              <DialogDescription className="text-sm leading-6">{t.readMoreBody}</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 px-6 pb-2">
+              <div className="rounded-2xl border border-border/60 bg-background/45 p-4">
+                <p className="text-sm font-semibold">{t.terms}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {rtl ? "ستعرف قواعد استخدام الخدمة ومسؤوليتك عن حسابك ومحتواك، ومتى قد نقيّد ميزات أو حسابات لحماية المجتمع." : "Understand the rules for using YOMY, your responsibility for your account and content, and when access or features may be restricted to protect the community."}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-background/45 p-4">
+                <p className="text-sm font-semibold">{t.privacy}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {rtl ? "تعرف ما المعلومات التي قد نعالجها، ولماذا نستخدمها، وكيف تبقى خيارات الخصوصية والوصول والتصحيح والحذف متاحة بحسب الميزة والقانون." : "Learn what information YOMY may process, why it is used, and what privacy, access, correction, or deletion choices may be available to you."}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-background/45 p-4">
+                <p className="text-sm font-semibold">{t.community}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {rtl ? "المطلوب هو الاحترام وعدم التهديد أو التنمر أو الانتحال أو الاحتيال أو إساءة استخدام المنصة." : "Participation must be respectful: no harassment, threats, impersonation, fraud, or abusive use of the platform."}
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="flex-col px-6 pb-6 pt-3 sm:flex-row">
+              <div className="flex flex-1 flex-wrap gap-2">
+                <a href="/terms" className="text-xs font-semibold text-primary underline-offset-4 hover:underline">{t.terms}</a>
+                <a href="/privacy" className="text-xs font-semibold text-primary underline-offset-4 hover:underline">{t.privacy}</a>
+                <a href="/community-guidelines" className="text-xs font-semibold text-primary underline-offset-4 hover:underline">{t.community}</a>
+              </div>
+              <Button type="button" className="rounded-2xl" onClick={() => setReadMoreOpen(false)}>{t.close}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         </main>
 
         <div className="pt-3 text-center text-[10px] text-muted-foreground">
