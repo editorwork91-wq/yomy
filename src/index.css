@@ -388,3 +388,25 @@ html {
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
+
+
+/* Premium one-time launch reveal: restrained, fast, and safe on older WebViews. */
+.yomy-launch-mark {
+  animation: yomy-launch-mark 900ms cubic-bezier(.2,.8,.2,1) both;
+}
+.yomy-launch-wordmark {
+  animation: yomy-launch-wordmark 1000ms cubic-bezier(.2,.8,.2,1) 80ms both;
+}
+@keyframes yomy-launch-mark {
+  0% { opacity: 0; transform: scale(.82) translateY(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes yomy-launch-wordmark {
+  0% { opacity: 0; transform: translateY(8px); letter-spacing: -.02em; }
+  100% { opacity: 1; transform: translateY(0); letter-spacing: -.06em; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .yomy-launch-mark, .yomy-launch-wordmark {
+    animation: none !important;
+  }
+}
