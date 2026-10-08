@@ -17,7 +17,7 @@ function authOrThrow() {
   return firebaseAuth
 }
 
-export function resetFirebasePhoneVerification() {
+export async function resetFirebasePhoneVerification() {
   confirmation = null
   if (verifier) {
     try {
@@ -27,7 +27,8 @@ export function resetFirebasePhoneVerification() {
     }
   }
   verifier = null
-  if (firebaseAuth) void signOut(firebaseAuth).catch(() => undefined)
+  // Await sign-out so it cannot race a new signInWithPhoneNumber call.
+  if (firebaseAuth) await signOut(firebaseAuth).catch(() => undefined)
 }
 
 export async function startFirebasePhoneVerification(
@@ -36,7 +37,7 @@ export async function startFirebasePhoneVerification(
   language: string,
 ) {
   const auth = authOrThrow()
-  resetFirebasePhoneVerification()
+  await resetFirebasePhoneVerification()
 
   auth.languageCode = language === 'ar' ? 'ar' : language
 
