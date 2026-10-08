@@ -1,1 +1,11 @@
-[functions.moderate-content]\nverify_jwt = true\n\n[functions.fedo-upload-ticket]\nverify_jwt = true\n\n[functions.fedo-finalize]\nverify_jwt = true\n\n[functions.fedo-media-url]\nverify_jwt = true\n
+[functions.moderate-content]
+verify_jwt = true
+
+[functions.fedo-upload-ticket]
+verify_jwt = true
+
+[functions.fedo-finalize]
+verify_jwt = true
+
+[functions.yomy-redirect]
+verify_jwt = false
