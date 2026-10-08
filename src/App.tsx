@@ -10,6 +10,8 @@ import CallHistoryPanel from '@/components/calls/CallHistoryPanel'
 import AttentionCenter from '@/components/notifications/AttentionCenter'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
+import AuthRedirect from '@/pages/auth/AuthRedirect'
+import Agreement from '@/pages/auth/Agreement'
 import Feed from '@/pages/Feed'
 import Fedo from '@/pages/Fedo'
 import CreatorAnalytics from '@/pages/CreatorAnalytics'
@@ -36,13 +38,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-8" /></div>
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to="/auth/redirect" replace />
   return <>{children}</>
 }
 function AppRoutes() {
   return <Routes>
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+    <Route path="/auth/redirect" element={<AuthRedirect />} />
+    <Route path="/agreement" element={<ProtectedRoute><Agreement /></ProtectedRoute>} />
     <Route path="/" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
     <Route path="/fedo" element={<ProtectedRoute><Fedo /></ProtectedRoute>} />
     <Route path="/creator-analytics" element={<ProtectedRoute><CreatorAnalytics /></ProtectedRoute>} />
@@ -56,7 +60,7 @@ function AppRoutes() {
     <Route path="/messages" element={<ProtectedRoute><MessagesPro /></ProtectedRoute>} />
     <Route path="/messages/new" element={<ProtectedRoute><NewChat /></ProtectedRoute>} />
     <Route path="/messages/:username" element={<ProtectedRoute><ChatPro /></ProtectedRoute>} />
-    <Route path="*" element={<Navigate to="/" replace />} />
+    <Route path="*" element={<Navigate to="/auth/redirect" replace />} />
   </Routes>
 }
 export function App() {
