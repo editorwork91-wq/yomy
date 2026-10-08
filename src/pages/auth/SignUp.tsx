@@ -85,7 +85,7 @@ export default function SignUp() {
     return () => window.clearInterval(timer)
   }, [resendAt])
 
-  useEffect(() => () => resetFirebasePhoneVerification(), [])
+  useEffect(() => () => { void resetFirebasePhoneVerification() }, [])
 
   const normalizedPhone = normalizePhone(phone)
   const waitingForCode = verificationState === 'code' || verificationState === 'verifying'
@@ -118,7 +118,7 @@ export default function SignUp() {
       toast.success(copy('codeSent'))
       return true
     } catch (error) {
-      resetFirebasePhoneVerification()
+      void resetFirebasePhoneVerification()
       setVerificationState('idle')
       const message = phoneAuthErrorMessage(error)
       if (message === 'FIREBASE_PHONE_AUTH_NOT_CONFIGURED') {
