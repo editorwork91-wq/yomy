@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check, Globe2, Sparkles } from 'lucide-react'
+import { Check, Globe2 } from 'lucide-react'
 import { applyYomyLanguage, LANGUAGE_LABELS, type YomyLanguage, useYomyLanguage, t } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 
@@ -47,7 +47,7 @@ export default function LanguageOnboarding() {
             <Globe2 className="size-7" />
           </div>
           <div className="mb-1 flex items-center justify-center gap-1.5">
-            <Sparkles className="size-4 text-primary" />
+            <span className="size-1.5 rounded-full bg-primary/60" aria-hidden="true" />
             <h1 id="yomy-language-title" className="text-2xl font-semibold tracking-tight">{copy('chooseLanguageTitle')}</h1>
           </div>
           <p className="mx-auto max-w-sm text-sm leading-6 text-muted-foreground">{copy('chooseLanguageSubtitle')}</p>
