@@ -141,7 +141,7 @@ export async function signInWithGoogle(options: { signup?: boolean } = {}) {
   provider.setCustomParameters({ prompt: 'select_account' })
 
   try {
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() || isMobileBrowser()) {
       await signInWithRedirect(auth, provider)
       return null
     }
