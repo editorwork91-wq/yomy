@@ -85,7 +85,11 @@ export default function SignUp() {
     return () => window.clearInterval(timer)
   }, [resendAt])
 
-  useEffect(() => () => { void resetFirebasePhoneVerification() }, [])
+  useEffect(() => {
+    return () => {
+      void resetFirebasePhoneVerification()
+    }
+  }, [])
 
   const normalizedPhone = normalizePhone(phone)
   const waitingForCode = verificationState === 'code' || verificationState === 'verifying'
