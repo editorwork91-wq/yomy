@@ -26,7 +26,7 @@ export default function VerifyEmail() {
     if (!email || resending) return
     setResending(true)
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email })
+      const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: getPublicAppUrl(`/verify-email?email=${encodeURIComponent(email)}`) } })
       if (error) throw error
       toast.success('Confirmation email sent again.')
     } catch (error) {
