@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { ArrowRight, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, ShieldCheck } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
 import { completeGoogleRedirect, signInWithGoogle } from '@/lib/googleAuth'
 import { getPostAuthRoute } from '@/lib/authRouting'
@@ -33,20 +33,44 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
 
+  const location = useLocation()
+
   useEffect(() => {
     let active = true
-    void completeGoogleRedirect()
-      .then(async result => {
-        if (!active || !result) return
-        const destination = await getPostAuthRoute()
-        toast.success(rtl ? 'تم إنشاء الحساب باستخدام Google.' : 'Account connected with Google.')
-        navigate(destination, { replace: true })
-      })
-      .catch(error => {
-        if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-      })
+    const params = new URLSearchParams(location.search)
+    const autoGoogle = params.get('google') === '1'
+
+    if (autoGoogle) {
+      window.history.replaceState({}, '', location.pathname)
+      setGoogleLoading(true)
+      void signInWithGoogle({ signup: true })
+        .then(async result => {
+          if (!active || !result) return
+          const destination = await getPostAuthRoute()
+          toast.success(rtl ? 'تم إنشاء الحساب باستخدام Google.' : 'Account connected with Google.')
+          navigate(destination, { replace: true })
+        })
+        .catch(error => {
+          if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
+        })
+        .finally(() => {
+          if (active) setGoogleLoading(false)
+        })
+    } else {
+      void completeGoogleRedirect()
+        .then(async result => {
+          if (!active || !result) return
+          const destination = await getPostAuthRoute()
+          toast.success(rtl ? 'تم إنشاء الحساب باستخدام Google.' : 'Account connected with Google.')
+          navigate(destination, { replace: true })
+        })
+        .catch(error => {
+          if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
+        })
+    }
+
     return () => { active = false }
-  }, [navigate, rtl])
+  }, [location.pathname, location.search, navigate, rtl])
 
   const handleGoogleSignUp = async () => {
     if (!acceptedPolicies) {
@@ -151,7 +175,7 @@ export default function SignUp() {
           <Card className="yomy-ios-panel border-white/10">
             <CardHeader className="space-y-2 pb-3">
               <div className="flex items-center gap-2 text-xs font-semibold text-primary">
-                <Sparkles className="size-4" />
+                <ShieldCheck className="size-4" />
                 {rtl ? 'ابدأ بحسابك الأساسي' : 'Start with your core account'}
               </div>
             </CardHeader>
