@@ -120,6 +120,22 @@ jobs:
           if '.IncomingCallActivity' not in s:
               s = s.replace('        <activity\n            android:configChanges=', activity + '\n        <activity\n            android:configChanges=', 1)
 
+          deep_link = '''            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="yomy" />
+            </intent-filter>
+'''
+          if 'android:scheme="yomy"' not in s:
+              launcher_filter = '''            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+'''
+              if launcher_filter in s:
+                  s = s.replace(launcher_filter, launcher_filter + deep_link, 1)
+
           build = Path('android/app/build.gradle')
           bs = build.read_text()
           if 'firebase-messaging' not in bs:
