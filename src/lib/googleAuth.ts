@@ -117,20 +117,6 @@ async function exchangeGoogleCredential(credential: { idToken?: string | null })
   if (error) throw error
   if (!data.user) throw new Error('GOOGLE_SUPABASE_USER_MISSING')
 
-  if (sessionStorage.getItem(GOOGLE_SIGNUP_LEGAL_KEY) === '1') {
-    const acceptedAt = new Date().toISOString()
-    const { error: metadataError } = await supabase.auth.updateUser({
-      data: {
-        legal_terms_accepted: true,
-        legal_privacy_accepted: true,
-        legal_version: '2026-10-03',
-        legal_accepted_at: acceptedAt,
-      },
-    })
-    if (metadataError) throw metadataError
-    sessionStorage.removeItem(GOOGLE_SIGNUP_LEGAL_KEY)
-  }
-
   await ensureGoogleProfile(data.user)
   return data
 }
