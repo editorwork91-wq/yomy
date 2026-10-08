@@ -123,7 +123,7 @@ export function isNativeGoogleAuth() {
   return Capacitor.isNativePlatform()
 }
 
-export async function signInWithGoogle(options: { signup?: boolean } = {}) {
+export async function signInWithGoogle(_options: { signup?: boolean } = {}) {
   const auth = authOrThrow()
 
   const provider = new GoogleAuthProvider()
