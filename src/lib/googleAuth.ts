@@ -147,7 +147,8 @@ export async function signInWithGoogle(_options: { signup?: boolean } = {}) {
 }
 
 export async function completeGoogleRedirect() {
-  const auth = authOrThrow()
+  if (!firebaseAuth || !isFirebaseConfigured) return null
+  const auth = firebaseAuth
 
   try {
     const result = await getRedirectResult(auth)
