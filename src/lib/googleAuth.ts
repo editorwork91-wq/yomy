@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth'
 import { firebaseAuth, isFirebaseConfigured } from '@/lib/firebase'
 import { supabase } from '@/lib/supabase'
+import { getLocalSafeAuthUrl, isLocalWebOrigin, isMobileBrowser } from '@/lib/appOrigin'
 
 function googleAuthErrorMessage(error: unknown) {
   const code = typeof error === 'object' && error !== null && 'code' in error
@@ -123,14 +124,24 @@ export function isNativeGoogleAuth() {
   return Capacitor.isNativePlatform()
 }
 
-export async function signInWithGoogle(_options: { signup?: boolean } = {}) {
+export async function signInWithGoogle(options: { signup?: boolean } = {}) {
+  // A phone browser cannot resolve its own `localhost` back to the computer
+  // running the local preview. Move the OAuth hand-off to the hosted YOMY
+  // surface automatically; the hosted page then completes Google normally.
+  if (!Capacitor.isNativePlatform() && isLocalWebOrigin() && isMobileBrowser()) {
+    const target = options.signup ? '/signup' : '/login'
+    const mode = options.signup ? 'signup' : 'login'
+    window.location.assign(getLocalSafeAuthUrl(target, mode))
+    return null
+  }
+
   const auth = authOrThrow()
 
   const provider = new GoogleAuthProvider()
   provider.setCustomParameters({ prompt: 'select_account' })
 
   try {
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() || isMobileBrowser()) {
       await signInWithRedirect(auth, provider)
       return null
     }

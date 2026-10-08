@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, FileText, ShieldCheck, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { useYomyLanguage } from '@/lib/i18n'
 
 type LegalDocument = 'terms' | 'privacy' | 'community'
 
@@ -110,40 +111,100 @@ const DOCUMENTS: Record<LegalDocument, {
   },
 }
 
+
+const AR_DOCUMENTS: Record<LegalDocument, {
+  title: string
+  intro: string
+  sections: Array<{ heading: string; body: string }>
+}> = {
+  terms: {
+    title: 'شروط استخدام YOMY',
+    intro: 'توضح هذه الشروط القواعد التي تنطبق عند استخدام YOMY والمسؤوليات التي تقع على عاتق كل عضو في مجتمع YOMY.',
+    sections: [
+      { heading: '1. استخدام YOMY', body: 'يجوز لك استخدام YOMY فقط بما يتوافق مع القوانين المعمول بها وهذه الشروط. أنت مسؤول عن حماية بيانات الدخول وعن النشاط الذي يتم من خلال حسابك.' },
+      { heading: '2. حسابك', body: 'قدّم معلومات صحيحة وحافظ عليها محدثة بصورة معقولة. لا تنتحل شخصية شخص أو جهة أخرى، ولا تنشئ حسابات خادعة، ولا تحاول تجاوز ضوابط الأمان أو الوصول.' },
+      { heading: '3. المحتوى والسلوك', body: 'تظل ملكية المحتوى الذي تنشئه لك، مع منح YOMY الصلاحيات اللازمة لاستضافة المحتوى ومعالجته وعرضه وتسليمه حتى تعمل الخدمة. لا تستخدم YOMY لنشر مواد غير قانونية أو مسيئة أو تهديدية أو احتيالية أو منتهِكة للحقوق.' },
+      { heading: '4. الأمان وإنفاذ القواعد', body: 'قد تقيّد YOMY المحتوى أو تزيله أو تعلّق حسابات عند الحاجة المعقولة لحماية المستخدمين أو تطبيق هذه الشروط أو الاستجابة لالتزامات قانونية أو معالجة إساءة الاستخدام والاحتيال وتهديدات الأمان.' },
+      { heading: '5. تغييرات الخدمة', body: 'قد تضيف YOMY ميزات أو تغيّرها أو توقف بعضها مع تطور الخدمة. وعندما يؤثر تغيير جوهري في هذه الشروط، سنقدم إشعارًا مناسبًا حيثما يقتضي ذلك.' },
+      { heading: '6. التواصل والنزاعات', body: 'يمكنك طرح الأسئلة المتعلقة بهذه الشروط من خلال دعم YOMY. وتظل أي حقوق أو ضمانات إلزامية يمنحها القانون المعمول به لك محفوظة ولا تنتقص منها هذه الشروط.' },
+    ],
+  },
+  privacy: {
+    title: 'سياسة خصوصية YOMY',
+    intro: 'توضح هذه السياسة بصورة عامة المعلومات التي قد تعالجها YOMY، وأسباب استخدامها، والخيارات المتاحة لك.',
+    sections: [
+      { heading: '1. المعلومات التي تقدمها', body: 'بحسب الميزات التي تستخدمها، قد تعالج YOMY معلومات الحساب مثل الاسم واسم المستخدم والبريد الإلكتروني ورقم الهاتف الاختياري ومعلومات الملف الشخصي والرسائل والوسائط والمحتوى الذي تختار إرساله.' },
+      { heading: '2. المعلومات التي تنتج عن استخدام الخدمة', body: 'قد تعالج YOMY معلومات تقنية مثل معلومات الجهاز والتطبيق وبيانات التشخيص وأحداث الأمان ومعلومات الاستخدام اللازمة لتشغيل الخدمة وحمايتها وتحسينها.' },
+      { heading: '3. كيفية استخدام المعلومات', body: 'قد تُستخدم المعلومات لتوفير الوصول إلى الحساب، وتسليم الرسائل والوسائط، وتخصيص الخدمة، ومنع إساءة الاستخدام والاحتيال، والحفاظ على الأمان، ومعالجة الأعطال، وإرسال معلومات مهمة عن الخدمة.' },
+      { heading: '4. رقم الهاتف اختياري', body: 'لا يشترط رقم الهاتف لإنشاء حساب على YOMY. وإذا اخترت إضافته، فقد تتم معالجته للميزات المتعلقة بالهاتف مثل التحقق أو الاسترداد عندما تكون هذه الميزات مفعّلة لحسابك.' },
+      { heading: '5. المشاركة ومقدمو الخدمات', body: 'قد تعتمد YOMY على بنية تحتية ومقدمي خدمات يعالجون المعلومات نيابة عنها، مع مراعاة الضمانات التعاقدية والتقنية المناسبة. ولا يعني استخدامك للتطبيق أن YOMY تبيع معلوماتك الشخصية.' },
+      { heading: '6. اختياراتك', body: 'بحسب الميزة والقانون المعمول به، قد تتمكن من الوصول إلى بعض معلومات حسابك أو تصحيحها أو تنزيلها أو حذفها، أو التحكم في إعدادات الخصوصية من داخل YOMY.' },
+      { heading: '7. تحديثات السياسة', body: 'قد نحدّث هذه السياسة مع تطور YOMY. وستظهر أحدث نسخة وتاريخ سريانها على هذه الصفحة.' },
+    ],
+  },
+  community: {
+    title: 'إرشادات مجتمع YOMY',
+    intro: 'صُمّم YOMY للتواصل والمشاركة والاكتشاف. وتوضح هذه الإرشادات السلوك الذي نتوقعه في المحادثات والملفات والقصص والمنشورات والمكالمات.',
+    sections: [
+      { heading: '1. احترم الآخرين', body: 'يُمنع التنمر أو التهديد أو المطاردة أو الترهيب أو الاستهداف المتكرر للآخرين. احترم الحدود واستخدم أدوات الحظر والإبلاغ عند الحاجة.' },
+      { heading: '2. لا إساءة ضارة أو غير قانونية', body: 'لا تستخدم YOMY في نشاط غير قانوني أو تهديدات موثوقة أو احتيال أو هجمات ضارة أو محتوى يعرّض الأشخاص لخطر جسيم.' },
+      { heading: '3. الأصالة مهمة', body: 'لا تنتحل شخصية الأشخاص أو المؤسسات، ولا تتلاعب بالهويات لخداع الآخرين، ولا تنشئ نشاطًا منسقًا يهدف إلى تضليل المستخدمين.' },
+      { heading: '4. احمِ الخصوصية', body: 'لا تنشر معلومات خاصة تخص شخصًا آخر دون إذن مناسب. وتجنب مشاركة المعلومات الشخصية الحساسة في المساحات العامة.' },
+      { heading: '5. احترم الملكية الفكرية', body: 'شارك المحتوى الذي تملك حق استخدامه، ولا تتعمد انتهاك حقوق الطبع والنشر أو العلامات التجارية أو غيرها من الحقوق.' },
+      { heading: '6. تطبيق الإرشادات', body: 'قد تحدّ YOMY من ظهور المحتوى أو تزيله أو تقيّد بعض الميزات أو توقف الحسابات عند الحاجة لمعالجة الانتهاكات الجسيمة أو المتكررة أو لحماية المجتمع.' },
+    ],
+  },
+}
+
 export default function Legal({ document }: { document: LegalDocument }) {
-  const data = DOCUMENTS[document]
-  const Icon = data.icon
+  const { language } = useYomyLanguage()
+  const isArabic = language === 'ar'
+  const source = isArabic ? AR_DOCUMENTS[document] : DOCUMENTS[document]
+  const Icon = DOCUMENTS[document].icon
+  const interfaceText = isArabic
+    ? {
+        back: 'العودة إلى التسجيل',
+        version: 'الإصدار 2026-10-08',
+        updated: 'آخر تحديث: 8 أكتوبر 2026',
+        note: 'هذه هي الصياغة الحالية المعروضة داخل منتج YOMY. يجب إكمال المراجعة القانونية الرسمية قبل الإطلاق العام في كل ولاية قضائية تتوفر فيها YOMY.',
+      }
+    : {
+        back: 'Back to sign up',
+        version: 'Version 2026-10-08',
+        updated: 'Last updated: October 8, 2026',
+        note: 'This page is the current product-facing policy text for Yomy. Formal legal review should be completed before public launch in each jurisdiction where Yomy is offered.',
+      }
 
   return (
-    <div className="min-h-screen bg-background px-4 py-6 sm:px-6">
+    <div className="min-h-screen bg-background px-4 py-6 sm:px-6" dir={isArabic ? 'rtl' : 'ltr'}>
       <div className="mx-auto w-full max-w-3xl space-y-5">
         <div className="flex items-center justify-between gap-3">
           <Link to="/signup" className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground">
             <ArrowLeft className="size-4" />
-            Back to sign up
+            {interfaceText.back}
           </Link>
-          <span className="text-[11px] text-muted-foreground">Version 2026-10-03</span>
+          <span className="text-[11px] text-muted-foreground">{interfaceText.version}</span>
         </div>
 
-        <Card className="border shadow-sm">
+        <Card className="yomy-ios-panel border-white/10">
           <CardHeader className="space-y-3">
             <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <Icon className="size-5" />
             </div>
-            <CardTitle className="text-2xl">{data.title}</CardTitle>
-            <p className="text-sm leading-6 text-muted-foreground">{data.intro}</p>
-            <p className="text-[11px] text-muted-foreground">Last updated: October 3, 2026</p>
+            <CardTitle className="text-2xl tracking-tight">{source.title}</CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">{source.intro}</p>
+            <p className="text-[11px] text-muted-foreground">{interfaceText.updated}</p>
           </CardHeader>
           <CardContent className="space-y-6">
             <Separator />
-            {data.sections.map(section => (
+            {source.sections.map(section => (
               <section key={section.heading} className="space-y-2">
                 <h2 className="text-sm font-semibold">{section.heading}</h2>
                 <p className="text-sm leading-7 text-muted-foreground">{section.body}</p>
               </section>
             ))}
             <div className="rounded-2xl border bg-muted/30 p-4 text-xs leading-5 text-muted-foreground">
-              This page is the current product-facing policy text for Yomy. Formal legal review should be completed before public launch in each jurisdiction where Yomy is offered.
+              {interfaceText.note}
             </div>
           </CardContent>
         </Card>

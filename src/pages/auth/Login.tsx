@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
-import { Sparkles } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
 import { completeGoogleRedirect, signInWithGoogle } from '@/lib/googleAuth'
 import { getPostAuthRoute } from '@/lib/authRouting'
@@ -26,20 +25,40 @@ export default function Login() {
     navigate(destination, { replace: true })
   }
 
+  const location = useLocation()
+
   useEffect(() => {
     let active = true
+    const params = new URLSearchParams(location.search)
+    const autoGoogle = params.get('google') === '1'
+
+    // Always consume an existing Firebase redirect result first. This is
+    // important on mobile, where Google returns to this page after redirect.
     void completeGoogleRedirect()
       .then(async result => {
-        if (active && result) {
+        if (!active) return
+        if (result) {
+          window.history.replaceState({}, '', location.pathname)
           toast.success(rtl ? 'تم تسجيل الدخول باستخدام Google.' : 'Signed in with Google.')
           await finishAuth()
+          return
+        }
+
+        if (autoGoogle) {
+          window.history.replaceState({}, '', location.pathname)
+          setGoogleLoading(true)
+          await signInWithGoogle()
         }
       })
       .catch(error => {
         if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
       })
+      .finally(() => {
+        if (active) setGoogleLoading(false)
+      })
+
     return () => { active = false }
-  }, [rtl])
+  }, [location.pathname, location.search, rtl])
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -114,8 +133,7 @@ export default function Login() {
 
           <Card className="yomy-ios-panel border-white/10">
             <CardHeader className="py-4 text-center">
-              <div className="mb-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
-                <Sparkles className="size-3.5 text-primary" />
+              <div className="mb-2 flex items-center justify-center text-[11px] text-muted-foreground">
                 {rtl ? 'حساب جديد؟' : 'New to YOMY?'}
               </div>
               <p className="text-sm">
