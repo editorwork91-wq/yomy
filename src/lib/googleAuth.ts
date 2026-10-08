@@ -1,11 +1,21 @@
-import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth'
+import { Capacitor } from '@capacitor/core'
+import {
+  GoogleAuthProvider,
+  getRedirectResult,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut as firebaseSignOut,
+} from 'firebase/auth'
 import { firebaseAuth, isFirebaseConfigured } from '@/lib/firebase'
 import { supabase } from '@/lib/supabase'
+
+const GOOGLE_SIGNUP_LEGAL_KEY = 'yomy-google-signup-legal'
 
 function googleAuthErrorMessage(error: unknown) {
   const code = typeof error === 'object' && error !== null && 'code' in error
     ? String((error as { code?: unknown }).code || '')
     : ''
+  const message = error instanceof Error ? error.message : ''
 
   switch (code) {
     case 'auth/popup-closed-by-user':
@@ -19,8 +29,18 @@ function googleAuthErrorMessage(error: unknown) {
     case 'auth/network-request-failed':
       return 'Network connection failed. Please check your internet connection and try again.'
     default:
-      return error instanceof Error ? error.message : 'Google sign-in failed.'
+      if (/provider.*not.*enabled|unsupported.*provider/i.test(message)) {
+        return 'Google is not enabled in Supabase Auth yet.'
+      }
+      return message || 'Google sign-in failed.'
   }
+}
+
+function authOrThrow() {
+  if (!firebaseAuth || !isFirebaseConfigured) {
+    throw new Error('FIREBASE_GOOGLE_AUTH_NOT_CONFIGURED')
+  }
+  return firebaseAuth
 }
 
 function makeUsernameSeed(user: { email?: string | null; displayName?: string | null }) {
@@ -55,10 +75,7 @@ async function ensureGoogleProfile(user: {
       ? metadata.picture
       : ''
 
-  const seed = makeUsernameSeed({
-    email: user.email,
-    displayName: fullName,
-  })
+  const seed = makeUsernameSeed({ email: user.email, displayName: fullName })
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const suffix = attempt === 0 ? '' : '_' + crypto.randomUUID().replace(/-/g, '').slice(0, 5)
@@ -88,36 +105,81 @@ async function ensureGoogleProfile(user: {
   throw new Error('Could not create a unique Yomy username for this Google account.')
 }
 
-export async function signInWithGoogle() {
-  if (!firebaseAuth || !isFirebaseConfigured) {
-    throw new Error('FIREBASE_GOOGLE_AUTH_NOT_CONFIGURED')
+async function exchangeGoogleCredential(credential: { idToken?: string | null }) {
+  const googleIdToken = credential.idToken
+  if (!googleIdToken) throw new Error('GOOGLE_ID_TOKEN_MISSING')
+
+  const { data, error } = await supabase.auth.signInWithIdToken({
+    provider: 'google',
+    token: googleIdToken,
+  })
+
+  if (error) throw error
+  if (!data.user) throw new Error('GOOGLE_SUPABASE_USER_MISSING')
+
+  if (sessionStorage.getItem(GOOGLE_SIGNUP_LEGAL_KEY) === '1') {
+    const acceptedAt = new Date().toISOString()
+    const { error: metadataError } = await supabase.auth.updateUser({
+      data: {
+        legal_terms_accepted: true,
+        legal_privacy_accepted: true,
+        legal_version: '2026-10-03',
+        legal_accepted_at: acceptedAt,
+      },
+    })
+    if (metadataError) throw metadataError
+    sessionStorage.removeItem(GOOGLE_SIGNUP_LEGAL_KEY)
   }
+
+  await ensureGoogleProfile(data.user)
+  return data
+}
+
+export function isNativeGoogleAuth() {
+  return Capacitor.isNativePlatform()
+}
+
+export async function signInWithGoogle(options: { signup?: boolean } = {}) {
+  const auth = authOrThrow()
+
+  if (options.signup) sessionStorage.setItem(GOOGLE_SIGNUP_LEGAL_KEY, '1')
 
   const provider = new GoogleAuthProvider()
   provider.setCustomParameters({ prompt: 'select_account' })
 
   try {
-    const result = await signInWithPopup(firebaseAuth, provider)
-    const credential = GoogleAuthProvider.credentialFromResult(result)
-    const googleIdToken = credential?.idToken
-
-    if (!googleIdToken) {
-      throw new Error('GOOGLE_ID_TOKEN_MISSING')
+    if (Capacitor.isNativePlatform()) {
+      await signInWithRedirect(auth, provider)
+      return null
     }
 
-    const { data, error } = await supabase.auth.signInWithIdToken({
-      provider: 'google',
-      token: googleIdToken,
+    const result = await signInWithPopup(auth, provider)
+    const credential = GoogleAuthProvider.credentialFromResult(result)
+    return await exchangeGoogleCredential({
+      idToken: credential?.idToken,
     })
-
-    if (error) throw error
-    if (!data.user) throw new Error('GOOGLE_SUPABASE_USER_MISSING')
-
-    await ensureGoogleProfile(data.user)
-    return data
   } catch (error) {
+    if (options.signup) sessionStorage.removeItem(GOOGLE_SIGNUP_LEGAL_KEY)
+    await firebaseSignOut(auth).catch(() => undefined)
+    throw new Error(googleAuthErrorMessage(error))
+  }
+}
+
+export async function completeGoogleRedirect() {
+  const auth = authOrThrow()
+
+  try {
+    const result = await getRedirectResult(auth)
+    if (!result) return null
+
+    const credential = GoogleAuthProvider.credentialFromResult(result)
+    return await exchangeGoogleCredential({
+      idToken: credential?.idToken,
+    })
+  } catch (error) {
+    sessionStorage.removeItem(GOOGLE_SIGNUP_LEGAL_KEY)
     throw new Error(googleAuthErrorMessage(error))
   } finally {
-    await firebaseSignOut(firebaseAuth).catch(() => undefined)
+    await firebaseSignOut(auth).catch(() => undefined)
   }
 }
