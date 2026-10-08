@@ -411,13 +411,6 @@ export default function Onboarding() {
     await updateStep('name')
   }
 
-  const stepMeta = [
-    { key: 'phone', label: rtl ? 'الهاتف' : 'Phone', icon: MapPin },
-    { key: 'name', label: rtl ? 'الاسم' : 'Name', icon: Users },
-    { key: 'photo', label: rtl ? 'الصورة' : 'Photo', icon: Camera },
-    { key: 'agreement', label: rtl ? 'الاتفاقية' : 'Agreement', icon: ShieldCheck },
-  ] as const
-
   return (
     <div className="yomy-glass-page min-h-dvh px-4 py-5 sm:px-6">
       <div className="mx-auto flex min-h-[calc(100dvh-2.5rem)] w-full max-w-lg flex-col">
