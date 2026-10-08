@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import type { Profile } from '@/lib/supabase'
+import type { OnboardingState, Profile } from '@/lib/supabase'
 import { applyYomyFontScale, applyYomyLanguage, systemTimezone } from '@/lib/i18n'
 
 type AuthContextType = {
   session: Session | null
   user: User | null
   profile: Profile | null
+  onboarding: OnboardingState | null
   loading: boolean
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   profile: null,
+  onboarding: null,
   loading: true,
   signOut: async () => {},
   refreshProfile: async () => {},
@@ -26,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [onboarding, setOnboarding] = useState<OnboardingState | null>(null)
   const [loading, setLoading] = useState(true)
 
   const applyProfilePreferences = (nextProfile: Profile | null) => {
@@ -41,13 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle()
-    setProfile(data)
-    applyProfilePreferences(data)
+    const [profileResult, onboardingResult] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
+      supabase.from('user_onboarding').select('*').eq('user_id', userId).maybeSingle(),
+    ])
+    setProfile(profileResult.data)
+    setOnboarding(onboardingResult.data)
+    applyProfilePreferences(profileResult.data)
   }
 
   const refreshProfile = async () => {
@@ -66,15 +69,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        ;(async () => {
-          await fetchProfile(session.user.id)
-        })()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession)
+      setUser(nextSession?.user ?? null)
+      if (nextSession?.user) {
+        void fetchProfile(nextSession.user.id)
       } else {
         setProfile(null)
+        setOnboarding(null)
       }
     })
 
@@ -84,10 +86,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     await supabase.auth.signOut()
     setProfile(null)
+    setOnboarding(null)
   }
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, user, profile, onboarding, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )
