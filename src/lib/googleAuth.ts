@@ -9,8 +9,6 @@ import {
 import { firebaseAuth, isFirebaseConfigured } from '@/lib/firebase'
 import { supabase } from '@/lib/supabase'
 
-const GOOGLE_SIGNUP_LEGAL_KEY = 'yomy-google-signup-legal'
-
 function googleAuthErrorMessage(error: unknown) {
   const code = typeof error === 'object' && error !== null && 'code' in error
     ? String((error as { code?: unknown }).code || '')
@@ -128,8 +126,6 @@ export function isNativeGoogleAuth() {
 export async function signInWithGoogle(options: { signup?: boolean } = {}) {
   const auth = authOrThrow()
 
-  if (options.signup) sessionStorage.setItem(GOOGLE_SIGNUP_LEGAL_KEY, '1')
-
   const provider = new GoogleAuthProvider()
   provider.setCustomParameters({ prompt: 'select_account' })
 
@@ -145,7 +141,6 @@ export async function signInWithGoogle(options: { signup?: boolean } = {}) {
       idToken: credential?.idToken,
     })
   } catch (error) {
-    if (options.signup) sessionStorage.removeItem(GOOGLE_SIGNUP_LEGAL_KEY)
     await firebaseSignOut(auth).catch(() => undefined)
     throw new Error(googleAuthErrorMessage(error))
   }
@@ -163,7 +158,6 @@ export async function completeGoogleRedirect() {
       idToken: credential?.idToken,
     })
   } catch (error) {
-    sessionStorage.removeItem(GOOGLE_SIGNUP_LEGAL_KEY)
     throw new Error(googleAuthErrorMessage(error))
   } finally {
     await firebaseSignOut(auth).catch(() => undefined)
