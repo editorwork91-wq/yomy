@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { Toaster } from '@/components/ui/sonner'
 import { Spinner } from '@/components/ui/spinner'
@@ -10,6 +10,8 @@ import CallHistoryPanel from '@/components/calls/CallHistoryPanel'
 import AttentionCenter from '@/components/notifications/AttentionCenter'
 import Login from '@/pages/auth/Login'
 import SignUp from '@/pages/auth/SignUp'
+import VerifyEmail from '@/pages/auth/VerifyEmail'
+import Onboarding from '@/pages/Onboarding'
 import Feed from '@/pages/Feed'
 import Fedo from '@/pages/Fedo'
 import CreatorAnalytics from '@/pages/CreatorAnalytics'
@@ -28,23 +30,41 @@ import OfflineSyncEngine from '@/components/system/OfflineSyncEngine'
 import RealtimeInbox from '@/components/realtime/RealtimeInbox'
 import Legal from '@/pages/Legal'
 import LanguageOnboarding from '@/components/system/LanguageOnboarding'
+import FirstLaunchExperience from '@/components/system/FirstLaunchExperience'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user, profile, onboarding, loading } = useAuth()
+  const location = useLocation()
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-8" /></div>
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+
+  const isOnboarding = location.pathname === '/onboarding'
+  if (!isOnboarding && onboarding && !onboarding.completed) {
+    return <Navigate to="/onboarding" replace />
+  }
+  if (isOnboarding && onboarding?.completed) {
+    return <Navigate to="/" replace />
+  }
+
+  // A missing profile is tolerated here because the onboarding/auth trigger
+  // can complete asynchronously; the normal app will load once it is present.
+  void profile
   return <>{children}</>
 }
+
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-8" /></div>
   if (user) return <Navigate to="/" replace />
   return <>{children}</>
 }
+
 function AppRoutes() {
   return <Routes>
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+    <Route path="/verify-email" element={<VerifyEmail />} />
+    <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
     <Route path="/terms" element={<Legal document="terms" />} />
     <Route path="/privacy" element={<Legal document="privacy" />} />
     <Route path="/community-guidelines" element={<Legal document="community" />} />
@@ -64,7 +84,29 @@ function AppRoutes() {
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
 }
+
 export function App() {
-  return <AuthProvider><BrowserRouter><div className="yomy-ios min-h-screen"><CallProvider><AppRoutes /><NetworkStatus /><OfflineSyncEngine /><RealtimeInbox /><YomyEventEngine /><AttentionCenter /><YomyReminderEngine /><PushManager /><CallHistoryPanel /></CallProvider></div><LanguageOnboarding /></BrowserRouter><Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} /></AuthProvider>
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <div className="yomy-ios min-h-screen">
+          <CallProvider>
+            <AppRoutes />
+            <NetworkStatus />
+            <OfflineSyncEngine />
+            <RealtimeInbox />
+            <YomyEventEngine />
+            <AttentionCenter />
+            <YomyReminderEngine />
+            <PushManager />
+            <CallHistoryPanel />
+          </CallProvider>
+        </div>
+        <FirstLaunchExperience />
+        <LanguageOnboarding />
+      </BrowserRouter>
+      <Toaster position="bottom-center" duration={1400} visibleToasts={1} closeButton={false} expand={false} toastOptions={{ classNames: { toast: 'text-xs px-3 py-2 min-h-0 rounded-xl max-w-[min(320px,calc(100vw-24px))] shadow-lg', title: 'text-xs font-medium', description: 'text-[11px]' } }} />
+    </AuthProvider>
+  )
 }
 export default App
