@@ -1,18 +1,18 @@
-import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { ArrowRight, ShieldCheck } from 'lucide-react'
 import { useYomyLanguage } from '@/lib/i18n'
-import { completeGoogleRedirect, signInWithGoogle } from '@/lib/googleAuth'
 import { getPostAuthRoute } from '@/lib/authRouting'
 import { getPublicAppUrl } from '@/lib/appOrigin'
+import { useAuth } from '@/contexts/AuthContext'
+import { MAX_SAVED_ACCOUNTS } from '@/lib/accountSwitcher'
 
 const ACCOUNT_LEGAL_VERSION = '2026-10-08'
 
@@ -25,6 +25,7 @@ function accountErrorMessage(error: unknown) {
 
 export default function SignUp() {
   const navigate = useNavigate()
+  const { savedAccounts } = useAuth()
   const { language, copy } = useYomyLanguage()
   const rtl = language === 'ar'
   const [email, setEmail] = useState('')
@@ -32,64 +33,18 @@ export default function SignUp() {
   const [username, setUsername] = useState('')
   const [acceptedPolicies, setAcceptedPolicies] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
 
-  const location = useLocation()
 
-  useEffect(() => {
-    let active = true
-    const params = new URLSearchParams(location.search)
-    const autoGoogle = params.get('google') === '1'
 
-    void completeGoogleRedirect()
-      .then(async result => {
-        if (!active) return
-        if (result) {
-          window.history.replaceState({}, '', location.pathname)
-          const destination = await getPostAuthRoute()
-          toast.success(rtl ? 'تم إنشاء الحساب باستخدام Google.' : 'Account connected with Google.')
-          navigate(destination, { replace: true })
-          return
-        }
-        if (autoGoogle) {
-          window.history.replaceState({}, '', location.pathname)
-          setGoogleLoading(true)
-          await signInWithGoogle({ signup: true })
-        }
-      })
-      .catch(error => {
-        if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-      })
-      .finally(() => {
-        if (active) setGoogleLoading(false)
-      })
-
-    return () => { active = false }
-  }, [location.pathname, location.search, navigate, rtl])
-
-  const handleGoogleSignUp = async () => {
-    if (!acceptedPolicies) {
-      toast.error(copy('legalConsentNotice'))
-      return
-    }
-    setGoogleLoading(true)
-    try {
-      const result = await signInWithGoogle({ signup: true })
-      if (!result) return
-      const destination = await getPostAuthRoute()
-      toast.success(rtl ? 'تم إنشاء الحساب باستخدام Google.' : 'Account connected with Google.')
-      navigate(destination, { replace: true })
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Google sign-up failed')
-    } finally {
-      setGoogleLoading(false)
-    }
-  }
 
   const handleSignUp = async (event: React.FormEvent) => {
     event.preventDefault()
     const normalizedEmail = email.trim().toLowerCase()
     const normalizedUsername = username.trim().toLowerCase()
+    if (savedAccounts.length >= MAX_SAVED_ACCOUNTS) {
+      toast.error(rtl ? 'وصلت إلى الحد الأقصى وهو 5 حسابات محفوظة على هذا الجهاز. أزل حسابًا محفوظًا أولًا.' : 'This device already has 5 saved accounts. Remove one before creating another here.')
+      return
+    }
 
     if (normalizedUsername.length < 3) {
       toast.error(rtl ? 'اسم المستخدم يجب أن يحتوي على 3 أحرف على الأقل.' : 'Username must be at least 3 characters.')
@@ -205,21 +160,12 @@ export default function SignUp() {
                   </div>
                 </div>
 
-                <Button type="submit" className="h-12 w-full rounded-2xl" disabled={loading || googleLoading || !acceptedPolicies}>
+                <Button type="submit" className="h-12 w-full rounded-2xl" disabled={loading || !acceptedPolicies}>
                   {loading ? (rtl ? 'جارٍ إنشاء الحساب…' : 'Creating account…') : (rtl ? 'إنشاء الحساب' : 'Create account')}
                   {!loading && <ArrowRight className="ml-2 size-4" />}
                 </Button>
               </form>
 
-              <div className="my-5 relative">
-                <Separator />
-                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-[11px] text-muted-foreground">OR</span>
-              </div>
-
-              <Button type="button" variant="outline" className="h-12 w-full rounded-2xl" disabled={loading || googleLoading || !acceptedPolicies} onClick={() => void handleGoogleSignUp()}>
-                <span className="mr-2 inline-flex size-6 items-center justify-center rounded-full border bg-white text-sm font-bold text-black shadow-sm">G</span>
-                {googleLoading ? (rtl ? 'جارٍ الاتصال…' : 'Connecting…') : (rtl ? 'التسجيل باستخدام Google' : 'Continue with Google')}
-              </Button>
             </CardContent>
           </Card>
 

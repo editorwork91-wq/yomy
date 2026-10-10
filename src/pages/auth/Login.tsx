@@ -1,70 +1,55 @@
-import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { useYomyLanguage } from '@/lib/i18n'
-import { completeGoogleRedirect, signInWithGoogle } from '@/lib/googleAuth'
 import { getPostAuthRoute } from '@/lib/authRouting'
+import { useAuth } from '@/contexts/AuthContext'
+import { MAX_SAVED_ACCOUNTS } from '@/lib/accountSwitcher'
 
 export default function Login() {
   const navigate = useNavigate()
+  const { savedAccounts, switchAccount } = useAuth()
+  const [switchingAccountId, setSwitchingAccountId] = useState<string | null>(null)
   const { copy, language } = useYomyLanguage()
   const rtl = language === 'ar'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
 
   const finishAuth = async () => {
     const destination = await getPostAuthRoute()
     navigate(destination, { replace: true })
   }
 
-  const location = useLocation()
+  const handleSwitchSavedAccount = async (userId: string) => {
+    setSwitchingAccountId(userId)
+    try {
+      await switchAccount(userId)
+      navigate(await getPostAuthRoute(), { replace: true })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not switch account. Please sign in again.')
+    } finally {
+      setSwitchingAccountId(null)
+    }
+  }
 
-  useEffect(() => {
-    let active = true
-    const params = new URLSearchParams(location.search)
-    const autoGoogle = params.get('google') === '1'
-
-    // Always consume an existing Firebase redirect result first. This is
-    // important on mobile, where Google returns to this page after redirect.
-    void completeGoogleRedirect()
-      .then(async result => {
-        if (!active) return
-        if (result) {
-          window.history.replaceState({}, '', location.pathname)
-          toast.success(rtl ? 'تم تسجيل الدخول باستخدام Google.' : 'Signed in with Google.')
-          await finishAuth()
-          return
-        }
-
-        if (autoGoogle) {
-          window.history.replaceState({}, '', location.pathname)
-          setGoogleLoading(true)
-          await signInWithGoogle()
-        }
-      })
-      .catch(error => {
-        if (active) toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-      })
-      .finally(() => {
-        if (active) setGoogleLoading(false)
-      })
-
-    return () => { active = false }
-  }, [location.pathname, location.search, rtl])
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault()
+    const normalizedEmail = email.trim().toLowerCase()
+    const alreadySaved = savedAccounts.some(account => account.email.toLowerCase() === normalizedEmail)
+    if (!alreadySaved && savedAccounts.length >= MAX_SAVED_ACCOUNTS) {
+      toast.error(rtl ? 'وصلت إلى الحد الأقصى وهو 5 حسابات محفوظة على هذا الجهاز.' : 'This device already has 5 saved accounts. Switch to one and remove it before adding another.')
+      return
+    }
     setLoading(true)
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim().toLowerCase(), password })
+      const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
       if (error) throw error
       await finishAuth()
     } catch (error) {
@@ -74,19 +59,6 @@ export default function Login() {
     }
   }
 
-  const handleGoogleSignIn = async () => {
-    setGoogleLoading(true)
-    try {
-      const result = await signInWithGoogle()
-      if (!result) return
-      toast.success(rtl ? 'تم تسجيل الدخول باستخدام Google.' : 'Signed in with Google.')
-      await finishAuth()
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Google sign-in failed')
-    } finally {
-      setGoogleLoading(false)
-    }
-  }
 
   return (
     <div className="yomy-glass-page min-h-dvh px-4 py-7 sm:px-6">
@@ -103,6 +75,30 @@ export default function Login() {
             </p>
           </div>
 
+          {savedAccounts.length > 0 && (
+            <Card className="yomy-ios-panel border-white/10">
+              <CardContent className="space-y-2 p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">{rtl ? 'حسابات محفوظة على هذا الجهاز' : 'Saved on this device'}</p>
+                  <Link to="/accounts" className="text-xs font-semibold text-primary hover:underline">{rtl ? 'إدارة' : 'Manage'}</Link>
+                </div>
+                {savedAccounts.map(account => {
+                  const title = account.fullName || account.username || account.email || 'YOMY'
+                  return (
+                    <button key={account.userId} type="button" onClick={() => void handleSwitchSavedAccount(account.userId)} disabled={loading || switchingAccountId !== null} className="flex w-full items-center gap-3 rounded-2xl border border-border/55 bg-background/35 p-3 text-left transition-colors hover:bg-muted/45 disabled:opacity-60">
+                      <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold ring-1 ring-border/70">{account.avatarUrl ? <img src={account.avatarUrl} alt="" className="size-full object-cover" /> : title[0]?.toUpperCase()}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium">{title}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">{account.email}</span>
+                      </span>
+                      <span className="text-[11px] font-semibold text-primary">{switchingAccountId === account.userId ? (rtl ? 'جارٍ التبديل…' : 'Switching…') : (rtl ? 'تبديل' : 'Switch')}</span>
+                    </button>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="yomy-ios-panel border-white/10">
             <CardContent className="p-6">
               <form onSubmit={handleLogin} className="space-y-4">
@@ -114,20 +110,11 @@ export default function Login() {
                   <Label htmlFor="login-password">{copy('password')}</Label>
                   <Input id="login-password" type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required className="h-12 rounded-2xl bg-background/45" />
                 </div>
-                <Button type="submit" className="h-12 w-full rounded-2xl" disabled={loading || googleLoading}>
+                <Button type="submit" className="h-12 w-full rounded-2xl" disabled={loading}>
                   {loading ? (rtl ? 'جارٍ الدخول…' : 'Signing in…') : (rtl ? 'تسجيل الدخول' : 'Log in')}
                 </Button>
               </form>
 
-              <div className="my-5 relative">
-                <Separator />
-                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-[11px] text-muted-foreground">OR</span>
-              </div>
-
-              <Button type="button" variant="outline" className="h-12 w-full rounded-2xl" disabled={loading || googleLoading} onClick={() => void handleGoogleSignIn()}>
-                <span className="mr-2 inline-flex size-6 items-center justify-center rounded-full border bg-white text-sm font-bold text-black shadow-sm">G</span>
-                {googleLoading ? (rtl ? 'جارٍ الاتصال…' : 'Connecting…') : (rtl ? 'المتابعة باستخدام Google' : 'Continue with Google')}
-              </Button>
             </CardContent>
           </Card>
 

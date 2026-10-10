@@ -365,14 +365,14 @@ export default function Onboarding() {
     setUploadingPhoto(true)
     try {
       const extension = (file.name.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg'
-      const path = `avatars/${user.id}.${extension}`
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, {
+      const path = `${user.id}/avatar.${extension}`
+      const { error: uploadError } = await supabase.storage.from('profile-avatars').upload(path, file, {
         upsert: true,
         cacheControl: '3600',
         contentType: file.type,
       })
       if (uploadError) throw uploadError
-      const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+      const { data } = supabase.storage.from('profile-avatars').getPublicUrl(path)
       const { error: profileError } = await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', user.id)
       if (profileError) throw profileError
       setAvatarPreview(data.publicUrl)

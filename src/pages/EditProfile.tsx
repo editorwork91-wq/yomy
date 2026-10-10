@@ -36,13 +36,13 @@ export default function EditProfile() {
     setUploading(true)
     try {
       const ext = file.name.split('.').pop()
-      const path = `avatars/${user.id}.${ext}`
+      const path = `${user.id}/avatar.${ext || 'jpg'}`
       const { error: upErr } = await supabase.storage
-        .from('avatars')
+        .from('profile-avatars')
         .upload(path, file, { upsert: true })
       if (upErr) throw upErr
       const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
+        .from('profile-avatars')
         .getPublicUrl(path)
       setAvatarUrl(publicUrl)
       toast.success('Photo uploaded')
