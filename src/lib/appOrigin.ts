@@ -12,11 +12,6 @@ export function isLocalWebOrigin() {
   return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0'
 }
 
-export function isMobileBrowser() {
-  if (typeof navigator === 'undefined') return false
-  return /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
-}
-
 export function getPublicAppOrigin() {
   if (typeof window !== 'undefined' && !isLocalWebOrigin()) {
     return window.location.origin
@@ -28,9 +23,3 @@ export function getPublicAppUrl(path = '/') {
   return new URL(path.replace(/^\//, '/'), getPublicAppOrigin() + '/').toString()
 }
 
-export function getLocalSafeAuthUrl(path: '/login' | '/signup', mode: 'login' | 'signup') {
-  const url = new URL(getPublicAppUrl(path))
-  url.searchParams.set('google', '1')
-  url.searchParams.set('mode', mode)
-  return url.toString()
-}
