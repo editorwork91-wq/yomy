@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "388049476779",
-    "project_id": "yomy-4242c",
-    "storage_bucket": "yomy-4242c.firebasestorage.app"
+    "project_number": "338767716652",
+    "project_id": "yomy-26030",
+    "storage_bucket": "yomy-26030.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:388049476779:android:fc8f50ca8e8652402cebee",
+        "mobilesdk_app_id": "1:338767716652:android:9dbb95184e70ab2958c89",
         "android_client_info": {
           "package_name": "com.yomy.app"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBpDzCzyILuUN0pRV1GtIfHsG1CvfyPm3o"
+          "current_key": "AIzaSyCMeoQ4uLuq-Afg8WXSkwyyYhlh-PEyHLw"
         }
       ],
       "services": {
