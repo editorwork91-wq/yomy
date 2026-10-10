@@ -131,6 +131,40 @@ jobs:
                   raise SystemExit('Unable to locate Capacitor dependency anchor in android/app/build.gradle')
               build.write_text(bs)
 
+          # Firebase Authentication needs google-services to convert the app's
+          # google-services.json into Android resources before runtime.
+          import re
+          root_gradle = Path('android/build.gradle')
+          if root_gradle.exists():
+              root_text = root_gradle.read_text()
+              if 'com.google.gms:google-services' not in root_text and 'com.google.gms.google-services' not in root_text:
+                  buildscript_dependencies = re.search(r'(buildscript\s*\{[\s\S]*?dependencies\s*\{)', root_text)
+                  if buildscript_dependencies:
+                      insert_at = buildscript_dependencies.end()
+                      root_text = root_text[:insert_at] + "\n        classpath 'com.google.gms:google-services:4.5.0'" + root_text[insert_at:]
+                  else:
+                      plugins_block = re.search(r'plugins\s*\{', root_text)
+                      if not plugins_block:
+                          raise SystemExit('Unable to configure Google Services Gradle plugin in android/build.gradle')
+                      insert_at = plugins_block.end()
+                      root_text = root_text[:insert_at] + "\n    id 'com.google.gms.google-services' version '4.5.0' apply false" + root_text[insert_at:]
+                  root_gradle.write_text(root_text)
+
+          app_gradle = Path('android/app/build.gradle')
+          app_text = app_gradle.read_text()
+          if 'com.google.gms.google-services' not in app_text:
+              apply_android = re.search(r"apply plugin:\s*['\\"]com\\.android\\.application['\\"]", app_text)
+              if apply_android:
+                  end = apply_android.end()
+                  app_text = app_text[:end] + "\\napply plugin: 'com.google.gms.google-services'" + app_text[end:]
+              else:
+                  plugins_block = re.search(r'plugins\s*\{', app_text)
+                  if not plugins_block:
+                      raise SystemExit('Unable to apply Google Services plugin in android/app/build.gradle')
+                  insert_at = plugins_block.end()
+                  app_text = app_text[:insert_at] + "\\n    id 'com.google.gms.google-services'" + app_text[insert_at:]
+              app_gradle.write_text(app_text)
+
           main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
           ms = main.read_text()
           old_js = 'window.location.assign(" + safeDestination + ");'
