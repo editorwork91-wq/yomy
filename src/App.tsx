@@ -22,6 +22,7 @@ import Notifications from '@/pages/Notifications'
 import Profile from '@/pages/Profile'
 import EditProfile from '@/pages/EditProfile'
 import Settings from '@/pages/Settings'
+import Accounts from '@/pages/Accounts'
 import ChatPro from '@/pages/ChatPro'
 import MessagesPro from '@/pages/MessagesPro'
 import NewChat from '@/pages/NewChat'
@@ -78,6 +79,7 @@ function AppRoutes() {
     <Route path="/profile/:username" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
     <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+    <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
     <Route path="/messages" element={<ProtectedRoute><MessagesPro /></ProtectedRoute>} />
     <Route path="/messages/new" element={<ProtectedRoute><NewChat /></ProtectedRoute>} />
     <Route path="/messages/:username" element={<ProtectedRoute><ChatPro /></ProtectedRoute>} />

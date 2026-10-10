@@ -3,6 +3,10 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { OnboardingState, Profile } from '@/lib/supabase'
 import { applyYomyFontScale, applyYomyLanguage, systemTimezone } from '@/lib/i18n'
+import {
+  MAX_SAVED_ACCOUNTS, readSavedAccounts, saveAccountSession, updateSavedAccountProfile,
+  touchSavedAccount, removeSavedAccount as removeStoredAccount, type SavedAccount,
+} from '@/lib/accountSwitcher'
 
 type AuthContextType = {
   session: Session | null
@@ -10,18 +14,19 @@ type AuthContextType = {
   profile: Profile | null
   onboarding: OnboardingState | null
   loading: boolean
+  savedAccounts: SavedAccount[]
+  canAddAccount: boolean
+  switchAccount: (userId: string) => Promise<void>
+  beginAddAccount: () => Promise<void>
+  forgetAccount: (userId: string) => void
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
-  session: null,
-  user: null,
-  profile: null,
-  onboarding: null,
-  loading: true,
-  signOut: async () => {},
-  refreshProfile: async () => {},
+  session: null, user: null, profile: null, onboarding: null, loading: true,
+  savedAccounts: [], canAddAccount: true, switchAccount: async () => {},
+  beginAddAccount: async () => {}, forgetAccount: () => {}, signOut: async () => {}, refreshProfile: async () => {},
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -30,6 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [onboarding, setOnboarding] = useState<OnboardingState | null>(null)
   const [loading, setLoading] = useState(true)
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>(() => readSavedAccounts())
 
   const applyProfilePreferences = (nextProfile: Profile | null) => {
     if (!nextProfile) {
@@ -50,6 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ])
     setProfile(profileResult.data)
     setOnboarding(onboardingResult.data)
+    if (profileResult.data) setSavedAccounts(updateSavedAccountProfile(userId, profileResult.data))
     applyProfilePreferences(profileResult.data)
   }
 
@@ -57,43 +64,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user) await fetchProfile(user.id)
   }
 
+  const switchAccount = async (userId: string) => {
+    if (user?.id === userId) return
+    const target = readSavedAccounts().find(account => account.userId === userId)
+    if (!target) throw new Error('SAVED_ACCOUNT_NOT_FOUND')
+    const { error } = await supabase.auth.setSession({ access_token: target.accessToken, refresh_token: target.refreshToken })
+    if (error) throw error
+    setSavedAccounts(touchSavedAccount(userId))
+  }
+
+  const beginAddAccount = async () => {
+    const currentAccounts = readSavedAccounts()
+    const activeIsSaved = Boolean(session?.user && currentAccounts.some(account => account.userId === session.user.id))
+    if (!activeIsSaved && currentAccounts.length >= MAX_SAVED_ACCOUNTS) throw new Error('ACCOUNT_LIMIT_REACHED')
+    if (session) setSavedAccounts(saveAccountSession(session))
+    if (readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) throw new Error('ACCOUNT_LIMIT_REACHED')
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
+    if (error) throw error
+  }
+
+  const forgetAccount = (userId: string) => {
+    if (user?.id === userId) throw new Error('CANNOT_REMOVE_ACTIVE_ACCOUNT')
+    setSavedAccounts(removeStoredAccount(userId))
+  }
+
   useEffect(() => {
     if (!localStorage.getItem('yomy-timezone')) localStorage.setItem('yomy-timezone', systemTimezone())
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id).finally(() => setLoading(false))
-      } else {
-        setLoading(false)
-      }
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession)
+      setUser(currentSession?.user ?? null)
+      if (currentSession?.user) {
+        setSavedAccounts(saveAccountSession(currentSession))
+        fetchProfile(currentSession.user.id).finally(() => setLoading(false))
+      } else setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       if (nextSession?.user) {
+        const known = readSavedAccounts().some(account => account.userId === nextSession.user.id)
+        if (event === 'SIGNED_IN' && !known && readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) {
+          void supabase.auth.signOut({ scope: 'local' })
+          setSession(null)
+          setUser(null)
+          setProfile(null)
+          setOnboarding(null)
+          setLoading(false)
+          return
+        }
+        setSavedAccounts(saveAccountSession(nextSession))
         void fetchProfile(nextSession.user.id)
       } else {
         setProfile(null)
         setOnboarding(null)
       }
     })
-
     return () => subscription.unsubscribe()
   }, [])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    if (user) setSavedAccounts(removeStoredAccount(user.id))
+    const { error } = await supabase.auth.signOut({ scope: 'local' })
+    if (error) throw error
     setProfile(null)
     setOnboarding(null)
   }
 
-  return (
-    <AuthContext.Provider value={{ session, user, profile, onboarding, loading, signOut, refreshProfile }}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={{
+    session, user, profile, onboarding, loading, savedAccounts,
+    canAddAccount: savedAccounts.length < MAX_SAVED_ACCOUNTS,
+    switchAccount, beginAddAccount, forgetAccount, signOut, refreshProfile,
+  }}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => useContext(AuthContext)

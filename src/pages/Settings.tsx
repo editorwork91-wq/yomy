@@ -13,7 +13,7 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
-import { LogOut, ChevronRight, Shield, Bell,  MessageSquare, Moon, Sun, Type, Languages, Ban, UserRound, Smartphone } from 'lucide-react'
+import { LogOut, ChevronRight, Shield, Bell,  MessageSquare, Moon, Sun, Type, Languages, Ban, UserRound, Smartphone, UsersRound } from 'lucide-react'
 
 type BlockedUser = { blocked_id: string; profiles?: { id: string; username: string; full_name: string; avatar_url: string } | null }
 
@@ -182,6 +182,8 @@ export default function Settings() {
 
         <section className="yomy-ios-panel overflow-hidden">
           <div className="p-1">
+            <Link to="/accounts" className="yomy-setting-row"><span className="flex items-center gap-3"><UsersRound className="size-4 text-muted-foreground" /><span className="text-sm font-medium">{language === 'ar' ? 'إدارة الحسابات' : language === 'de' ? 'Konten verwalten' : language === 'fr' ? 'Gérer les comptes' : language === 'es' ? 'Administrar cuentas' : 'Manage accounts'}</span></span><ChevronRight className="size-4 text-muted-foreground" /></Link>
+            <Separator />
             <Link to="/edit-profile" className="yomy-setting-row"><span className="flex items-center gap-3"><UserRound className="size-4 text-muted-foreground" /><span className="text-sm font-medium">{copy('editProfile')}</span></span><ChevronRight className="size-4 text-muted-foreground" /></Link>
             <Separator />
             <Link to="/notifications" className="yomy-setting-row"><span className="flex items-center gap-3"><Bell className="size-4 text-muted-foreground" /><span className="text-sm font-medium">{copy('notifications')}</span></span><ChevronRight className="size-4 text-muted-foreground" /></Link>
