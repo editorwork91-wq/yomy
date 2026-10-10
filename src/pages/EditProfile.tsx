@@ -33,15 +33,30 @@ export default function EditProfile() {
 
   const uploadAvatar = async (file: File) => {
     if (!user) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose a valid image file.')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Please choose an image no larger than 5MB.')
+      return
+    }
     setUploading(true)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `${user.id}/avatar.${ext || 'jpg'}`
+      const namedExtension = (file.name.split('.').pop() || '').replace(/[^a-z0-9]/gi, '').toLowerCase()
+      const extension = file.type === 'image/png'
+        ? 'png'
+        : file.type === 'image/webp'
+          ? 'webp'
+          : file.type === 'image/jpeg'
+            ? 'jpg'
+            : namedExtension || 'jpg'
+      const path = user.id + '/avatar.' + extension
       const { error: upErr } = await supabase.storage
         .from('profile-avatars')
-        .upload(path, file, { upsert: true })
+        .upload(path, file, { upsert: true, contentType: file.type, cacheControl: '3600' })
       if (upErr) throw upErr
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = await supabase.storage
         .from('profile-avatars')
         .getPublicUrl(path)
       setAvatarUrl(publicUrl)

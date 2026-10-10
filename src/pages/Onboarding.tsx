@@ -48,18 +48,32 @@ function splitFullName(value: string) {
   return { first: parts.slice(0, -1).join(' '), last: parts[parts.length - 1] }
 }
 
-function phoneErrorMessage(error: unknown) {
+function phoneErrorMessage(error: unknown, rtl = false) {
   const code = typeof error === 'object' && error !== null && 'code' in error
     ? String((error as { code?: unknown }).code || '')
     : ''
-  if (code === 'auth/invalid-phone-number') return 'The phone number is not valid.'
-  if (code === 'auth/too-many-requests') return 'Too many attempts. Please wait and try again later.'
-  if (code === 'auth/quota-exceeded') return 'Phone verification is temporarily unavailable. Please try again later.'
-  if (code === 'auth/captcha-check-failed') return 'The security check could not be completed. Please try again.'
-  if (error instanceof Error && error.message === 'PHONE_AUTH_REQUIRES_HOSTED_DOMAIN') {
-    return 'SMS verification must be completed from YOMY’s secure web address, not localhost.'
+  const message = error instanceof Error ? error.message : ''
+
+  if (message.includes('PHONE_ACCOUNT_LIMIT_REACHED')) {
+    return rtl
+      ? 'هذا الرقم مرتبط بالفعل بحسابين على YOMY، ولا يمكن استخدامه لحساب ثالث.'
+      : 'This phone number can be verified for up to two YOMY accounts only.'
   }
-  return error instanceof Error ? error.message : 'Phone verification failed.'
+  if (message.includes('PHONE_AUTH_REQUIRES_HOSTED_DOMAIN')) {
+    return rtl
+      ? 'يجب التحقق من الرقم عبر عنوان YOMY الآمن على الإنترنت، وليس localhost.'
+      : 'SMS verification must be completed from YOMY’s secure web address, not localhost.'
+  }
+  if (message.includes('FIREBASE_PHONE_AUTH_NOT_CONFIGURED')) {
+    return rtl
+      ? 'التحقق عبر الرسائل غير متاح مؤقتًا. يمكنك تخطي إضافة الرقم والمتابعة.'
+      : 'Phone verification is temporarily unavailable. You can continue without a phone number.'
+  }
+  if (code === 'auth/invalid-phone-number') return rtl ? 'رقم الهاتف غير صالح.' : 'The phone number is not valid.'
+  if (code === 'auth/too-many-requests') return rtl ? 'محاولات كثيرة. انتظر قليلًا ثم حاول مرة أخرى.' : 'Too many attempts. Please wait and try again later.'
+  if (code === 'auth/quota-exceeded') return rtl ? 'تم بلوغ حد الرسائل مؤقتًا. حاول لاحقًا.' : 'The SMS quota has been reached. Please try again later.'
+  if (code === 'auth/captcha-check-failed') return rtl ? 'تعذر إكمال فحص الأمان. حاول مرة أخرى.' : 'The security check could not be completed. Please try again.'
+  return message || (rtl ? 'فشل التحقق من رقم الهاتف.' : 'Phone verification failed.')
 }
 
 export default function Onboarding() {
@@ -310,7 +324,7 @@ export default function Onboarding() {
     } catch (error) {
       resetFirebasePhoneVerification()
       setPhoneState('idle')
-      toast.error(phoneErrorMessage(error))
+      toast.error(phoneErrorMessage(error, rtl))
     }
   }
 
@@ -327,7 +341,7 @@ export default function Onboarding() {
           ? 'idle'
           : 'code',
       )
-      toast.error(phoneErrorMessage(error))
+      toast.error(phoneErrorMessage(error, rtl))
     }
   }
 
@@ -369,8 +383,8 @@ export default function Onboarding() {
       toast.error(t.uploadFailed)
       return
     }
-    if (file.size > 8 * 1024 * 1024) {
-      toast.error(rtl ? 'الصورة يجب أن تكون أقل من 8MB.' : 'Please choose an image smaller than 8MB.')
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(rtl ? 'حجم الصورة يجب ألا يتجاوز 5MB.' : 'Please choose an image no larger than 5MB.')
       return
     }
     setUploadingPhoto(true)
