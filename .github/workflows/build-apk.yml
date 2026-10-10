@@ -153,16 +153,16 @@ jobs:
           app_gradle = Path('android/app/build.gradle')
           app_text = app_gradle.read_text()
           if 'com.google.gms.google-services' not in app_text:
-              apply_android = re.search(r"apply plugin:\s*['\\"]com\\.android\\.application['\\"]", app_text)
+              apply_android = re.search(r"apply plugin:.*com\.android\.application", app_text)
               if apply_android:
                   end = apply_android.end()
-                  app_text = app_text[:end] + "\\napply plugin: 'com.google.gms.google-services'" + app_text[end:]
+                  app_text = app_text[:end] + "\napply plugin: 'com.google.gms.google-services'" + app_text[end:]
               else:
                   plugins_block = re.search(r'plugins\s*\{', app_text)
                   if not plugins_block:
                       raise SystemExit('Unable to apply Google Services plugin in android/app/build.gradle')
                   insert_at = plugins_block.end()
-                  app_text = app_text[:insert_at] + "\\n    id 'com.google.gms.google-services'" + app_text[insert_at:]
+                  app_text = app_text[:insert_at] + "\n    id 'com.google.gms.google-services'" + app_text[insert_at:]
               app_gradle.write_text(app_text)
 
           main = Path('android/app/src/main/java/com/yomy/app/MainActivity.java')
