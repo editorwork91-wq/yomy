@@ -4,8 +4,9 @@ import { supabase } from '@/lib/supabase'
 import type { OnboardingState, Profile } from '@/lib/supabase'
 import { applyYomyFontScale, applyYomyLanguage, systemTimezone } from '@/lib/i18n'
 import {
-  MAX_SAVED_ACCOUNTS, readSavedAccounts, saveAccountSession, updateSavedAccountProfile,
-  touchSavedAccount, removeSavedAccount as removeStoredAccount, type SavedAccount,
+  MAX_SAVED_ACCOUNTS, flushAccountStore, initializeAccountStore, readSavedAccounts,
+  saveAccountSession, updateSavedAccountProfile, touchSavedAccount,
+  removeSavedAccount as removeStoredAccount, type SavedAccount,
 } from '@/lib/accountSwitcher'
 
 type AuthContextType = {
@@ -66,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const switchAccount = async (userId: string) => {
     if (user?.id === userId) return
+    await initializeAccountStore()
     const target = readSavedAccounts().find(account => account.userId === userId)
     if (!target) throw new Error('SAVED_ACCOUNT_NOT_FOUND')
     const { error } = await supabase.auth.setSession({ access_token: target.accessToken, refresh_token: target.refreshToken })
@@ -74,10 +76,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const beginAddAccount = async () => {
+    await initializeAccountStore()
     const currentAccounts = readSavedAccounts()
     const activeIsSaved = Boolean(session?.user && currentAccounts.some(account => account.userId === session.user.id))
     if (!activeIsSaved && currentAccounts.length >= MAX_SAVED_ACCOUNTS) throw new Error('ACCOUNT_LIMIT_REACHED')
     if (session) setSavedAccounts(saveAccountSession(session))
+    await flushAccountStore()
     if (readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) throw new Error('ACCOUNT_LIMIT_REACHED')
     const { error } = await supabase.auth.signOut({ scope: 'local' })
     if (error) throw error
@@ -90,19 +94,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!localStorage.getItem('yomy-timezone')) localStorage.setItem('yomy-timezone', systemTimezone())
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
-      setSession(currentSession)
-      setUser(currentSession?.user ?? null)
-      if (currentSession?.user) {
-        setSavedAccounts(saveAccountSession(currentSession))
-        fetchProfile(currentSession.user.id).finally(() => setLoading(false))
-      } else setLoading(false)
-    })
+    let active = true
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    const handleSession = async (event: string, nextSession: Session | null) => {
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       if (nextSession?.user) {
+        await initializeAccountStore()
         const known = readSavedAccounts().some(account => account.userId === nextSession.user.id)
         if (event === 'SIGNED_IN' && !known && readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) {
           void supabase.auth.signOut({ scope: 'local' })
@@ -110,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
           setOnboarding(null)
+          setSavedAccounts(readSavedAccounts())
           setLoading(false)
           return
         }
@@ -119,12 +118,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null)
         setOnboarding(null)
       }
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      // Do storage I/O outside Supabase's auth callback to avoid blocking auth.
+      void initializeAccountStore()
+        .then(() => handleSession(event, nextSession))
+        .catch(() => {
+          setSession(nextSession)
+          setUser(nextSession?.user ?? null)
+          if (!nextSession?.user) {
+            setProfile(null)
+            setOnboarding(null)
+          }
+        })
     })
-    return () => subscription.unsubscribe()
+
+    void initializeAccountStore()
+      .then(async () => {
+        if (!active) return
+        setSavedAccounts(readSavedAccounts())
+        const { data: { session: currentSession } } = await supabase.auth.getSession()
+        if (!active) return
+        await handleSession('INITIAL_SESSION', currentSession)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const signOut = async () => {
-    if (user) setSavedAccounts(removeStoredAccount(user.id))
+    if (user) {
+      setSavedAccounts(removeStoredAccount(user.id))
+      await flushAccountStore()
+    }
     const { error } = await supabase.auth.signOut({ scope: 'local' })
     if (error) throw error
     setProfile(null)

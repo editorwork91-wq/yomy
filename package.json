@@ -44,7 +44,8 @@
     "emoji-picker-react": "^4.22.2",
     "firebase": "^12.19.0",
     "libphonenumber-js": "^1.13.14",
-    "@capacitor-firebase/authentication": "^8.5.2"
+    "@capacitor-firebase/authentication": "^8.5.2",
+    "@aparajita/capacitor-secure-storage": "^8.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.12.0",
