@@ -271,6 +271,16 @@ export default function Onboarding() {
     }
   }
 
+  const attachVerifiedPhone = async (phoneToAttach: string, nonce: string) => {
+    const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
+      body: { action: 'attach_verified_phone', phone: phoneToAttach, nonce },
+    })
+    if (error || data?.error) throw new Error(data?.error || error?.message || 'PHONE_ATTACH_FAILED')
+    setPhoneState('verified')
+    await refreshProfile()
+    toast.success(rtl ? 'تم توثيق رقم الهاتف.' : 'Phone verified.')
+  }
+
   const startPhone = async () => {
     if (!normalizedPhone) {
       toast.error(t.invalidPhone)
@@ -287,7 +297,13 @@ export default function Onboarding() {
         body: { action: 'check_phone_signup', phone: normalizedPhone },
       })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'PHONE_VERIFICATION_UNAVAILABLE')
-      await startFirebasePhoneVerification(normalizedPhone, sendPhoneAnchorRef.current, language)
+      const started = await startFirebasePhoneVerification(normalizedPhone, sendPhoneAnchorRef.current, language)
+      if (started.automaticallyVerified) {
+        setPhoneState('verifying')
+        const verified = await confirmFirebasePhoneVerification('', normalizedPhone)
+        await attachVerifiedPhone(normalizedPhone, verified.nonce)
+        return
+      }
       setPhoneState('code')
       setCode('')
       toast.success(rtl ? 'تم إرسال رمز التحقق.' : 'Verification code sent.')
@@ -299,23 +315,18 @@ export default function Onboarding() {
   }
 
   const verifyPhone = async () => {
-    if (!/^\d{4,10}$/.test(code.trim()) || !normalizedPhone) return
+    if (!/^\\d{4,10}$/.test(code.trim()) || !normalizedPhone) return
     setPhoneState('verifying')
     try {
       const verified = await confirmFirebasePhoneVerification(code.trim(), normalizedPhone)
-      const { data, error } = await supabase.functions.invoke('yomy-account-auth', {
-        body: {
-          action: 'attach_verified_phone',
-          phone: normalizedPhone,
-          nonce: verified.nonce,
-        },
-      })
-      if (error || data?.error) throw new Error(data?.error || error?.message || 'PHONE_ATTACH_FAILED')
-      setPhoneState('verified')
-      await refreshProfile()
-      toast.success(rtl ? 'تم توثيق رقم الهاتف.' : 'Phone verified.')
+      await attachVerifiedPhone(normalizedPhone, verified.nonce)
     } catch (error) {
-      setPhoneState('code')
+      const message = error instanceof Error ? error.message : ''
+      setPhoneState(
+        message === 'PHONE_TOKEN_MISMATCH' || message === 'PHONE_VERIFICATION_NOT_STARTED'
+          ? 'idle'
+          : 'code',
+      )
       toast.error(phoneErrorMessage(error))
     }
   }
