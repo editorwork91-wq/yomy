@@ -30,7 +30,7 @@ export default function Login() {
     setSwitchingAccountId(userId)
     try {
       await switchAccount(userId)
-      navigate(await getPostAuthRoute(), { replace: true })
+      navigate(await getPostAuthRoute(userId), { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not switch account. Please sign in again.')
     } finally {

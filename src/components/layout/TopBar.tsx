@@ -50,7 +50,7 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
     if (userId === user?.id) return
     try {
       await switchAccount(userId)
-      navigate(await getPostAuthRoute(), { replace: true })
+      navigate(await getPostAuthRoute(userId), { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not switch account. Please sign in again.')
     }

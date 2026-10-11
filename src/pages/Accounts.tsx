@@ -33,7 +33,7 @@ export default function Accounts() {
     try {
       await switchAccount(userId)
       toast.success(rtl ? 'تم تبديل الحساب.' : 'Account switched.')
-      navigate(await getPostAuthRoute(), { replace: true })
+      navigate(await getPostAuthRoute(userId), { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not switch account. Sign in again to refresh this saved account.')
     } finally {
