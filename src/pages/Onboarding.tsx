@@ -87,8 +87,9 @@ export default function Onboarding() {
 
   const initialStep = useMemo<Step>(() => {
     if (onboarding?.completed) return 'agreement'
-    return STEP_ORDER.includes((onboarding?.step || 'phone') as Step)
-      ? onboarding!.step as Step
+    const savedStep = onboarding?.step
+    return savedStep && STEP_ORDER.includes(savedStep as Step)
+      ? savedStep as Step
       : 'phone'
   }, [onboarding])
 
