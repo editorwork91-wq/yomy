@@ -69,33 +69,73 @@ export default function ContactVerification() {
   const activeEmail = user?.email || ''
   const parsedPhone = useMemo(() => normalizePhoneInput(phoneDraft, country), [phoneDraft, country])
 
-  const copy = language === 'ar' ? {
-    title: 'المعلومات الشخصية', subtitle: 'حالة توثيق بيانات التواصل', email: 'البريد الإلكتروني', phone: 'رقم الهاتف',
-    verified: 'موثّق', unverified: 'غير موثّق', notAdded: 'لم تتم إضافة رقم', pending: 'رقم ينتظر التوثيق',
-    verifyEmail: 'توثيق البريد', managePhone: 'إضافة أو تغيير الرقم', emailDialog: 'تأكيد البريد الإلكتروني',
-    emailHelp: 'أرسل رسالة التأكيد. إذا احتوت على رمز، أدخله هنا؛ وإذا احتوت على رابط، افتحه لإتمام التوثيق.',
-    sendEmail: 'إرسال رسالة تأكيد', emailCode: 'رمز البريد الإلكتروني', verifyCode: 'تحقق', sendSms: 'إرسال رمز SMS',
-    phoneDialog: 'توثيق رقم الهاتف',
-    phoneHelp: 'اختر مفتاح الدولة أو اكتب الرقم الدولي مع +. الأرقام المحلية تُنسّق تلقائيًا حسب الدولة المختارة.',
-    chooseCountry: 'الدولة ومفتاح الاتصال', phoneNumber: 'رقم الهاتف', code: 'رمز SMS',
-    saveUnverified: 'حفظ دون توثيق', resend: 'إعادة إرسال الرمز', close: 'إغلاق',
-    savedUnverified: 'تم حفظ الرقم كرقم غير موثّق.', smsSent: 'تم إرسال رمز التحقق.',
-    phoneSuccess: 'تم توثيق رقم الهاتف بنجاح.', emailSent: 'أُرسلت رسالة التأكيد. افحص البريد الوارد والرسائل غير المرغوب فيها.',
-    emailSuccess: 'تم توثيق البريد الإلكتروني.',
-  } : {
-    title: 'Personal information', subtitle: 'Verification status for your contact details', email: 'Email address', phone: 'Phone number',
-    verified: 'Verified', unverified: 'Not verified', notAdded: 'No phone added', pending: 'Pending verification',
-    verifyEmail: 'Verify email', managePhone: 'Add or change number', emailDialog: 'Verify your email',
-    emailHelp: 'Send a confirmation email. Enter its code here if one is included, or open the verification link in the message.',
-    sendEmail: 'Send confirmation email', emailCode: 'Email verification code', verifyCode: 'Verify', sendSms: 'Send SMS code',
-    phoneDialog: 'Verify your phone number',
-    phoneHelp: 'Choose a country calling code or enter an international number with +. Local numbers are formatted for the selected country.',
-    chooseCountry: 'Country calling code', phoneNumber: 'Phone number', code: 'SMS verification code',
-    saveUnverified: 'Save without verifying', resend: 'Resend code', close: 'Close',
-    savedUnverified: 'The number was saved as unverified.', smsSent: 'Verification code sent.',
-    phoneSuccess: 'Phone number verified successfully.', emailSent: 'Confirmation email sent. Check your inbox and spam folder.',
-    emailSuccess: 'Email verified successfully.',
-  }
+  const copy = ({
+    en: {
+      title: "Personal information", subtitle: "Verification status for your contact details", email: "Email address", phone: "Phone number",
+      verified: "Verified", unverified: "Not verified", notAdded: "No phone added", pending: "Pending verification",
+      verifyEmail: "Verify email", managePhone: "Add or change number", emailDialog: "Verify your email",
+      emailHelp: "Send a confirmation email. Enter its code here if one is included, or open the verification link in the message.",
+      sendEmail: "Send confirmation email", emailCode: "Email verification code", verifyCode: "Verify", sendSms: "Send SMS code",
+      phoneDialog: "Verify your phone number", phoneHelp: "Choose a country calling code or enter an international number with +. Local numbers are formatted for the selected country.",
+      chooseCountry: "Country calling code", phoneNumber: "Phone number", code: "SMS verification code",
+      saveUnverified: "Save without verifying", resend: "Resend code", close: "Close",
+      savedUnverified: "The number was saved as unverified.", smsSent: "Verification code sent.",
+      phoneSuccess: "Phone number verified successfully.", emailSent: "Confirmation email sent. Check your inbox and spam folder.",
+      emailSuccess: "Email verified successfully.",
+    },
+    ar: {
+      title: "المعلومات الشخصية", subtitle: "حالة توثيق بيانات التواصل", email: "البريد الإلكتروني", phone: "رقم الهاتف",
+      verified: "موثّق", unverified: "غير موثّق", notAdded: "لم تتم إضافة رقم", pending: "رقم ينتظر التوثيق",
+      verifyEmail: "توثيق البريد", managePhone: "إضافة أو تغيير الرقم", emailDialog: "تأكيد البريد الإلكتروني",
+      emailHelp: "أرسل رسالة التأكيد. إذا احتوت على رمز، أدخله هنا؛ وإذا احتوت على رابط، افتحه لإتمام التوثيق.",
+      sendEmail: "إرسال رسالة تأكيد", emailCode: "رمز البريد الإلكتروني", verifyCode: "تحقق", sendSms: "إرسال رمز SMS",
+      phoneDialog: "توثيق رقم الهاتف", phoneHelp: "اختر مفتاح الدولة أو اكتب الرقم الدولي مع +. الأرقام المحلية تُنسّق تلقائيًا حسب الدولة المختارة.",
+      chooseCountry: "الدولة ومفتاح الاتصال", phoneNumber: "رقم الهاتف", code: "رمز SMS",
+      saveUnverified: "حفظ دون توثيق", resend: "إعادة إرسال الرمز", close: "إغلاق",
+      savedUnverified: "تم حفظ الرقم كرقم غير موثّق.", smsSent: "تم إرسال رمز التحقق.",
+      phoneSuccess: "تم توثيق رقم الهاتف بنجاح.", emailSent: "أُرسلت رسالة التأكيد. افحص البريد الوارد والرسائل غير المرغوب فيها.",
+      emailSuccess: "تم توثيق البريد الإلكتروني.",
+    },
+    de: {
+      title: "Persönliche Informationen", subtitle: "Verifizierungsstatus deiner Kontaktdaten", email: "E-Mail-Adresse", phone: "Telefonnummer",
+      verified: "Verifiziert", unverified: "Nicht verifiziert", notAdded: "Keine Telefonnummer hinzugefügt", pending: "Verifizierung ausstehend",
+      verifyEmail: "E-Mail bestätigen", managePhone: "Nummer hinzufügen oder ändern", emailDialog: "E-Mail bestätigen",
+      emailHelp: "Sende eine Bestätigungs-E-Mail. Gib den Code hier ein, falls einer enthalten ist, oder öffne den Bestätigungslink.",
+      sendEmail: "Bestätigungs-E-Mail senden", emailCode: "E-Mail-Bestätigungscode", verifyCode: "Bestätigen", sendSms: "SMS-Code senden",
+      phoneDialog: "Telefonnummer bestätigen", phoneHelp: "Wähle eine Landesvorwahl oder gib eine internationale Nummer mit + ein. Lokale Nummern werden für das ausgewählte Land formatiert.",
+      chooseCountry: "Landesvorwahl", phoneNumber: "Telefonnummer", code: "SMS-Bestätigungscode",
+      saveUnverified: "Unbestätigt speichern", resend: "Code erneut senden", close: "Schließen",
+      savedUnverified: "Die Nummer wurde als nicht verifiziert gespeichert.", smsSent: "Bestätigungscode gesendet.",
+      phoneSuccess: "Telefonnummer erfolgreich bestätigt.", emailSent: "Bestätigungs-E-Mail gesendet. Prüfe auch den Spam-Ordner.",
+      emailSuccess: "E-Mail erfolgreich bestätigt.",
+    },
+    fr: {
+      title: "Informations personnelles", subtitle: "État de vérification de vos coordonnées", email: "Adresse e-mail", phone: "Numéro de téléphone",
+      verified: "Vérifié", unverified: "Non vérifié", notAdded: "Aucun numéro ajouté", pending: "Vérification en attente",
+      verifyEmail: "Vérifier l’e-mail", managePhone: "Ajouter ou modifier le numéro", emailDialog: "Vérifier votre e-mail",
+      emailHelp: "Envoyez un e-mail de confirmation. Saisissez son code ici s’il en contient un, ou ouvrez le lien de vérification.",
+      sendEmail: "Envoyer l’e-mail de confirmation", emailCode: "Code de vérification e-mail", verifyCode: "Vérifier", sendSms: "Envoyer le code SMS",
+      phoneDialog: "Vérifier votre numéro", phoneHelp: "Choisissez l’indicatif du pays ou saisissez un numéro international avec +. Les numéros locaux sont formatés selon le pays sélectionné.",
+      chooseCountry: "Indicatif du pays", phoneNumber: "Numéro de téléphone", code: "Code de vérification SMS",
+      saveUnverified: "Enregistrer sans vérifier", resend: "Renvoyer le code", close: "Fermer",
+      savedUnverified: "Le numéro a été enregistré comme non vérifié.", smsSent: "Code de vérification envoyé.",
+      phoneSuccess: "Numéro de téléphone vérifié avec succès.", emailSent: "E-mail de confirmation envoyé. Vérifiez aussi les courriers indésirables.",
+      emailSuccess: "Adresse e-mail vérifiée avec succès.",
+    },
+    es: {
+      title: "Información personal", subtitle: "Estado de verificación de tus datos de contacto", email: "Correo electrónico", phone: "Número de teléfono",
+      verified: "Verificado", unverified: "Sin verificar", notAdded: "No se ha añadido ningún número", pending: "Verificación pendiente",
+      verifyEmail: "Verificar correo", managePhone: "Añadir o cambiar número", emailDialog: "Verifica tu correo",
+      emailHelp: "Envía un correo de confirmación. Introduce aquí el código si aparece, o abre el enlace de verificación del mensaje.",
+      sendEmail: "Enviar correo de confirmación", emailCode: "Código de verificación del correo", verifyCode: "Verificar", sendSms: "Enviar código SMS",
+      phoneDialog: "Verifica tu número", phoneHelp: "Elige el prefijo del país o escribe un número internacional con +. Los números locales se formatean según el país seleccionado.",
+      chooseCountry: "Prefijo del país", phoneNumber: "Número de teléfono", code: "Código de verificación SMS",
+      saveUnverified: "Guardar sin verificar", resend: "Reenviar código", close: "Cerrar",
+      savedUnverified: "El número se guardó sin verificar.", smsSent: "Código de verificación enviado.",
+      phoneSuccess: "Número de teléfono verificado correctamente.", emailSent: "Correo de confirmación enviado. Revisa también la carpeta de spam.",
+      emailSuccess: "Correo electrónico verificado correctamente.",
+    },
+  } as const)[language]
 
   useEffect(() => {
     if (!user?.id) return
@@ -366,7 +406,7 @@ export default function ContactVerification() {
             </div>}
           </div>
           <DialogFooter className="flex-col gap-2 sm:flex-col">
-            <Button ref={sendButtonRef} className="h-11 w-full rounded-2xl" onClick={() => void sendPhoneCode()} disabled={!parsedPhone.e164 || phoneMode === 'sending' || phoneMode === 'verifying'}>{phoneMode === 'sending' ? '…' : copy.sendSms}{phoneCooldown > 0 ? ' (' + phoneCooldown + 's)' : ''}</Button>
+            <Button ref={sendButtonRef} className="h-11 w-full rounded-2xl" onClick={() => void sendPhoneCode()} disabled={!parsedPhone.e164 || phoneCooldown > 0 || phoneMode === 'sending' || phoneMode === 'verifying'}>{phoneMode === 'sending' ? '…' : copy.sendSms}{phoneCooldown > 0 ? ' (' + phoneCooldown + 's)' : ''}</Button>
             <Button variant="outline" className="h-11 w-full rounded-2xl" onClick={() => void saveWithoutVerification()} disabled={!parsedPhone.e164 || phoneMode === 'sending' || phoneMode === 'verifying'}>{copy.saveUnverified}</Button>
             <Button variant="ghost" className="h-10 w-full rounded-2xl" onClick={() => setPhoneOpen(false)}>{copy.close}</Button>
           </DialogFooter>

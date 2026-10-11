@@ -122,7 +122,7 @@ export default function Onboarding() {
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [phoneState, setPhoneState] = useState<'idle' | 'sending' | 'code' | 'verifying' | 'verified'>(
-    profile?.phone_e164 ? 'verified' : 'idle',
+    profile?.phone_e164 && profile?.phone_verified_at ? 'verified' : 'idle',
   )
   const [phoneResendCooldown, setPhoneResendCooldown] = useState(0)
   const [detectingLocation, setDetectingLocation] = useState(false)
