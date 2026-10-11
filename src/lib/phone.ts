@@ -27,7 +27,7 @@ const COUNTRY_DISPLAY_NAMES = typeof Intl.DisplayNames === 'function'
   ? new Intl.DisplayNames(['en'], { type: 'region' })
   : null
 
-function countryName(code: CountryCode) {
+export function getCountryName(code: CountryCode) {
   return COUNTRY_NAMES[code] || COUNTRY_DISPLAY_NAMES?.of(code) || code
 }
 
@@ -35,7 +35,7 @@ export const COUNTRY_CODES = SUPPORTED_COUNTRIES
   .filter(code => getCountries().includes(code))
   .map(code => ({
     code,
-    name: countryName(code),
+    name: getCountryName(code),
     dial: '+' + getCountryCallingCode(code),
   }))
   .sort((a, b) => a.name.localeCompare(b.name))

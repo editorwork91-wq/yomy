@@ -24,7 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { toast } from 'sonner'
 import {
   COUNTRY_CODES,
-  COUNTRY_NAMES,
+  getCountryName,
   countryFlag,
   detectCountryFromDevice,
   isSupportedCountry,
@@ -288,7 +288,7 @@ export default function Onboarding() {
       setCountry(detected)
       localStorage.setItem('yomy-phone-country', detected)
       if (phone) setPhone(normalizePhoneInput(phone, detected).display)
-      toast.success(`${countryFlag(detected)} ${COUNTRY_NAMES[detected]} ${t.detected}`)
+      toast.success(`${countryFlag(detected)} ${getCountryName(detected)} ${t.detected}`)
     } finally {
       setDetectingLocation(false)
     }
