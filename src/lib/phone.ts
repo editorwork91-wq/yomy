@@ -6,12 +6,7 @@ import {
   type CountryCode,
 } from 'libphonenumber-js/max'
 
-export const SUPPORTED_COUNTRIES = [
-  'AT','BE','BG','CH','CY','CZ','DE','DK','EE','ES','FI','FR','GB','GR','HR','HU',
-  'IE','IS','IT','LI','LT','LU','LV','MC','MD','ME','MK','MT','NL','NO','PL','PT',
-  'RO','RS','SE','SI','SK','SM','UA','VA','AL','AD','BA','BY','TR',
-  'EG','US',
-] as CountryCode[]
+export const SUPPORTED_COUNTRIES = getCountries() as CountryCode[]
 
 const SUPPORTED_SET = new Set<string>(SUPPORTED_COUNTRIES)
 
@@ -28,11 +23,17 @@ export const COUNTRY_NAMES: Record<string, string> = {
   EG:'Egypt', US:'United States',
 }
 
+const COUNTRY_DISPLAY_NAMES = new Intl.DisplayNames(['en'], { type: 'region' })
+
+function countryName(code: CountryCode) {
+  return COUNTRY_NAMES[code] || COUNTRY_DISPLAY_NAMES.of(code) || code
+}
+
 export const COUNTRY_CODES = SUPPORTED_COUNTRIES
   .filter(code => getCountries().includes(code))
   .map(code => ({
     code,
-    name: COUNTRY_NAMES[code] || code,
+    name: countryName(code),
     dial: '+' + getCountryCallingCode(code),
   }))
   .sort((a, b) => a.name.localeCompare(b.name))
