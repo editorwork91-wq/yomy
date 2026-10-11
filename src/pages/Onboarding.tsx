@@ -605,7 +605,7 @@ export default function Onboarding() {
                       <button type="button" className="text-xs font-semibold text-primary" onClick={() => { resetFirebasePhoneVerification(); setPhoneState('idle') }}>
                         {rtl ? 'تغيير الرقم' : 'Change number'}
                       </button>
-                      <button type="button" className="text-xs font-semibold text-primary disabled:text-muted-foreground" disabled={phoneResendCooldown > 0 || phoneState === 'sending' || phoneState === 'verifying'} onClick={() => void resendPhoneCode()}>
+                      <button type="button" className="text-xs font-semibold text-primary disabled:text-muted-foreground" disabled={phoneResendCooldown > 0 || phoneState === 'verifying'} onClick={() => void resendPhoneCode()}>
                         {rtl ? 'إعادة الإرسال' : 'Resend code'}{phoneResendCooldown > 0 ? ' (' + phoneResendCooldown + 's)' : ''}
                       </button>
                     </div>

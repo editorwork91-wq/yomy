@@ -362,7 +362,7 @@ export default function ContactVerification() {
               <Label htmlFor="phone-verification-code">{copy.code}</Label>
               <Input id="phone-verification-code" value={phoneCode} onChange={event => setPhoneCode(event.target.value.replace(/\D/g, '').slice(0, 10))} inputMode="numeric" autoComplete="one-time-code" className="h-12 rounded-2xl" placeholder="123456" />
               <Button className="h-11 w-full rounded-2xl" onClick={() => void verifyPhoneCode()} disabled={phoneMode === 'verifying' || !/^\d{4,10}$/.test(phoneCode.trim())}>{phoneMode === 'verifying' ? '…' : copy.verifyCode}</Button>
-              <Button variant="ghost" className="h-9 w-full rounded-xl" onClick={() => void resendPhoneCode()} disabled={phoneCooldown > 0 || phoneMode === 'sending' || phoneMode === 'verifying'}>{copy.resend}{phoneCooldown > 0 ? ' (' + phoneCooldown + 's)' : ''}</Button>
+              <Button variant="ghost" className="h-9 w-full rounded-xl" onClick={() => void resendPhoneCode()} disabled={phoneCooldown > 0 || phoneMode === 'verifying'}>{copy.resend}{phoneCooldown > 0 ? ' (' + phoneCooldown + 's)' : ''}</Button>
             </div>}
           </div>
           <DialogFooter className="flex-col gap-2 sm:flex-col">
