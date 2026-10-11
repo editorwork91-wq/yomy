@@ -90,6 +90,39 @@ jobs:
             echo "Firebase Android configuration is unavailable; native FCM registration will not produce a device token."
           fi
 
+      - name: Validate Firebase Android configuration
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config_path = Path('android/app/google-services.json')
+          if not config_path.is_file():
+              raise SystemExit('Required Firebase Android config is missing after restoration')
+
+          try:
+              config = json.loads(config_path.read_text(encoding='utf-8'))
+          except Exception as exc:
+              raise SystemExit(f'Firebase Android config is not valid JSON: {exc}')
+
+          project = config.get('project_info', {})
+          if project.get('project_id') != 'yomy-26030':
+              raise SystemExit('Firebase Android config must target yomy-26030')
+
+          expected_app_id = '1:338767716652:android:9dbb95184e70ab2958c89'
+          clients = config.get('client', [])
+          matched = any(
+              client.get('client_info', {}).get('android_client_info', {}).get('package_name') == 'com.yomy.app'
+              and client.get('client_info', {}).get('mobilesdk_app_id') == expected_app_id
+              and bool(client.get('api_key', [{}])[0].get('current_key'))
+              for client in clients
+          )
+          if not matched:
+              raise SystemExit('Firebase config does not contain YOMY Android package/app ID and API key')
+
+          print('Validated Firebase Android config for yomy-26030 / com.yomy.app.')
+          PY
+
       - name: Restore launcher branding and native bridge
         run: |
           if [ -d /tmp/YomyLauncherResources ]; then
