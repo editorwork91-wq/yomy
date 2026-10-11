@@ -35,6 +35,8 @@ import {
   resetFirebasePhoneVerification,
   startFirebasePhoneVerification,
 } from '@/lib/firebasePhone'
+import { savePendingPhoneDraft, clearPendingPhoneDraft } from '@/lib/phoneDraft'
+
 
 type Step = 'phone' | 'name' | 'photo' | 'agreement'
 const LEGAL_VERSION = '2026-10-08'
@@ -83,7 +85,6 @@ export default function Onboarding() {
   const rtl = language === 'ar'
 
   const sendPhoneAnchorRef = useRef<HTMLButtonElement>(null)
-  const attemptedLocationRef = useRef(false)
 
   const initialStep = useMemo<Step>(() => {
     if (onboarding?.completed) return 'agreement'
@@ -123,6 +124,7 @@ export default function Onboarding() {
   const [phoneState, setPhoneState] = useState<'idle' | 'sending' | 'code' | 'verifying' | 'verified'>(
     profile?.phone_e164 ? 'verified' : 'idle',
   )
+  const [phoneResendCooldown, setPhoneResendCooldown] = useState(0)
   const [detectingLocation, setDetectingLocation] = useState(false)
 
   const [avatarPreview, setAvatarPreview] = useState(profile?.avatar_url || '')
@@ -143,6 +145,12 @@ export default function Onboarding() {
   useEffect(() => {
     setAvatarPreview(profile?.avatar_url || '')
   }, [profile?.avatar_url])
+
+  useEffect(() => {
+    if (phoneResendCooldown <= 0) return
+    const timer = window.setTimeout(() => setPhoneResendCooldown(value => Math.max(0, value - 1)), 1000)
+    return () => window.clearTimeout(timer)
+  }, [phoneResendCooldown])
 
   useEffect(() => {
     return () => resetFirebasePhoneVerification()
@@ -291,6 +299,7 @@ export default function Onboarding() {
       body: { action: 'attach_verified_phone', phone: phoneToAttach, nonce },
     })
     if (error || data?.error) throw new Error(data?.error || error?.message || 'PHONE_ATTACH_FAILED')
+    await clearPendingPhoneDraft(user.id).catch(() => undefined)
     setPhoneState('verified')
     await refreshProfile()
     toast.success(rtl ? 'تم توثيق رقم الهاتف.' : 'Phone verified.')
@@ -312,6 +321,7 @@ export default function Onboarding() {
         body: { action: 'check_phone_signup', phone: normalizedPhone },
       })
       if (error || data?.error) throw new Error(data?.error || error?.message || 'PHONE_VERIFICATION_UNAVAILABLE')
+      await savePendingPhoneDraft(user.id, normalizedPhone)
       const started = await startFirebasePhoneVerification(normalizedPhone, sendPhoneAnchorRef.current, language)
       if (started.automaticallyVerified) {
         setPhoneState('verifying')
@@ -321,6 +331,7 @@ export default function Onboarding() {
       }
       setPhoneState('code')
       setCode('')
+      setPhoneResendCooldown(30)
       toast.success(rtl ? 'تم إرسال رمز التحقق.' : 'Verification code sent.')
     } catch (error) {
       resetFirebasePhoneVerification()
@@ -329,8 +340,14 @@ export default function Onboarding() {
     }
   }
 
+  const resendPhoneCode = async () => {
+    if (phoneResendCooldown > 0 || phoneState === 'sending' || phoneState === 'verifying') return
+    resetFirebasePhoneVerification()
+    await startPhone()
+  }
+
   const verifyPhone = async () => {
-    if (!/^\\d{4,10}$/.test(code.trim()) || !normalizedPhone) return
+    if (!/^\d{4,10}$/.test(code.trim()) || !normalizedPhone) return
     setPhoneState('verifying')
     try {
       const verified = await confirmFirebasePhoneVerification(code.trim(), normalizedPhone)
@@ -441,6 +458,14 @@ export default function Onboarding() {
     navigate('/', { replace: true })
   }
 
+  const skipPhone = async () => {
+    if (normalizedPhone && !profile.phone_verified_at) {
+      try { await savePendingPhoneDraft(user.id, normalizedPhone) }
+      catch { toast.error(rtl ? 'تعذر حفظ الرقم غير الموثق، لكن يمكنك متابعة التسجيل.' : 'Could not save the unverified number, but you can continue registration.') }
+    }
+    await updateStep('name')
+  }
+
   const nextFromPhone = async () => {
     if (phoneState === 'code' || phoneState === 'verifying') return
     if (normalizedPhone && phoneState !== 'verified') {
@@ -510,14 +535,14 @@ export default function Onboarding() {
                     value={phone}
                     onChange={e => {
                       resetFirebasePhoneVerification()
-                      setPhone(normalizePhoneInput(e.target.value, country).display)
+                      const parsed = normalizePhoneInput(e.target.value, country)
+                      setPhone(parsed.display)
+                      if (parsed.e164 && parsed.country !== country) {
+                        setCountry(parsed.country)
+                        localStorage.setItem('yomy-phone-country', parsed.country)
+                      }
                       setPhoneState('idle')
                       setCode('')
-                    }}
-                    onFocus={() => {
-                      if (attemptedLocationRef.current) return
-                      attemptedLocationRef.current = true
-                      void detectCountry()
                     }}
                     inputMode="tel"
                     autoComplete="tel"
@@ -576,9 +601,14 @@ export default function Onboarding() {
                         {phoneState === 'verifying' ? <Spinner className="size-4" /> : t.verify}
                       </Button>
                     </div>
-                    <button type="button" className="text-xs font-semibold text-primary" onClick={() => { resetFirebasePhoneVerification(); setPhoneState('idle') }}>
-                      {rtl ? 'تغيير الرقم' : 'Change number'}
-                    </button>
+                    <div className="flex items-center justify-between gap-3">
+                      <button type="button" className="text-xs font-semibold text-primary" onClick={() => { resetFirebasePhoneVerification(); setPhoneState('idle') }}>
+                        {rtl ? 'تغيير الرقم' : 'Change number'}
+                      </button>
+                      <button type="button" className="text-xs font-semibold text-primary disabled:text-muted-foreground" disabled={phoneResendCooldown > 0 || phoneState === 'sending' || phoneState === 'verifying'} onClick={() => void resendPhoneCode()}>
+                        {rtl ? 'إعادة الإرسال' : 'Resend code'}{phoneResendCooldown > 0 ? ' (' + phoneResendCooldown + 's)' : ''}
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <Button
@@ -598,7 +628,7 @@ export default function Onboarding() {
                   variant="ghost"
                   className="h-11 w-full rounded-2xl text-muted-foreground"
                   disabled={saving}
-                  onClick={() => void updateStep('name')}
+                  onClick={() => void skipPhone()}
                 >
                   {t.skip}
                 </Button>

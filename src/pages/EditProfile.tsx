@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from 'sonner'
 import { Camera } from 'lucide-react'
+import ContactVerification from '@/components/account/ContactVerification'
 
 export default function EditProfile() {
   const { user, profile, refreshProfile } = useAuth()
@@ -137,7 +138,8 @@ export default function EditProfile() {
           </Button>
         }
       />
-      <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+        <ContactVerification />
         {/* Avatar */}
         <div className="flex flex-col items-center gap-3 mb-6">
           <div className="relative">
