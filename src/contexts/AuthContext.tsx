@@ -107,7 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (nextSession?.user) {
         await initializeAccountStore()
         const known = readSavedAccounts().some(account => account.userId === nextSession.user.id)
-        const explicitlyAddingAccount = !known && consumePendingAddAccount()
+        const hasPendingAddIntent = consumePendingAddAccount()
+        const explicitlyAddingAccount = !known && hasPendingAddIntent
 
         if (!known && explicitlyAddingAccount && readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) {
           void supabase.auth.signOut({ scope: 'local' })
