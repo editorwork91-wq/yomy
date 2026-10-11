@@ -6,7 +6,8 @@ import { applyYomyFontScale, applyYomyLanguage, systemTimezone } from '@/lib/i18
 import {
   MAX_SAVED_ACCOUNTS, flushAccountStore, initializeAccountStore, readSavedAccounts,
   saveAccountSession, updateSavedAccountProfile, touchSavedAccount,
-  removeSavedAccount as removeStoredAccount, type SavedAccount,
+  removeSavedAccount as removeStoredAccount, markPendingAddAccount, consumePendingAddAccount,
+  clearPendingAddAccount, type SavedAccount,
 } from '@/lib/accountSwitcher'
 
 type AuthContextType = {
@@ -83,8 +84,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (session) setSavedAccounts(saveAccountSession(session))
     await flushAccountStore()
     if (readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) throw new Error('ACCOUNT_LIMIT_REACHED')
+    markPendingAddAccount()
     const { error } = await supabase.auth.signOut({ scope: 'local' })
-    if (error) throw error
+    if (error) {
+      clearPendingAddAccount()
+      throw error
+    }
   }
 
   const forgetAccount = (userId: string) => {
@@ -102,7 +107,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (nextSession?.user) {
         await initializeAccountStore()
         const known = readSavedAccounts().some(account => account.userId === nextSession.user.id)
-        if (event === 'SIGNED_IN' && !known && readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) {
+        const explicitlyAddingAccount = !known && consumePendingAddAccount()
+
+        if (!known && explicitlyAddingAccount && readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) {
           void supabase.auth.signOut({ scope: 'local' })
           setSession(null)
           setUser(null)
@@ -112,7 +119,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(false)
           return
         }
-        setSavedAccounts(saveAccountSession(nextSession))
+
+        // Update tokens for previously saved accounts. Only add an unknown
+        // account automatically when the user explicitly used “Add account”.
+        if (known || explicitlyAddingAccount) {
+          setSavedAccounts(saveAccountSession(nextSession))
+        } else {
+          setSavedAccounts(readSavedAccounts())
+        }
         void fetchProfile(nextSession.user.id)
       } else {
         setProfile(null)
@@ -157,6 +171,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await initializeAccountStore()
 
     if (session?.user) {
+      const isAlreadySaved = readSavedAccounts().some(account => account.userId === session.user.id)
+      if (keepAccount && !isAlreadySaved && readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) {
+        throw new Error('ACCOUNT_LIMIT_REACHED')
+      }
       if (keepAccount) {
         saveAccountSession(session)
         if (profile) updateSavedAccountProfile(session.user.id, profile)

@@ -3,6 +3,31 @@ import { SecureStorage } from '@aparajita/capacitor-secure-storage'
 import type { Session } from '@supabase/supabase-js'
 
 export const MAX_SAVED_ACCOUNTS = 5
+const PENDING_ADD_KEY = 'yomy-pending-add-account-at'
+const PENDING_ADD_TTL_MS = 30 * 60 * 1000
+
+/** Marks an explicit Add account action; regular sign-ins are not auto-saved. */
+export function markPendingAddAccount() {
+  try { localStorage.setItem(PENDING_ADD_KEY, String(Date.now())) } catch {}
+}
+
+/** Returns true once for an Add account flow that has not expired. */
+export function consumePendingAddAccount(): boolean {
+  try {
+    const raw = localStorage.getItem(PENDING_ADD_KEY)
+    localStorage.removeItem(PENDING_ADD_KEY)
+    if (!raw) return false
+    const startedAt = Number(raw)
+    return Number.isFinite(startedAt) && startedAt > 0 && Date.now() - startedAt >= 0 && Date.now() - startedAt <= PENDING_ADD_TTL_MS
+  } catch {
+    return false
+  }
+}
+
+export function clearPendingAddAccount() {
+  try { localStorage.removeItem(PENDING_ADD_KEY) } catch {}
+}
+
 const ACCOUNT_VAULT_KEY = 'yomy-account-sessions-v1'
 const NATIVE_STORAGE_PREFIX = 'com.yomy.app.account-switcher'
 
