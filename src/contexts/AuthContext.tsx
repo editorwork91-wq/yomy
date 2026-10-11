@@ -20,7 +20,7 @@ type AuthContextType = {
   switchAccount: (userId: string) => Promise<void>
   beginAddAccount: () => Promise<void>
   forgetAccount: (userId: string) => void
-  signOut: () => Promise<void>
+  signOut: (keepAccount?: boolean) => Promise<void>
   refreshProfile: () => Promise<void>
 }
 
@@ -153,11 +153,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const signOut = async () => {
-    if (user) {
-      setSavedAccounts(removeStoredAccount(user.id))
+  const signOut = async (keepAccount = false) => {
+    await initializeAccountStore()
+
+    if (session?.user) {
+      if (keepAccount) {
+        saveAccountSession(session)
+        if (profile) updateSavedAccountProfile(session.user.id, profile)
+      } else {
+        removeStoredAccount(session.user.id)
+      }
+      setSavedAccounts(readSavedAccounts())
       await flushAccountStore()
     }
+
     const { error } = await supabase.auth.signOut({ scope: 'local' })
     if (error) throw error
     setProfile(null)

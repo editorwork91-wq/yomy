@@ -12,6 +12,8 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Spinner } from '@/components/ui/spinner'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 import { LogOut, ChevronRight, Shield, Bell,  MessageSquare, Moon, Sun, Type, Languages, Ban, UserRound, Smartphone, UsersRound } from 'lucide-react'
 
@@ -35,6 +37,8 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [blocked, setBlocked] = useState<BlockedUser[]>([])
   const [blockedLoading, setBlockedLoading] = useState(false)
+  const [signOutDialogOpen, setSignOutDialogOpen] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
 
 
   useEffect(() => {
@@ -120,9 +124,23 @@ export default function Settings() {
     toast.success('Unblocked')
   }
 
-  const handleSignOut = async () => {
-    await signOut()
-    navigate('/login')
+  const handleSignOut = async (keepAccount: boolean) => {
+    if (signingOut) return
+    setSigningOut(true)
+    try {
+      await signOut(keepAccount)
+      setSignOutDialogOpen(false)
+      toast.success(
+        language === 'ar'
+          ? (keepAccount ? 'تم حفظ الحساب على هذا الجهاز.' : 'تم تسجيل الخروج دون حفظ الحساب.')
+          : (keepAccount ? 'Account saved on this device.' : 'Signed out without saving this account.')
+      )
+      navigate('/login', { replace: true })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not sign out. Please try again.')
+    } finally {
+      setSigningOut(false)
+    }
   }
 
   return (
@@ -192,7 +210,89 @@ export default function Settings() {
           </div>
         </section>
 
-        <Button variant="outline" className="w-full rounded-2xl h-12 text-destructive hover:text-destructive" onClick={() => void handleSignOut()}><LogOut className="size-4 mr-2" />{copy('logout')}</Button>
+        <Button variant="outline" className="w-full rounded-2xl h-12 text-destructive hover:text-destructive" onClick={() => setSignOutDialogOpen(true)}><LogOut className="size-4 mr-2" />{copy('logout')}</Button>
+
+      <Dialog open={signOutDialogOpen} onOpenChange={open => !signingOut && setSignOutDialogOpen(open)}>
+        <DialogContent dir={language === 'ar' ? 'rtl' : 'ltr'} className="yomy-ios-panel max-w-[min(92vw,390px)] rounded-[28px] border-white/15 p-5 sm:p-6">
+          <DialogHeader className="items-center text-center sm:text-center">
+            <div className="relative mb-2">
+              <div className="absolute -inset-3 rounded-full bg-primary/10 blur-xl" />
+              <Avatar className="relative size-20 border-2 border-background shadow-lg ring-1 ring-border/70">
+                <AvatarImage src={profile?.avatar_url || user?.user_metadata?.avatar_url || ''} alt="" />
+                <AvatarFallback className="bg-primary/10 text-xl font-semibold text-primary">
+                  {(profile?.full_name || profile?.username || user?.email || 'Y').trim().charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </div>
+            <DialogTitle className="text-xl tracking-tight">
+              {({
+                ar: 'هل تريد حفظ هذا الحساب؟',
+                en: 'Save this account?',
+                de: 'Dieses Konto speichern?',
+                fr: 'Enregistrer ce compte ?',
+                es: '¿Guardar esta cuenta?',
+              } as const)[language]}
+            </DialogTitle>
+            <DialogDescription className="max-w-[290px] text-sm leading-6">
+              {({
+                ar: 'يمكنك العودة إليه لاحقًا من صورة الحساب دون إعادة إدخال بيانات الدخول على هذا الجهاز. لن نحفظ كلمة المرور.',
+                en: 'Return to it later from the account picker on this device. Your password is never saved.',
+                de: 'Kehre später über die Kontenauswahl auf diesem Gerät zurück. Dein Passwort wird nicht gespeichert.',
+                fr: 'Retrouvez-le plus tard depuis le sélecteur de compte sur cet appareil. Votre mot de passe ne sera pas enregistré.',
+                es: 'Vuelve más tarde desde el selector de cuentas de este dispositivo. No guardaremos tu contraseña.',
+              } as const)[language]}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mx-auto my-2 w-full max-w-[300px] rounded-2xl border border-border/60 bg-background/40 p-3">
+            <div className="flex items-center gap-3">
+              <Avatar className="size-11 shrink-0">
+                <AvatarImage src={profile?.avatar_url || user?.user_metadata?.avatar_url || ''} alt="" />
+                <AvatarFallback className="font-semibold">
+                  {(profile?.full_name || profile?.username || user?.email || 'Y').trim().charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{profile?.full_name || profile?.username || (language === 'ar' ? 'حساب YOMY' : 'YOMY account')}</p>
+                <p className="truncate text-xs text-muted-foreground">{user?.email || (profile?.username ? '@' + profile.username : '')}</p>
+                {profile?.username && <p className="truncate text-[11px] text-muted-foreground">@{profile.username}</p>}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="grid grid-cols-2 gap-2 sm:flex-row">
+            <Button type="button" variant="outline" className="h-11 rounded-2xl" disabled={signingOut} onClick={() => void handleSignOut(false)}>
+              {signingOut ? <Spinner className="mr-2 size-4" /> : null}
+              {({
+                ar: 'ليس الآن',
+                en: 'Not now',
+                de: 'Nicht jetzt',
+                fr: 'Pas maintenant',
+                es: 'Ahora no',
+              } as const)[language]}
+            </Button>
+            <Button type="button" className="h-11 rounded-2xl shadow-sm" disabled={signingOut} onClick={() => void handleSignOut(true)}>
+              {signingOut ? <Spinner className="mr-2 size-4" /> : null}
+              {({
+                ar: 'حفظ الحساب',
+                en: 'Save account',
+                de: 'Konto speichern',
+                fr: 'Enregistrer',
+                es: 'Guardar cuenta',
+              } as const)[language]}
+            </Button>
+          </DialogFooter>
+          <p className="px-2 text-center text-[10px] leading-5 text-muted-foreground">
+            {({
+              ar: 'يمكنك حذف الحساب المحفوظ في أي وقت من إدارة الحسابات.',
+              en: 'You can remove saved accounts anytime in Manage accounts.',
+              de: 'Gespeicherte Konten kannst du jederzeit unter Konten verwalten entfernen.',
+              fr: 'Vous pouvez retirer les comptes enregistrés à tout moment dans Gérer les comptes.',
+              es: 'Puedes quitar las cuentas guardadas en cualquier momento desde Administrar cuentas.',
+            } as const)[language]}
+          </p>
+        </DialogContent>
+      </Dialog>
       </div>
       <BottomNav />
     </div>
