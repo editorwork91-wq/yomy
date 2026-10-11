@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!localStorage.getItem('yomy-timezone')) localStorage.setItem('yomy-timezone', systemTimezone())
     let active = true
 
-    const handleSession = async (event: string, nextSession: Session | null) => {
+    const handleSession = async (nextSession: Session | null) => {
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       if (nextSession?.user) {
@@ -135,10 +135,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       // Do storage I/O outside Supabase's auth callback to avoid blocking auth.
       void initializeAccountStore()
-        .then(() => handleSession(event, nextSession))
+        .then(() => handleSession(nextSession))
         .catch(() => {
           setSession(nextSession)
           setUser(nextSession?.user ?? null)
@@ -155,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSavedAccounts(readSavedAccounts())
         const { data: { session: currentSession } } = await supabase.auth.getSession()
         if (!active) return
-        await handleSession('INITIAL_SESSION', currentSession)
+        await handleSession(currentSession)
         setLoading(false)
       })
       .catch(() => {
