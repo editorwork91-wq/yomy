@@ -23,10 +23,12 @@ export const COUNTRY_NAMES: Record<string, string> = {
   EG:'Egypt', US:'United States',
 }
 
-const COUNTRY_DISPLAY_NAMES = new Intl.DisplayNames(['en'], { type: 'region' })
+const COUNTRY_DISPLAY_NAMES = typeof Intl.DisplayNames === 'function'
+  ? new Intl.DisplayNames(['en'], { type: 'region' })
+  : null
 
 function countryName(code: CountryCode) {
-  return COUNTRY_NAMES[code] || COUNTRY_DISPLAY_NAMES.of(code) || code
+  return COUNTRY_NAMES[code] || COUNTRY_DISPLAY_NAMES?.of(code) || code
 }
 
 export const COUNTRY_CODES = SUPPORTED_COUNTRIES
