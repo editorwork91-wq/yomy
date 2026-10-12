@@ -35,7 +35,12 @@ export default function Accounts() {
       toast.success(rtl ? 'تم تبديل الحساب.' : 'Account switched.')
       navigate(await getPostAuthRoute(userId), { replace: true })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not switch account. Sign in again to refresh this saved account.')
+      if (error instanceof Error && error.message === 'SAVED_ACCOUNT_REAUTH_REQUIRED') {
+        navigate('/login?reauthAccount=' + encodeURIComponent(userId), { replace: true })
+        toast.error(rtl ? 'انتهت صلاحية جلسة هذا الحساب. سجّل الدخول إليه مرة واحدة لتحديثها.' : 'This saved session expired. Sign in to this account once to refresh it.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Could not switch account. Please try again.')
+      }
     } finally {
       setBusyId(null)
     }

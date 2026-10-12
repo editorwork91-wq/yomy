@@ -132,10 +132,10 @@ export default function Settings() {
       setSignOutDialogOpen(false)
       toast.success(
         language === 'ar'
-          ? (keepAccount ? 'تم حفظ الحساب على هذا الجهاز.' : 'تم تسجيل الخروج دون حفظ الحساب.')
-          : (keepAccount ? 'Account saved on this device.' : 'Signed out without saving this account.')
+          ? (keepAccount ? 'تم حفظ الحساب. يمكنك العودة إليه من قائمة الحسابات.' : 'تم تسجيل الخروج دون حفظ الحساب.')
+          : (keepAccount ? 'Account saved. You can return from the account picker.' : 'Signed out without saving this account.')
       )
-      navigate('/login', { replace: true })
+      navigate(keepAccount ? '/login?accountPicker=1' : '/login', { replace: true })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not sign out. Please try again.')
     } finally {

@@ -56,8 +56,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+  const accountFlow = params.get('addAccount') === '1'
+    || params.get('accountPicker') === '1'
+    || Boolean(params.get('reauthAccount'))
+
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-8" /></div>
-  if (user) return <Navigate to="/" replace />
+  // Account flows intentionally show the sign-in screen while a valid previous
+  // session stays alive in the vault; never revoke it just to display login.
+  if (user && !accountFlow) return <Navigate to="/" replace />
   return <>{children}</>
 }
 

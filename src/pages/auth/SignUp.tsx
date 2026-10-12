@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +24,8 @@ function accountErrorMessage(error: unknown) {
 
 export default function SignUp() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const addingAccount = new URLSearchParams(location.search).get('addAccount') === '1'
   const { savedAccounts } = useAuth()
   const { language, copy } = useYomyLanguage()
   const rtl = language === 'ar'
@@ -76,7 +78,7 @@ export default function SignUp() {
         email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: getPublicAppUrl(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`),
+          emailRedirectTo: getPublicAppUrl(`/verify-email?email=${encodeURIComponent(normalizedEmail)}${addingAccount ? '&addAccount=1' : ''}`),
           data: {
             username: normalizedUsername,
             full_name: '',
@@ -97,7 +99,7 @@ export default function SignUp() {
         navigate('/onboarding', { replace: true })
       } else {
         toast.success(rtl ? 'تم إنشاء الحساب. افحص بريدك لتأكيده.' : 'Account created. Check your email to confirm it.')
-        navigate(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`, { replace: true })
+        navigate(`/verify-email?email=${encodeURIComponent(normalizedEmail)}${addingAccount ? '&addAccount=1' : ''}`, { replace: true })
       }
     } catch (error) {
       toast.error(accountErrorMessage(error))

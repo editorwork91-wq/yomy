@@ -52,7 +52,12 @@ export default function TopBar({ title, showBack, showLogo = false, right }: Top
       await switchAccount(userId)
       navigate(await getPostAuthRoute(userId), { replace: true })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not switch account. Please sign in again.')
+      if (error instanceof Error && error.message === 'SAVED_ACCOUNT_REAUTH_REQUIRED') {
+        navigate('/login?reauthAccount=' + encodeURIComponent(userId), { replace: true })
+        toast.error(isArabic ? 'سجّل الدخول مرة واحدة لتحديث جلسة هذا الحساب.' : 'Sign in once to refresh this account session.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Could not switch account. Please try again.')
+      }
     }
   }
 

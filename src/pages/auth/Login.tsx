@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,7 @@ import { MAX_SAVED_ACCOUNTS } from '@/lib/accountSwitcher'
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { savedAccounts, switchAccount } = useAuth()
   const [switchingAccountId, setSwitchingAccountId] = useState<string | null>(null)
   const { copy, language } = useYomyLanguage()
@@ -20,6 +21,14 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const recoveryAccountId = new URLSearchParams(location.search).get('reauthAccount')
+
+  useEffect(() => {
+    if (!recoveryAccountId) return
+    const account = savedAccounts.find(item => item.userId === recoveryAccountId)
+    if (account?.email) setEmail(account.email)
+    setPassword('')
+  }, [recoveryAccountId, savedAccounts])
 
   const finishAuth = async () => {
     const destination = await getPostAuthRoute()
@@ -32,7 +41,12 @@ export default function Login() {
       await switchAccount(userId)
       navigate(await getPostAuthRoute(userId), { replace: true })
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not switch account. Please sign in again.')
+      if (error instanceof Error && error.message === 'SAVED_ACCOUNT_REAUTH_REQUIRED') {
+        navigate('/login?reauthAccount=' + encodeURIComponent(userId), { replace: true })
+        toast.error(rtl ? 'تحتاج جلسة هذا الحساب إلى تحديث. أدخل كلمة مروره مرة واحدة.' : 'This account needs a fresh sign-in. Enter its password once to restore switching.')
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Could not switch account. Please try again.')
+      }
     } finally {
       setSwitchingAccountId(null)
     }
@@ -99,6 +113,16 @@ export default function Login() {
             </Card>
           )}
 
+          {recoveryAccountId && (
+            <Card className="yomy-ios-panel border-primary/20">
+              <CardContent className="p-4 text-sm leading-6">
+                {rtl
+                  ? 'تعذرت استعادة جلسة هذا الحساب المحفوظة. سجّل الدخول إليه مرة واحدة لتحديث الجلسة، وسيعود التبديل للعمل.'
+                  : 'The old session for this account can no longer be restored. Sign in once below to refresh it; then account switching can work again.'}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="yomy-ios-panel border-white/10">
             <CardContent className="p-6">
               <form onSubmit={handleLogin} className="space-y-4">
@@ -125,7 +149,7 @@ export default function Login() {
               </div>
               <p className="text-sm">
                 {copy('dontHaveAccount')}{' '}
-                <Link to="/signup" className="font-semibold text-primary hover:underline">{copy('signup')}</Link>
+                <Link to={new URLSearchParams(location.search).has('addAccount') || new URLSearchParams(location.search).has('accountPicker') ? '/signup?addAccount=1' : '/signup'} className="font-semibold text-primary hover:underline">{copy('signup')}</Link>
               </p>
             </CardHeader>
           </Card>

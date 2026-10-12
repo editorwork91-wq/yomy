@@ -16,17 +16,20 @@ export default function VerifyEmail() {
     () => searchParams.get('email') || sessionStorage.getItem('yomy-pending-signup-email') || '',
     [searchParams],
   )
+  const addingAccount = searchParams.get('addAccount') === '1'
   const [resending, setResending] = useState(false)
 
   useEffect(() => {
-    if (!loading && user) navigate('/onboarding', { replace: true })
-  }, [loading, user, navigate])
+    if (loading || !user) return
+    if (addingAccount && email && user.email?.toLowerCase() !== email.toLowerCase()) return
+    navigate('/onboarding', { replace: true })
+  }, [loading, user, navigate, addingAccount, email])
 
   const resend = async () => {
     if (!email || resending) return
     setResending(true)
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: getPublicAppUrl(`/verify-email?email=${encodeURIComponent(email)}`) } })
+      const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: getPublicAppUrl(`/verify-email?email=${encodeURIComponent(email)}${addingAccount ? '&addAccount=1' : ''}`) } })
       if (error) throw error
       toast.success('Confirmation email sent again.')
     } catch (error) {

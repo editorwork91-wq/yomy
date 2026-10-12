@@ -67,13 +67,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const switchAccount = async (userId: string) => {
-    if (user?.id === userId) return
     await initializeAccountStore()
     const target = readSavedAccounts().find(account => account.userId === userId)
     if (!target) throw new Error('SAVED_ACCOUNT_NOT_FOUND')
-    const { error } = await supabase.auth.setSession({ access_token: target.accessToken, refresh_token: target.refreshToken })
-    if (error) throw error
+
+    // Capture the freshest active credentials before replacing the one Supabase
+    // client session. Inactive sessions are held in the account vault.
+    const { data: currentData, error: currentError } = await supabase.auth.getSession()
+    if (currentError) throw currentError
+    if (currentData.session && currentData.session.user.id !== userId) {
+      setSavedAccounts(saveAccountSession(currentData.session))
+      await flushAccountStore()
+    }
+
+    const { data, error } = await supabase.auth.setSession({
+      access_token: target.accessToken,
+      refresh_token: target.refreshToken,
+    })
+    if (error) {
+      if (/refresh token|invalid token|session not found|already used/i.test(error.message)) {
+        throw new Error('SAVED_ACCOUNT_REAUTH_REQUIRED')
+      }
+      throw error
+    }
+    if (data.session) setSavedAccounts(saveAccountSession(data.session))
     setSavedAccounts(touchSavedAccount(userId))
+    await flushAccountStore()
   }
 
   const beginAddAccount = async () => {
@@ -84,12 +103,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (session) setSavedAccounts(saveAccountSession(session))
     await flushAccountStore()
     if (readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) throw new Error('ACCOUNT_LIMIT_REACHED')
+    // Do not call signOut here: Supabase revokes the refresh token for the
+    // local session, which would make the just-saved account impossible to
+    // restore. The login route enters explicit add-account mode instead.
     markPendingAddAccount()
-    const { error } = await supabase.auth.signOut({ scope: 'local' })
-    if (error) {
-      clearPendingAddAccount()
-      throw error
-    }
   }
 
   const forgetAccount = (userId: string) => {
@@ -101,13 +118,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!localStorage.getItem('yomy-timezone')) localStorage.setItem('yomy-timezone', systemTimezone())
     let active = true
 
-    const handleSession = async (nextSession: Session | null) => {
+    const handleSession = async (nextSession: Session | null, event: string) => {
       setSession(nextSession)
       setUser(nextSession?.user ?? null)
       if (nextSession?.user) {
         await initializeAccountStore()
         const known = readSavedAccounts().some(account => account.userId === nextSession.user.id)
-        const hasPendingAddIntent = consumePendingAddAccount()
+        // INITIAL_SESSION and TOKEN_REFRESHED must not consume the add-account
+        // intent. Only a genuine sign-in can complete that flow.
+        const hasPendingAddIntent = event === 'SIGNED_IN' ? consumePendingAddAccount() : false
         const explicitlyAddingAccount = !known && hasPendingAddIntent
 
         if (!known && explicitlyAddingAccount && readSavedAccounts().length >= MAX_SAVED_ACCOUNTS) {
@@ -135,18 +154,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      // Do storage I/O outside Supabase's auth callback to avoid blocking auth.
-      void initializeAccountStore()
-        .then(() => handleSession(nextSession))
-        .catch(() => {
-          setSession(nextSession)
-          setUser(nextSession?.user ?? null)
-          if (!nextSession?.user) {
-            setProfile(null)
-            setOnboarding(null)
-          }
-        })
+    // Serialize auth notifications. A rapid SIGNED_IN/TOKEN_REFRESHED sequence
+    // must not let an older session overwrite the newly selected account.
+    let authEventQueue: Promise<void> = Promise.resolve()
+    const enqueueSession = (event: string, nextSession: Session | null) => {
+      authEventQueue = authEventQueue.then(async () => {
+        await initializeAccountStore()
+        await handleSession(nextSession, event)
+      }).catch(() => {
+        setSession(nextSession)
+        setUser(nextSession?.user ?? null)
+        if (!nextSession?.user) {
+          setProfile(null)
+          setOnboarding(null)
+        }
+      })
+      return authEventQueue
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      // Defer storage/database operations outside Supabase's callback.
+      void enqueueSession(event, nextSession)
     })
 
     void initializeAccountStore()
@@ -155,8 +183,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSavedAccounts(readSavedAccounts())
         const { data: { session: currentSession } } = await supabase.auth.getSession()
         if (!active) return
-        await handleSession(currentSession)
-        setLoading(false)
+        await enqueueSession('INITIAL_SESSION', currentSession)
+        if (active) setLoading(false)
       })
       .catch(() => {
         if (active) setLoading(false)
@@ -177,15 +205,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('ACCOUNT_LIMIT_REACHED')
       }
       if (keepAccount) {
-        saveAccountSession(session)
-        if (profile) updateSavedAccountProfile(session.user.id, profile)
-      } else {
-        removeStoredAccount(session.user.id)
+        // Saving an account is not a server sign-out. Keep its refresh token
+        // valid and let the account picker switch sessions from the login page.
+        setSavedAccounts(saveAccountSession(session))
+        if (profile) setSavedAccounts(updateSavedAccountProfile(session.user.id, profile))
+        await flushAccountStore()
+        return
       }
+
+      removeStoredAccount(session.user.id)
       setSavedAccounts(readSavedAccounts())
       await flushAccountStore()
     }
 
+    // This branch means "don't save this account"; its current refresh token
+    // is intentionally revoked and the account is removed from this device.
     const { error } = await supabase.auth.signOut({ scope: 'local' })
     if (error) throw error
     setProfile(null)
