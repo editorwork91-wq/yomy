@@ -7,7 +7,7 @@ import {
   MAX_SAVED_ACCOUNTS, flushAccountStore, initializeAccountStore, readSavedAccounts,
   saveAccountSession, updateSavedAccountProfile, touchSavedAccount,
   removeSavedAccount as removeStoredAccount, markPendingAddAccount, consumePendingAddAccount,
-  clearPendingAddAccount, type SavedAccount,
+  type SavedAccount,
 } from '@/lib/accountSwitcher'
 
 type AuthContextType = {
@@ -56,6 +56,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       supabase.from('profiles').select('*').eq('id', userId).maybeSingle(),
       supabase.from('user_onboarding').select('*').eq('user_id', userId).maybeSingle(),
     ])
+
+    // A previous user's profile query may finish after a fast account switch.
+    // Never let late data from that request overwrite the newly active account.
+    const { data: { session: liveSession } } = await supabase.auth.getSession()
+    if (liveSession?.user.id !== userId) return
+
     setProfile(profileResult.data)
     setOnboarding(onboardingResult.data)
     if (profileResult.data) setSavedAccounts(updateSavedAccountProfile(userId, profileResult.data))
