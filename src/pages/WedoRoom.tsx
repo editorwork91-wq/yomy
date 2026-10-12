@@ -104,7 +104,6 @@ export default function WedoRoomPage() {
   const friendRef = useRef<typeof friend>(null)
   const currentUserId = user?.id || ''
   const screenApiAvailable = typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices && 'getDisplayMedia' in navigator.mediaDevices)
-  const otherId = room ? (room.created_by === currentUserId ? room.friend_id : room.created_by) : ''
 
   const copy = {
     en: {
