@@ -23,6 +23,7 @@ import Profile from '@/pages/Profile'
 import EditProfile from '@/pages/EditProfile'
 import Settings from '@/pages/Settings'
 import Accounts from '@/pages/Accounts'
+import WedoRoomPage from '@/pages/WedoRoom'
 import ChatPro from '@/pages/ChatPro'
 import MessagesPro from '@/pages/MessagesPro'
 import NewChat from '@/pages/NewChat'
@@ -80,6 +81,7 @@ function AppRoutes() {
     <Route path="/edit-profile" element={<ProtectedRoute><EditProfile /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
     <Route path="/accounts" element={<ProtectedRoute><Accounts /></ProtectedRoute>} />
+    <Route path="/wedo/:roomId" element={<ProtectedRoute><WedoRoomPage /></ProtectedRoute>} />
     <Route path="/messages" element={<ProtectedRoute><MessagesPro /></ProtectedRoute>} />
     <Route path="/messages/new" element={<ProtectedRoute><NewChat /></ProtectedRoute>} />
     <Route path="/messages/:username" element={<ProtectedRoute><ChatPro /></ProtectedRoute>} />

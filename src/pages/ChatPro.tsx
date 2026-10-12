@@ -3,7 +3,7 @@ import EmojiPicker, { EmojiStyle, Theme as EmojiTheme } from 'emoji-picker-react
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Archive, BellOff, Camera, Check, CheckCheck, ChevronLeft, Copy, Heart, ImagePlus,
-  Mic, MoreVertical, Palette, Phone, Reply, RotateCcw, Send, Smile, Trash2, Video, WifiOff, PenLine,
+  Mic, MonitorUp, MoreVertical, Palette, Phone, Reply, RotateCcw, Send, Smile, Trash2, Video, WifiOff, PenLine,
   X, Pencil, Eye, Clock3, UserRound, ShieldCheck, Plus, FileText, BarChart3
 } from 'lucide-react'
 import { format } from 'date-fns'
@@ -1109,6 +1109,26 @@ export default function ChatPro() {
     return 'bg-muted/25'
   }, [sharedWallpaper])
 
+  const createWedoRoom = async () => {
+    if (!user || !otherUser || !online || sending) return
+    setSending(true)
+    try {
+      const { data, error } = await supabase.rpc('create_wedo_room', { p_friend_id: otherUser.id })
+      if (error) throw error
+      const roomId = typeof data === 'string' ? data : String((data as unknown as { id?: string; room_id?: string } | null)?.room_id || (data as unknown as { id?: string } | null)?.id || '')
+      if (!roomId) throw new Error('Could not create the Wedo room.')
+      navigate('/wedo/' + roomId)
+    } catch (error) {
+      toast.error(error instanceof Error && /WEDO_FRIENDS_ONLY/.test(error.message)
+        ? (document.documentElement.lang === 'ar' ? 'يجب أن تكونا صديقين متبادلين لفتح غرفة Wedo.' : 'Wedo rooms require you to be mutual friends.')
+        : error instanceof Error && /WEDO_PEER_SLEEPING/.test(error.message)
+          ? (document.documentElement.lang === 'ar' ? 'صديقك في وضع النوم الآن.' : 'Your friend is in Sleep mode right now.')
+          : error instanceof Error ? error.message : 'Could not start Wedo.')
+    } finally {
+      setSending(false)
+    }
+  }
+
   if (!otherUser) return <div className="min-h-screen flex items-center justify-center"><Spinner className="size-7" /></div>
 
   return (
@@ -1130,6 +1150,7 @@ export default function ChatPro() {
         </Link>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'voice')} aria-label="Voice call"><Phone className="size-5" /></Button>
         <Button variant="ghost" size="icon" className="size-9 rounded-full" disabled={!online} onClick={() => void startCall({ id: otherUser.id, username: otherUser.username, full_name: otherUser.full_name, avatar_url: otherUser.avatar_url }, 'video')} aria-label="Video call"><Video className="size-5" /></Button>
+        <Button variant="ghost" size="sm" className="h-9 gap-1 rounded-full border border-amber-300/60 bg-yellow-300/40 px-2 text-amber-950 hover:bg-yellow-300/70" disabled={!online || sending} onClick={() => void createWedoRoom()} aria-label="Start Wedo room"><MonitorUp className="size-4" /><span className="text-xs font-extrabold">Wedo!</span></Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-9 rounded-full" aria-label="Chat options"><MoreVertical className="size-5" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60 rounded-2xl p-1.5">
@@ -1162,7 +1183,7 @@ export default function ChatPro() {
             return (
               <div key={message.id} id={'message-' + message.id} className={'flex ' + (mine ? 'justify-end' : 'justify-start') + ' group'}>
                 <div className="max-w-[78%] sm:max-w-[66%] flex flex-col">
-                  <div className={'rounded-[1.3rem] px-3 py-1.5 shadow-sm border border-black/5 ' + (mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
+                  <div className={'rounded-[1.3rem] px-3 py-1.5 shadow-sm border border-black/5 ' + (message.is_wedo_message || message.message_type === 'wedo_invite' ? 'bg-yellow-300/90 text-yellow-950 border-yellow-400/70 dark:bg-yellow-200/90 dark:text-yellow-950' : mine ? myBubble + ' rounded-br-md' : 'bg-card text-foreground rounded-bl-md border-border')}>
                     {message.reply_to && !message.deleted_for_everyone && (
                       <button onClick={() => document.getElementById('message-' + message.reply_to_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className={'w-full text-left mb-2 rounded-lg px-2.5 py-1.5 text-[11px] ' + (mine ? 'bg-white/15' : 'bg-muted')}>
                         <span className="font-semibold block">{message.reply_to.sender_id === user?.id ? 'You' : otherUser.username}</span>
@@ -1171,6 +1192,11 @@ export default function ChatPro() {
                     )}
                     {message.deleted_for_everyone ? <p className="text-xs italic opacity-60">Message deleted</p> : (
                       <>
+                        {message.message_type === 'wedo_invite' && message.wedo_room_id && <div className="mb-2 w-[min(18rem,70vw)] rounded-2xl border border-amber-400/60 bg-yellow-100/75 p-3 text-yellow-950 dark:bg-yellow-100/90">
+                          <div className="flex items-center gap-2"><span className="grid size-9 place-items-center rounded-xl bg-yellow-300 text-yellow-950"><MonitorUp className="size-4" /></span><div><p className="text-sm font-extrabold">Wedo!</p><p className="text-[10px]">Private shared room</p></div></div>
+                          <p className="mt-2 text-xs leading-5">Join to talk, share your screen and chat live.</p>
+                          <Button type="button" size="sm" onClick={() => navigate('/wedo/' + message.wedo_room_id)} className="mt-3 h-9 w-full rounded-xl bg-yellow-400 font-bold text-yellow-950 hover:bg-yellow-300">Join Wedo!</Button>
+                        </div>}
                         {message.message_type === 'poll' && poll && <div className="w-[min(19rem,78vw)] rounded-[1.15rem] border border-white/10 bg-background/55 p-3 shadow-inner">
                           <div className="flex items-start gap-2.5 mb-3">
                             <span className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary"><BarChart3 className="size-4" /></span>
@@ -1196,7 +1222,7 @@ export default function ChatPro() {
                         {message.media_type === 'audio' && (mediaUrls[message.id] || message.media_url) && <audio src={mediaUrls[message.id] || message.media_url} controls className="w-full min-w-48 h-9 mb-1.5" />}
                         {message.media_type === 'file' && (mediaUrls[message.id] || message.media_url) && <a href={mediaUrls[message.id] || message.media_url} target="_blank" rel="noreferrer" download className="flex items-center gap-3 w-[min(20rem,80vw)] rounded-[1.05rem] border border-border/60 bg-background/45 px-3 py-3 hover:bg-background/65 transition-colors"><span className="grid size-11 place-items-center rounded-xl bg-primary/10 text-primary shrink-0"><FileText className="size-5" /></span><span className="min-w-0 flex-1"><b className="block text-sm truncate">{message.content || 'Attachment'}</b><small className="text-[10px] text-muted-foreground">Open or save file</small></span></a>}
                         {!message.media_url && message.media_type && !mediaUrls[message.id] && <div className="h-24 w-52 rounded-xl bg-black/5 dark:bg-white/5 animate-pulse mb-1.5" />}
-                        {message.content && <p className="text-[14px] whitespace-pre-wrap break-words leading-[1.45]">{renderMessageText(message.content)}</p>}
+                        {message.content && message.message_type !== 'wedo_invite' && <p className="text-[14px] whitespace-pre-wrap break-words leading-[1.45]">{renderMessageText(message.content)}</p>}
                         {message.content && firstUrl(message.content) && <LinkPreviewCard url={firstUrl(message.content)} />}
                         {message.view_once && message.media_type && <p className="text-[11px] mt-1 opacity-75 flex items-center gap-1"><Eye className="size-3" />{message.view_once_limit === 2 ? 'View twice' : 'View once'}</p>}
                       </>
