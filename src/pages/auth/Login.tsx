@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ import { MAX_SAVED_ACCOUNTS } from '@/lib/accountSwitcher'
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { savedAccounts, switchAccount } = useAuth()
+  const { user, savedAccounts, switchAccount } = useAuth()
   const [switchingAccountId, setSwitchingAccountId] = useState<string | null>(null)
   const { copy, language } = useYomyLanguage()
   const rtl = language === 'ar'
@@ -22,13 +22,20 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const recoveryAccountId = new URLSearchParams(location.search).get('reauthAccount')
+  const lastRecoveryAccountId = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!recoveryAccountId) return
+    if (!recoveryAccountId) {
+      lastRecoveryAccountId.current = null
+      return
+    }
+    if (lastRecoveryAccountId.current !== recoveryAccountId) {
+      lastRecoveryAccountId.current = recoveryAccountId
+      setPassword('')
+    }
     const account = savedAccounts.find(item => item.userId === recoveryAccountId)
-    if (account?.email) setEmail(account.email)
-    setPassword('')
-  }, [recoveryAccountId, savedAccounts])
+    if (account?.email && email !== account.email) setEmail(account.email)
+  }, [recoveryAccountId, savedAccounts, email])
 
   const finishAuth = async () => {
     const destination = await getPostAuthRoute()
@@ -36,6 +43,10 @@ export default function Login() {
   }
 
   const handleSwitchSavedAccount = async (userId: string) => {
+    if (user?.id === userId) {
+      navigate(await getPostAuthRoute(userId), { replace: true })
+      return
+    }
     setSwitchingAccountId(userId)
     try {
       await switchAccount(userId)
